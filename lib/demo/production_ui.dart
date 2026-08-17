@@ -617,28 +617,29 @@ class _ProductionShellState extends State<_ProductionShell> {
         repository: widget.repository,
         profile: widget.profile,
       ),
+      _ProductionSettings(profile: widget.profile),
       if (widget.profile.isAdmin)
         _ProductionAdmin(repository: widget.repository),
     ];
     if (index >= pages.length) index = 0;
     final items = <(IconData, String)>[
-      (Icons.grid_view_rounded, 'Home'),
-      (Icons.sports_soccer_rounded, 'Predict'),
-      (Icons.leaderboard_rounded, 'Leaders'),
-      (Icons.receipt_long_rounded, 'Points'),
-      (Icons.person_rounded, 'Profile'),
+      (Icons.grid_view_rounded, abuText(context, 'Home', 'الرئيسية')),
+      (Icons.sports_soccer_rounded, abuText(context, 'Predict', 'توقع')),
+      (Icons.leaderboard_rounded, abuText(context, 'Leaders', 'الترتيب')),
+      (Icons.receipt_long_rounded, abuText(context, 'Points', 'النقاط')),
+      (Icons.person_rounded, abuText(context, 'Profile', 'حسابي')),
     ];
     final desktop = MediaQuery.sizeOf(context).width >= 900;
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Row(
+        title: Row(
           children: [
-            _LogoMark(size: 30),
-            SizedBox(width: 10),
+            const _LogoMark(size: 30),
+            const SizedBox(width: 10),
             Text(
-              'ABU 3MEER',
-              style: TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+              abuText(context, 'ABU 3MEER', 'أبو عمير'),
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
             ),
           ],
         ),
@@ -649,10 +650,15 @@ class _ProductionShellState extends State<_ProductionShell> {
             color: _gold,
             compact: true,
           ),
+          IconButton(
+            tooltip: abuText(context, 'Settings', 'الإعدادات'),
+            onPressed: () => setState(() => index = 5),
+            icon: const Icon(Icons.settings_rounded),
+          ),
           if (widget.profile.isAdmin)
             IconButton(
               tooltip: 'Admin Dashboard',
-              onPressed: () => setState(() => index = 5),
+              onPressed: () => setState(() => index = 6),
               icon: const Icon(Icons.admin_panel_settings_rounded),
             ),
           const SizedBox(width: 8),
@@ -741,8 +747,140 @@ class _ProductionHome extends StatelessWidget {
             );
           },
         ),
+        const SizedBox(height: 16),
+        _ProductionLatestVideoCard(repository: repository),
       ],
     ),
+  );
+}
+
+class _ProductionLatestVideoCard extends StatefulWidget {
+  const _ProductionLatestVideoCard({required this.repository});
+  final ProductionRepository repository;
+
+  @override
+  State<_ProductionLatestVideoCard> createState() =>
+      _ProductionLatestVideoCardState();
+}
+
+class _ProductionLatestVideoCardState
+    extends State<_ProductionLatestVideoCard> {
+  late Future<LatestVideo> request;
+
+  @override
+  void initState() {
+    super.initState();
+    request = widget.repository.latestVideo();
+  }
+
+  void retry() =>
+      setState(() => request = widget.repository.latestVideo(refresh: true));
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<LatestVideo>(
+    future: request,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const _ProductionSkeleton(height: 230);
+      }
+      if (snapshot.hasError || !snapshot.hasData) {
+        return _ProductionEmpty(
+          icon: Icons.youtube_searched_for_rounded,
+          title: abuText(
+            context,
+            'Latest video unavailable',
+            'تعذر تحميل أحدث فيديو',
+          ),
+          body: abuText(
+            context,
+            'Check the connection and try the channel feed again.',
+            'تحقق من الاتصال وحاول تحديث قناة يوتيوب.',
+          ),
+          actionLabel: abuText(context, 'RETRY', 'إعادة المحاولة'),
+          onAction: retry,
+        );
+      }
+      final video = snapshot.data!;
+      return Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => launchUrl(
+            Uri.parse(video.url),
+            mode: LaunchMode.externalApplication,
+          ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final compact = constraints.maxWidth < 680;
+              final image = AspectRatio(
+                aspectRatio: 16 / 9,
+                child: video.thumbnailUrl.startsWith('assets/')
+                    ? Image.asset(video.thumbnailUrl, fit: BoxFit.cover)
+                    : Image.network(
+                        video.thumbnailUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => Image.asset(
+                          'assets/images/latest_abu3meer.jpg',
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+              );
+              final details = Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      abuText(
+                        context,
+                        'LATEST ABU 3MEER VIDEO',
+                        'أحدث فيديو لأبو عمير',
+                      ),
+                      style: const TextStyle(
+                        color: _lime,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    Text(
+                      video.title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: _display(24, height: 1.05),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.play_circle_fill_rounded, color: _red),
+                        const SizedBox(width: 8),
+                        Text(
+                          abuText(
+                            context,
+                            'WATCH ON YOUTUBE',
+                            'شاهد على يوتيوب',
+                          ),
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+              return compact
+                  ? Column(children: [image, details])
+                  : Row(
+                      children: [
+                        Expanded(flex: 5, child: image),
+                        Expanded(flex: 4, child: details),
+                      ],
+                    );
+            },
+          ),
+        ),
+      );
+    },
   );
 }
 
@@ -775,7 +913,10 @@ class _ProductionPointsHero extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Text('${profile.totalPoints}', style: _display(50)),
+        Text(
+          '${profile.totalPoints}',
+          style: _display(50, color: Colors.white),
+        ),
         const SizedBox(height: 16),
         Row(
           children: [
@@ -906,6 +1047,7 @@ class _ProductionMatchCard extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Prediction saved securely.')),
         );
+        await _showPredictionFireworks(context);
       }
     } catch (error) {
       if (context.mounted) {
@@ -945,10 +1087,24 @@ class _ProductionMatchCard extends StatelessWidget {
             const SizedBox(height: 16),
             Row(
               children: [
-                _TeamCrest(
-                  label: event.homeTeam == 'Barcelona' ? 'BAR' : 'RMA',
-                  colors: const [_blue, _red],
-                  size: 46,
+                SizedBox(
+                  width: 72,
+                  height: 48,
+                  child: Stack(
+                    children: [
+                      _ProductionTeamBadge(
+                        team: event.homeTeam,
+                        source: event.homeLogoUrl,
+                      ),
+                      Positioned(
+                        left: 27,
+                        child: _ProductionTeamBadge(
+                          team: event.awayTeam,
+                          source: event.awayLogoUrl,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -981,6 +1137,8 @@ class _ProductionMatchCard extends StatelessWidget {
                     ? 'PREDICT EXACT SCORE'
                     : event.status == 'completed'
                     ? 'RESULT PUBLISHED'
+                    : event.id.startsWith('external_')
+                    ? 'NEXT MATCH · EVENT OPENS SOON'
                     : 'PREDICTIONS CLOSED',
               ),
             ),
@@ -990,6 +1148,80 @@ class _ProductionMatchCard extends StatelessWidget {
     );
   }
 }
+
+class _ProductionTeamBadge extends StatelessWidget {
+  const _ProductionTeamBadge({required this.team, required this.source});
+  final String team;
+  final String source;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = team.toLowerCase().contains('barcelona')
+        ? 'assets/images/fcb.png'
+        : team.toLowerCase().contains('real madrid')
+        ? 'assets/images/rma.png'
+        : '';
+    Widget image;
+    if (source.startsWith('http')) {
+      image = Image.network(
+        source,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => fallback.isEmpty
+            ? const Icon(Icons.shield_rounded)
+            : Image.asset(fallback, fit: BoxFit.contain),
+      );
+    } else if (source.startsWith('assets/')) {
+      image = Image.asset(source, fit: BoxFit.contain);
+    } else if (fallback.isNotEmpty) {
+      image = Image.asset(fallback, fit: BoxFit.contain);
+    } else {
+      image = const Icon(Icons.shield_rounded);
+    }
+    return Container(
+      width: 48,
+      height: 48,
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(13),
+        border: Border.all(color: _line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: image,
+    );
+  }
+}
+
+Future<void> _showPredictionFireworks(BuildContext context) =>
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withValues(alpha: .2),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (dialogContext, _, _) {
+        unawaited(
+          Future<void>.delayed(const Duration(milliseconds: 2200), () {
+            if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+          }),
+        );
+        return Material(
+          color: Colors.transparent,
+          child: IgnorePointer(
+            child: Center(
+              child: SizedBox(
+                width: math.min(MediaQuery.sizeOf(context).width, 620),
+                height: math.min(MediaQuery.sizeOf(context).height, 620),
+                child: Lottie.asset(
+                  'assets/animations/fireworks.json',
+                  repeat: false,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
 
 class _ScoreInput extends StatelessWidget {
   const _ScoreInput({
@@ -1227,6 +1459,190 @@ class _ProductionProfile extends StatelessWidget {
   );
 }
 
+class _ProductionSettings extends StatelessWidget {
+  const _ProductionSettings({required this.profile});
+  final AbuUserProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final preferences = AbuAppPreferences.instance;
+    final mockData = TemporaryMockData.instance;
+    return AnimatedBuilder(
+      animation: Listenable.merge([preferences, mockData]),
+      builder: (context, _) => _PageFrame(
+        kicker: abuText(context, 'Personalize Abu 3meer', 'خصص تطبيق أبو عمير'),
+        title: abuText(context, 'Settings', 'الإعدادات'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.contrast_rounded, color: _lime),
+                    title: Text(abuText(context, 'Appearance', 'المظهر')),
+                    subtitle: Text(
+                      abuText(
+                        context,
+                        'Choose the theme used across the app.',
+                        'اختر المظهر المستخدم في التطبيق.',
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<ThemeMode>(
+                        segments: [
+                          ButtonSegment(
+                            value: ThemeMode.dark,
+                            icon: const Icon(Icons.dark_mode_rounded),
+                            label: Text(abuText(context, 'Dark', 'داكن')),
+                          ),
+                          ButtonSegment(
+                            value: ThemeMode.light,
+                            icon: const Icon(Icons.light_mode_rounded),
+                            label: Text(abuText(context, 'Light', 'فاتح')),
+                          ),
+                        ],
+                        selected: {preferences.themeMode},
+                        onSelectionChanged: (selection) =>
+                            preferences.setThemeMode(selection.first),
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.language_rounded, color: _lime),
+                    title: Text(abuText(context, 'Language', 'اللغة')),
+                    subtitle: Text(
+                      abuText(
+                        context,
+                        'The layout changes direction immediately.',
+                        'يتغير اتجاه واجهة التطبيق مباشرة.',
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<AbuLanguage>(
+                        segments: const [
+                          ButtonSegment(
+                            value: AbuLanguage.english,
+                            label: Text('English'),
+                          ),
+                          ButtonSegment(
+                            value: AbuLanguage.arabic,
+                            label: Text('العربية'),
+                          ),
+                        ],
+                        selected: {preferences.language},
+                        onSelectionChanged: (selection) =>
+                            preferences.setLanguage(selection.first),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.workspace_premium_rounded,
+                          color: _red,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            abuText(
+                              context,
+                              'YOUTUBE MEMBERSHIP',
+                              'عضوية يوتيوب',
+                            ),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                        _LiveDot(
+                          text: profile.isYouTubeMember
+                              ? abuText(context, 'VERIFIED · 2×', 'موثق · 2×')
+                              : abuText(context, 'NOT VERIFIED', 'غير موثق'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      abuText(
+                        context,
+                        'Member points will only be activated after secure verification with the creator\'s YouTube account. They are never granted from a user-entered claim.',
+                        'يتم تفعيل نقاط الأعضاء فقط بعد التحقق الآمن باستخدام حساب منشئ القناة، ولا تُمنح بناءً على اختيار يدوي.',
+                      ),
+                      style: const TextStyle(color: _muted, height: 1.45),
+                    ),
+                    const SizedBox(height: 14),
+                    OutlinedButton.icon(
+                      onPressed: () => launchUrl(
+                        Uri.parse(
+                          'https://www.youtube.com/channel/${AbuExternalContentService.youtubeChannelId}/join',
+                        ),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      label: Text(
+                        abuText(
+                          context,
+                          'OPEN CHANNEL MEMBERSHIP',
+                          'فتح عضوية القناة',
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Card(
+              color: _gold.withValues(alpha: .09),
+              child: SwitchListTile.adaptive(
+                value: mockData.enabled,
+                onChanged: mockData.setEnabled,
+                secondary: const Icon(Icons.science_rounded, color: _gold),
+                title: Text(
+                  abuText(
+                    context,
+                    'Temporary mock data',
+                    'بيانات تجريبية مؤقتة',
+                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                subtitle: Text(
+                  abuText(
+                    context,
+                    'Testing only. Replaces the live match and video with predictable sample content. This isolated option can be removed before launch.',
+                    'للاختبار فقط. يستبدل المباراة والفيديو المباشرين ببيانات ثابتة، ويمكن حذف هذا الخيار قبل الإطلاق.',
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ProductionAdmin extends StatelessWidget {
   const _ProductionAdmin({required this.repository});
   final ProductionRepository repository;
@@ -1256,7 +1672,7 @@ class _ProductionAdmin extends StatelessWidget {
         ),
         const SizedBox(height: 18),
         StreamBuilder<List<MatchEvent>>(
-          stream: repository.watchMatches(),
+          stream: repository.watchManagedMatches(),
           builder: (context, snapshot) {
             final matches = snapshot.data ?? const [];
             if (matches.isEmpty) {
@@ -1575,10 +1991,14 @@ class _ProductionEmpty extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.body,
+    this.actionLabel,
+    this.onAction,
   });
   final IconData icon;
   final String title;
   final String body;
+  final String? actionLabel;
+  final VoidCallback? onAction;
   @override
   Widget build(BuildContext context) => Card(
     child: Padding(
@@ -1594,6 +2014,10 @@ class _ProductionEmpty extends StatelessWidget {
             textAlign: TextAlign.center,
             style: const TextStyle(color: _muted, height: 1.5),
           ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 14),
+            OutlinedButton(onPressed: onAction, child: Text(actionLabel!)),
+          ],
         ],
       ),
     ),

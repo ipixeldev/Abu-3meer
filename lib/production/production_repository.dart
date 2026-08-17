@@ -4,21 +4,26 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import 'external_content_service.dart';
 import 'models.dart';
+import 'temporary_mock_data.dart';
 
 class ProductionRepository {
   ProductionRepository({
     FirebaseAuth? auth,
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
+    AbuExternalContentService? externalContent,
   }) : auth = auth ?? FirebaseAuth.instance,
        firestore = firestore ?? FirebaseFirestore.instance,
        functions =
-           functions ?? FirebaseFunctions.instanceFor(region: 'europe-west1');
+           functions ?? FirebaseFunctions.instanceFor(region: 'europe-west1'),
+       externalContent = externalContent ?? AbuExternalContentService();
 
   final FirebaseAuth auth;
   final FirebaseFirestore firestore;
   final FirebaseFunctions functions;
+  final AbuExternalContentService externalContent;
   bool _googleInitialized = false;
 
   Stream<User?> get authChanges => auth.userChanges();
@@ -29,13 +34,35 @@ class ProductionRepository {
       .snapshots()
       .map((doc) => doc.exists ? AbuUserProfile.fromDocument(doc) : null);
 
-  Stream<List<MatchEvent>> watchMatches() => firestore
+  Stream<List<MatchEvent>> watchManagedMatches() => firestore
       .collection('matches')
       .where('status', whereIn: const ['open', 'locked', 'completed'])
       .orderBy('kickoffAt')
       .limit(30)
       .snapshots()
       .map((snapshot) => snapshot.docs.map(MatchEvent.fromDocument).toList());
+
+  Stream<List<MatchEvent>> watchMatches() async* {
+    if (TemporaryMockData.instance.enabled) {
+      yield [TemporaryMockData.instance.match];
+      return;
+    }
+    await for (final managed in watchManagedMatches()) {
+      if (managed.isNotEmpty) {
+        yield managed;
+        continue;
+      }
+      final externalMatch = await externalContent.nextMatch(refresh: true);
+      yield externalMatch == null ? const [] : [externalMatch];
+    }
+  }
+
+  Future<LatestVideo> latestVideo({bool refresh = false}) {
+    if (TemporaryMockData.instance.enabled) {
+      return Future.value(TemporaryMockData.instance.video);
+    }
+    return externalContent.latestVideo(refresh: refresh);
+  }
 
   Stream<List<PointLedgerEntry>> watchPointHistory(String uid) => firestore
       .collection('pointTransactions')
@@ -203,11 +230,17 @@ class ProductionRepository {
     required String matchId,
     required int homeScore,
     required int awayScore,
-  }) => _call('submitPrediction', {
-    'matchId': matchId,
-    'homeScore': homeScore,
-    'awayScore': awayScore,
-  });
+  }) async {
+    if (TemporaryMockData.instance.enabled && matchId.startsWith('mock_')) {
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      return;
+    }
+    await _call('submitPrediction', {
+      'matchId': matchId,
+      'homeScore': homeScore,
+      'awayScore': awayScore,
+    });
+  }
 
   Future<void> createMatch({
     required String homeTeam,

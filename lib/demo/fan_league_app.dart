@@ -8,8 +8,11 @@ import 'package:lottie/lottie.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../production/brand.dart';
+import '../production/app_preferences.dart';
+import '../production/external_content_service.dart';
 import '../production/models.dart';
 import '../production/production_repository.dart';
+import '../production/temporary_mock_data.dart';
 
 part 'fan_league_extended.dart';
 part 'trivia_arena.dart';
@@ -141,43 +144,83 @@ class FanLeagueApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = ThemeData.dark(useMaterial3: true);
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: AbuBrand.appName,
-      theme: base.copyWith(
-        scaffoldBackgroundColor: _ink,
-        colorScheme: const ColorScheme.dark(
-          primary: _lime,
-          secondary: _gold,
-          surface: _surface,
+    final preferences = AbuAppPreferences.instance;
+    return AnimatedBuilder(
+      animation: Listenable.merge([preferences, TemporaryMockData.instance]),
+      builder: (context, _) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: AbuBrand.appName,
+        locale: preferences.locale,
+        supportedLocales: const [Locale('en'), Locale('ar')],
+        themeMode: preferences.themeMode,
+        theme: _abuTheme(brightness: Brightness.light),
+        darkTheme: _abuTheme(brightness: Brightness.dark),
+        builder: (context, child) => Directionality(
+          textDirection: preferences.isArabic
+              ? TextDirection.rtl
+              : TextDirection.ltr,
+          child: child!,
         ),
-        textTheme: GoogleFonts.interTextTheme(base.textTheme)
-            .apply(bodyColor: Colors.white, displayColor: Colors.white),
-        cardTheme: CardThemeData(
-          color: _surface,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: const BorderSide(color: _line),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: _surface2,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: _line),
-          ),
-        ),
+        home: const _ProductionGate(),
       ),
-      home: const _ProductionGate(),
     );
   }
+}
+
+ThemeData _abuTheme({required Brightness brightness}) {
+  final dark = brightness == Brightness.dark;
+  final base = dark
+      ? ThemeData.dark(useMaterial3: true)
+      : ThemeData.light(useMaterial3: true);
+  final surface = dark ? _surface : const Color(0xFFFFFFFF);
+  final surface2 = dark ? _surface2 : const Color(0xFFF0F3F7);
+  final line = dark ? _line : const Color(0xFFD8DEE7);
+  return base.copyWith(
+    scaffoldBackgroundColor: dark ? _ink : const Color(0xFFF7F9FC),
+    colorScheme: dark
+        ? const ColorScheme.dark(
+            primary: _lime,
+            secondary: _gold,
+            surface: _surface,
+          )
+        : const ColorScheme.light(
+            primary: Color(0xFF577600),
+            secondary: Color(0xFF9A6700),
+            surface: Colors.white,
+          ),
+    textTheme: GoogleFonts.interTextTheme(base.textTheme).apply(
+      bodyColor: dark ? Colors.white : const Color(0xFF131820),
+      displayColor: dark ? Colors.white : const Color(0xFF131820),
+    ),
+    cardTheme: CardThemeData(
+      color: surface,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: line),
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: surface2,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: line),
+      ),
+    ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: surface,
+      indicatorColor: _lime.withValues(alpha: dark ? .14 : .32),
+    ),
+    appBarTheme: AppBarTheme(
+      backgroundColor: dark ? _ink : const Color(0xFFF7F9FC),
+      surfaceTintColor: Colors.transparent,
+    ),
+  );
 }
 
 class _DemoGate extends StatefulWidget {
@@ -3774,19 +3817,76 @@ class _Activity extends StatelessWidget {
   );
 }
 
-class _LogoMark extends StatelessWidget {
+class _LogoMark extends StatefulWidget {
   const _LogoMark({required this.size});
   final double size;
+
   @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: _lime,
-      borderRadius: BorderRadius.circular(size * .28),
+  State<_LogoMark> createState() => _LogoMarkState();
+}
+
+class _LogoMarkState extends State<_LogoMark>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AnimationController(vsync: this);
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  void stop() {
+    controller
+      ..stop()
+      ..value = 0;
+  }
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    onEnter: (_) {
+      if (controller.duration != null) controller.repeat();
+    },
+    onExit: (_) => stop(),
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (controller.duration != null) controller.forward(from: 0);
+      },
+      child: Container(
+        width: widget.size,
+        height: widget.size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _lime,
+          borderRadius: BorderRadius.circular(widget.size * .28),
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(widget.size * .08),
+          child: Lottie.asset(
+            'assets/animations/ball-loading.json',
+            controller: controller,
+            repeat: false,
+            fit: BoxFit.contain,
+            onLoaded: (composition) {
+              controller.duration = composition.duration;
+              controller.value = 0;
+            },
+            errorBuilder: (_, _, _) => Icon(
+              Icons.sports_soccer_rounded,
+              color: _ink,
+              size: widget.size * .62,
+            ),
+          ),
+        ),
+      ),
     ),
-    child: Icon(Icons.sports_soccer_rounded, color: _ink, size: size * .62),
   );
 }
 
@@ -3840,7 +3940,7 @@ class _WarRingPainter extends CustomPainter {
 
 TextStyle _display(
   double size, {
-  Color color = Colors.white,
+  Color? color,
   double height = 1,
   double spacing = -.4,
 }) => GoogleFonts.barlowCondensed(

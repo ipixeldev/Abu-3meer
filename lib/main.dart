@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import 'demo/fan_league_app.dart';
 import 'firebase_options.dart';
+import 'production/app_preferences.dart';
+import 'production/temporary_mock_data.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +19,10 @@ Future<void> main() async {
         if (kIsWeb) {
           await FirebaseAuth.instance.setPersistence(Persistence.SESSION);
         }
+        await Future.wait([
+          AbuAppPreferences.instance.load(),
+          TemporaryMockData.instance.load(),
+        ]);
       },
     ),
   );
