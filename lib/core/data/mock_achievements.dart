@@ -1,0 +1,526 @@
+// Mock achievements, rewards, notifications, activity history, and admin analytics.
+
+import 'package:flutter/material.dart';
+
+import '../models/challenge.dart';
+import '../models/user.dart';
+import '../models/match.dart';
+import 'mock_users.dart';
+import 'mock_matches.dart';
+
+final List<Achievement> mockAchievements = [
+  // ─── Predictions ─────────────────────────────────────────────
+  Achievement(
+    id: 'ach_correct_10',
+    name: 'Getting Started',
+    description: 'Make 10 correct predictions.',
+    iconName: 'target_10',
+    category: AchievementCategory.predictions,
+    requirement: 10,
+    requirementType: 'correct_predictions',
+    xpReward: 100,
+    loyaltyReward: 200,
+    sortOrder: 1,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_correct_50',
+    name: 'Sharp Shooter',
+    description: 'Make 50 correct predictions.',
+    iconName: 'target_50',
+    category: AchievementCategory.predictions,
+    requirement: 50,
+    requirementType: 'correct_predictions',
+    xpReward: 500,
+    loyaltyReward: 1000,
+    sortOrder: 2,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_correct_100',
+    name: 'Prediction Master',
+    description: 'Make 100 correct predictions.',
+    iconName: 'target_100',
+    category: AchievementCategory.predictions,
+    requirement: 100,
+    requirementType: 'correct_predictions',
+    xpReward: 1500,
+    loyaltyReward: 3000,
+    sortOrder: 3,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_correct_250',
+    name: 'Oracle',
+    description: 'Make 250 correct predictions.',
+    iconName: 'target_250',
+    category: AchievementCategory.predictions,
+    requirement: 250,
+    requirementType: 'correct_predictions',
+    xpReward: 5000,
+    loyaltyReward: 10000,
+    isSecret: true,
+    sortOrder: 4,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_el_clasico_5',
+    name: 'El Clásico Expert',
+    description: 'Correctly predict 5 El Clásico winners.',
+    iconName: 'clasico_expert',
+    category: AchievementCategory.predictions,
+    requirement: 5,
+    requirementType: 'el_clasico_wins',
+    xpReward: 750,
+    loyaltyReward: 1500,
+    sortOrder: 5,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_perfect_matchday',
+    name: 'Perfect Matchday',
+    description: 'Get all predictions correct for a single match.',
+    iconName: 'perfect_matchday',
+    category: AchievementCategory.predictions,
+    requirement: 1,
+    requirementType: 'perfect_matchday',
+    xpReward: 500,
+    loyaltyReward: 1000,
+    sortOrder: 6,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+
+  // ─── Streaks ─────────────────────────────────────────────────
+  Achievement(
+    id: 'ach_streak_3',
+    name: 'On Fire',
+    description: 'Achieve a 3-match prediction streak.',
+    iconName: 'streak_3',
+    category: AchievementCategory.streaks,
+    requirement: 3,
+    requirementType: 'streak',
+    xpReward: 100,
+    loyaltyReward: 200,
+    sortOrder: 10,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_streak_7',
+    name: 'Week Warrior',
+    description: 'Achieve a 7-match prediction streak.',
+    iconName: 'streak_7',
+    category: AchievementCategory.streaks,
+    requirement: 7,
+    requirementType: 'streak',
+    xpReward: 300,
+    loyaltyReward: 600,
+    sortOrder: 11,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_streak_10',
+    name: '10 Match Streak',
+    description: 'Achieve a 10-match prediction streak.',
+    iconName: 'streak_10',
+    category: AchievementCategory.streaks,
+    requirement: 10,
+    requirementType: 'streak',
+    xpReward: 750,
+    loyaltyReward: 1500,
+    sortOrder: 12,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_streak_20',
+    name: 'Unstoppable',
+    description: 'Achieve a 20-match prediction streak.',
+    iconName: 'streak_20',
+    category: AchievementCategory.streaks,
+    requirement: 20,
+    requirementType: 'streak',
+    xpReward: 2500,
+    loyaltyReward: 5000,
+    isSecret: true,
+    sortOrder: 13,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_streak_30',
+    name: 'Iron Will',
+    description: 'Achieve a 30-match prediction streak.',
+    iconName: 'streak_30',
+    category: AchievementCategory.streaks,
+    requirement: 30,
+    requirementType: 'streak',
+    xpReward: 10000,
+    loyaltyReward: 20000,
+    isSecret: true,
+    sortOrder: 14,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+
+  // ─── Special ─────────────────────────────────────────────────
+  Achievement(
+    id: 'ach_first_prediction',
+    name: 'First Steps',
+    description: 'Make your first prediction.',
+    iconName: 'first_steps',
+    category: AchievementCategory.special,
+    requirement: 1,
+    requirementType: 'first_prediction',
+    xpReward: 50,
+    loyaltyReward: 100,
+    sortOrder: 20,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_level_10',
+    name: 'Rising Star',
+    description: 'Reach Level 10.',
+    iconName: 'level_10',
+    category: AchievementCategory.special,
+    requirement: 10,
+    requirementType: 'level',
+    xpReward: 500,
+    loyaltyReward: 1000,
+    sortOrder: 21,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_level_25',
+    name: 'Elite',
+    description: 'Reach Level 25.',
+    iconName: 'level_25',
+    category: AchievementCategory.special,
+    requirement: 25,
+    requirementType: 'level',
+    xpReward: 2000,
+    loyaltyReward: 4000,
+    sortOrder: 22,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_top_100',
+    name: 'Top 100 Fan',
+    description: 'Finish a season in the Top 100.',
+    iconName: 'top_100',
+    category: AchievementCategory.special,
+    requirement: 100,
+    requirementType: 'season_rank',
+    xpReward: 1000,
+    loyaltyReward: 2000,
+    sortOrder: 23,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_top_10',
+    name: 'Elite 10',
+    description: 'Finish a season in the Top 10.',
+    iconName: 'top_10',
+    category: AchievementCategory.special,
+    requirement: 10,
+    requirementType: 'season_rank',
+    xpReward: 5000,
+    loyaltyReward: 10000,
+    isSecret: true,
+    sortOrder: 24,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_season_winner',
+    name: 'Season Champion',
+    description: 'Win the Fan League season.',
+    iconName: 'season_champ',
+    category: AchievementCategory.special,
+    requirement: 1,
+    requirementType: 'season_rank',
+    xpReward: 25000,
+    loyaltyReward: 50000,
+    isSecret: true,
+    sortOrder: 25,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+
+  // ─── Team ────────────────────────────────────────────────────
+  Achievement(
+    id: 'ach_barca_legend',
+    name: 'Barcelona Legend',
+    description: 'Earn 10,000 XP as a Barcelona fan.',
+    iconName: 'barca_legend',
+    category: AchievementCategory.team,
+    requirement: 10000,
+    requirementType: 'team_xp_barcelona',
+    xpReward: 1000,
+    loyaltyReward: 2000,
+    sortOrder: 30,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_madrid_legend',
+    name: 'Madridista Legend',
+    description: 'Earn 10,000 XP as a Real Madrid fan.',
+    iconName: 'madrid_legend',
+    category: AchievementCategory.team,
+    requirement: 10000,
+    requirementType: 'team_xp_madrid',
+    xpReward: 1000,
+    loyaltyReward: 2000,
+    sortOrder: 31,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_barca_loyalist',
+    name: 'Culè for Life',
+    description: 'Support Barcelona for 365 days.',
+    iconName: 'barca_loyalist',
+    category: AchievementCategory.team,
+    requirement: 365,
+    requirementType: 'team_tenure',
+    xpReward: 500,
+    loyaltyReward: 1000,
+    sortOrder: 32,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_madrid_loyalist',
+    name: 'Hala Madrid Forever',
+    description: 'Support Real Madrid for 365 days.',
+    iconName: 'madrid_loyalist',
+    category: AchievementCategory.team,
+    requirement: 365,
+    requirementType: 'team_tenure',
+    xpReward: 500,
+    loyaltyReward: 1000,
+    sortOrder: 33,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+
+  // ─── Loyalty ─────────────────────────────────────────────────
+  Achievement(
+    id: 'ach_loyalty_1k',
+    name: 'Collector',
+    description: 'Accumulate 1,000 Loyalty Points.',
+    iconName: 'loyalty_1k',
+    category: AchievementCategory.loyalty,
+    requirement: 1000,
+    requirementType: 'loyalty_balance',
+    xpReward: 200,
+    loyaltyReward: 500,
+    sortOrder: 40,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_loyalty_10k',
+    name: 'High Roller',
+    description: 'Accumulate 10,000 Loyalty Points.',
+    iconName: 'loyalty_10k',
+    category: AchievementCategory.loyalty,
+    requirement: 10000,
+    requirementType: 'loyalty_balance',
+    xpReward: 1000,
+    loyaltyReward: 2000,
+    sortOrder: 41,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_redeem_5',
+    name: 'Reward Hunter',
+    description: 'Redeem 5 rewards from the Loyalty Store.',
+    iconName: 'redeem_5',
+    category: AchievementCategory.loyalty,
+    requirement: 5,
+    requirementType: 'redemptions',
+    xpReward: 500,
+    loyaltyReward: 1000,
+    sortOrder: 42,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+
+  // ─── Social ──────────────────────────────────────────────────
+  Achievement(
+    id: 'ach_referral_5',
+    name: 'Community Builder',
+    description: 'Invite 5 friends who reach Level 5.',
+    iconName: 'referral_5',
+    category: AchievementCategory.social,
+    requirement: 5,
+    requirementType: 'referrals',
+    xpReward: 1000,
+    loyaltyReward: 2000,
+    isSecret: true,
+    sortOrder: 50,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+  Achievement(
+    id: 'ach_challenge_master',
+    name: 'Challenge Master',
+    description: 'Complete 25 challenges.',
+    iconName: 'challenge_25',
+    category: AchievementCategory.social,
+    requirement: 25,
+    requirementType: 'challenges_completed',
+    xpReward: 1500,
+    loyaltyReward: 3000,
+    sortOrder: 51,
+    createdAt: DateTime(2023, 1, 1),
+  ),
+];
+
+/// Demo user's achievement progress.
+final Map<String, UserAchievement> demoUserAchievements = {
+  'ach_first_prediction': UserAchievement(
+    achievementId: 'ach_first_prediction',
+    userId: 'usr_ahmed10',
+    currentProgress: 1,
+    unlocked: true,
+    unlockedAt: DateTime(2023, 6, 15),
+    notified: true,
+  ),
+  'ach_correct_10': UserAchievement(
+    achievementId: 'ach_correct_10',
+    userId: 'usr_ahmed10',
+    currentProgress: 10,
+    unlocked: true,
+    unlockedAt: DateTime(2023, 7, 20),
+    notified: true,
+  ),
+  'ach_correct_50': UserAchievement(
+    achievementId: 'ach_correct_50',
+    userId: 'usr_ahmed10',
+    currentProgress: 50,
+    unlocked: true,
+    unlockedAt: DateTime(2023, 10, 12),
+    notified: true,
+  ),
+  'ach_correct_100': UserAchievement(
+    achievementId: 'ach_correct_100',
+    userId: 'usr_ahmed10',
+    currentProgress: 98, // Close!
+    unlocked: false,
+    notified: false,
+  ),
+  'ach_el_clasico_5': UserAchievement(
+    achievementId: 'ach_el_clasico_5',
+    userId: 'usr_ahmed10',
+    currentProgress: 4, // 1 away!
+    unlocked: false,
+    notified: false,
+  ),
+  'ach_perfect_matchday': UserAchievement(
+    achievementId: 'ach_perfect_matchday',
+    userId: 'usr_ahmed10',
+    currentProgress: 2,
+    unlocked: true,
+    unlockedAt: DateTime(2024, 4, 22),
+    notified: true,
+  ),
+  'ach_streak_3': UserAchievement(
+    achievementId: 'ach_streak_3',
+    userId: 'usr_ahmed10',
+    currentProgress: 3,
+    unlocked: true,
+    unlockedAt: DateTime(2023, 7, 5),
+    notified: true,
+  ),
+  'ach_streak_7': UserAchievement(
+    achievementId: 'ach_streak_7',
+    userId: 'usr_ahmed10',
+    currentProgress: 7,
+    unlocked: true,
+    unlockedAt: DateTime(2024, 8, 7),
+    notified: true,
+  ),
+  'ach_streak_10': UserAchievement(
+    achievementId: 'ach_streak_10',
+    userId: 'usr_ahmed10',
+    currentProgress: 7, // Current streak
+    unlocked: false,
+    notified: false,
+  ),
+  'ach_level_10': UserAchievement(
+    achievementId: 'ach_level_10',
+    userId: 'usr_ahmed10',
+    currentProgress: 18, // Current level
+    unlocked: true,
+    unlockedAt: DateTime(2024, 1, 15),
+    notified: true,
+  ),
+  'ach_level_25': UserAchievement(
+    achievementId: 'ach_level_25',
+    userId: 'usr_ahmed10',
+    currentProgress: 18,
+    unlocked: false,
+    notified: false,
+  ),
+  'ach_top_100': UserAchievement(
+    achievementId: 'ach_top_100',
+    userId: 'usr_ahmed10',
+    currentProgress: 143, // Current season rank
+    unlocked: false,
+    notified: false,
+  ),
+  'ach_barca_legend': UserAchievement(
+    achievementId: 'ach_barca_legend',
+    userId: 'usr_ahmed10',
+    currentProgress: 8420,
+    unlocked: false,
+    notified: false,
+  ),
+  'ach_barca_loyalist': UserAchievement(
+    achievementId: 'ach_barca_loyalist',
+    userId: 'usr_ahmed10',
+    currentProgress: 427, // Days since join
+    unlocked: true,
+    unlockedAt: DateTime(2024, 6, 12),
+    notified: true,
+  ),
+  'ach_loyalty_1k': UserAchievement(
+    achievementId: 'ach_loyalty_1k',
+    userId: 'usr_ahmed10',
+    currentProgress: 2850,
+    unlocked: true,
+    unlockedAt: DateTime(2024, 2, 10),
+    notified: true,
+  ),
+  'ach_loyalty_10k': UserAchievement(
+    achievementId: 'ach_loyalty_10k',
+    userId: 'usr_ahmed10',
+    currentProgress: 2850,
+    unlocked: false,
+    notified: false,
+  ),
+  'ach_challenge_master': UserAchievement(
+    achievementId: 'ach_challenge_master',
+    userId: 'usr_ahmed10',
+    currentProgress: 12, // Completed challenges
+    unlocked: false,
+    notified: false,
+  ),
+};
+
+/// Get user's achievements with progress.
+List<UserAchievement> getUserAchievements(String userId) {
+  return mockAchievements.map((a) {
+    return demoUserAchievements['${a.id}_$userId'] ??
+        demoUserAchievements[a.id] ??
+        UserAchievement(achievementId: a.id, userId: userId);
+  }).toList();
+}
+
+/// Get unlocked achievements for user.
+List<Achievement> getUnlockedAchievements(String userId) {
+  return mockAchievements.where((a) {
+    final ua =
+        demoUserAchievements['${a.id}_$userId'] ?? demoUserAchievements[a.id];
+    return ua?.unlocked == true;
+  }).toList();
+}
+
+/// Get locked achievements for user.
+List<Achievement> getLockedAchievements(String userId) {
+  return mockAchievements.where((a) {
+    final ua =
+        demoUserAchievements['${a.id}_$userId'] ?? demoUserAchievements[a.id];
+    return ua?.unlocked != true;
+  }).toList();
+}

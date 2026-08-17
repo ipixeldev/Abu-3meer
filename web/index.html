@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="The Fan League — watch, predict, compete, and become a legend.">
+  <meta name="theme-color" content="#080B10">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="The Fan League">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="manifest" href="manifest.json">
+  <title>The Fan League</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #080b10; }
+    #app-shell { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center;
+      overflow: hidden; background: #080b10; color: white; font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      transition: opacity .5s ease, visibility .5s ease; }
+    #app-shell.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    #app-shell::before { content: ''; position: absolute; inset: -20%;
+      background: radial-gradient(circle at 50% 37%, #2c3c19 0, #12180f 20%, #080b10 52%); }
+    #app-shell::after { content: ''; position: absolute; width: min(64vw, 620px); aspect-ratio: 1;
+      border: 1px solid rgba(200,255,56,.08); border-radius: 50%; box-shadow:
+      0 0 0 70px rgba(200,255,56,.025), 0 0 0 150px rgba(200,255,56,.018); }
+    .shell-card { position: relative; z-index: 1; width: min(88vw, 430px); text-align: center; }
+    #splash-animation { width: 174px; height: 174px; margin: auto; filter: drop-shadow(0 0 32px rgba(200,255,56,.18)); }
+    #splash-fallback { display: none; width: 122px; height: 122px; margin: 26px auto;
+      place-items: center; border: 1px solid rgba(200,255,56,.34); border-radius: 50%; font-size: 54px; }
+    .shell-title { margin-top: 10px; font-size: clamp(30px, 8vw, 40px); font-weight: 950; letter-spacing: 3px; }
+    .shell-kicker { margin-top: 8px; min-height: 14px; color: #c8ff38; font-size: 10px;
+      font-weight: 900; letter-spacing: 2.5px; line-height: 1.5; }
+    #ball-animation { width: 72px; height: 72px; margin: 20px auto 0; }
+    #startup-actions { display: none; margin-top: 18px; }
+    #startup-actions.visible { display: block; }
+    #startup-detail { margin: 0 auto 14px; max-width: 390px; color: #929caa; font-size: 11px;
+      font-weight: 600; line-height: 1.55; letter-spacing: 0; overflow-wrap: anywhere; }
+    #retry-button { appearance: none; border: 1px solid rgba(200,255,56,.45); border-radius: 999px;
+      padding: 11px 22px; color: #080b10; background: #c8ff38; cursor: pointer; font: 900 12px/1 system-ui;
+      letter-spacing: 1.2px; }
+    #retry-button:disabled { opacity: .65; cursor: wait; }
+  </style>
+</head>
+<body>
+  <div id="app-shell" role="status" aria-live="polite">
+    <div class="shell-card">
+      <div id="splash-animation" aria-hidden="true"></div>
+      <div id="splash-fallback" aria-hidden="true">⚽</div>
+      <div class="shell-title">FAN LEAGUE</div>
+      <div id="shell-status" class="shell-kicker">THE MATCH NEVER ENDS</div>
+      <div id="ball-animation" aria-hidden="true"></div>
+      <div id="startup-actions">
+        <div id="startup-detail">The app did not finish starting.</div>
+        <button id="retry-button" type="button">CLEAR CACHE &amp; RETRY</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="lottie.min.js"></script>
+  <script>
+    (function () {
+      const shell = document.getElementById('app-shell');
+      const status = document.getElementById('shell-status');
+      const actions = document.getElementById('startup-actions');
+      const detail = document.getElementById('startup-detail');
+      const retry = document.getElementById('retry-button');
+      let finished = false;
+
+      function renderAnimation(container, path, fallback) {
+        if (!window.lottie) {
+          if (fallback) fallback.style.display = 'grid';
+          return;
+        }
+        try {
+          window.lottie.loadAnimation({ container, renderer: 'svg', loop: true, autoplay: true, path });
+        } catch (_) {
+          if (fallback) fallback.style.display = 'grid';
+        }
+      }
+
+      renderAnimation(
+        document.getElementById('splash-animation'),
+        'assets/assets/animations/splashscreen.json',
+        document.getElementById('splash-fallback')
+      );
+      renderAnimation(
+        document.getElementById('ball-animation'),
+        'assets/assets/animations/ball-loading.json'
+      );
+
+      function showFailure(message) {
+        if (finished) return;
+        status.textContent = 'STARTUP NEEDS ATTENTION';
+        detail.textContent = message || 'The app did not finish starting.';
+        actions.classList.add('visible');
+      }
+
+      function hideShell() {
+        finished = true;
+        shell.classList.add('hidden');
+        window.setTimeout(function () { shell.remove(); }, 700);
+      }
+
+      async function clearWebCacheAndRetry() {
+        retry.disabled = true;
+        retry.textContent = 'CLEANING…';
+        try {
+          if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map(function (registration) { return registration.unregister(); }));
+          }
+          if ('caches' in window) {
+            const names = await caches.keys();
+            await Promise.all(names.map(function (name) { return caches.delete(name); }));
+          }
+        } finally {
+          const next = new URL(window.location.href);
+          next.searchParams.set('fresh', Date.now().toString());
+          window.location.replace(next.toString());
+        }
+      }
+
+      retry.addEventListener('click', clearWebCacheAndRetry);
+      window.addEventListener('flutter-first-frame', hideShell, { once: true });
+      document.addEventListener('flutter-first-frame', hideShell, { once: true });
+      window.addEventListener('fan-league-startup-error', function (event) {
+        showFailure(event.detail || 'Flutter could not start.');
+      });
+      window.addEventListener('error', function (event) {
+        if (!finished) showFailure(event.message || 'A startup script failed.');
+      });
+      window.addEventListener('unhandledrejection', function (event) {
+        const reason = event.reason;
+        showFailure(reason && (reason.message || reason.toString()) || 'A startup task failed.');
+      });
+      window.setTimeout(function () {
+        showFailure('Startup is taking longer than expected. Clear the previous Flutter cache and retry.');
+      }, 15000);
+
+      // Old Flutter builds can remain controlled by a service worker even after a new deployment.
+      // Unregister it now; the custom bootstrap below deliberately does not install another one.
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+          registrations.forEach(function (registration) { registration.unregister(); });
+        });
+      }
+
+      if (window.location.protocol === 'file:') {
+        showFailure('Flutter Web must be served. Run: flutter run -d web-server');
+      }
+    }());
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

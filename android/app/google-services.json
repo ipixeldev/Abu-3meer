@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "418913638245",
+    "project_id": "abu-3meer",
+    "storage_bucket": "abu-3meer.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:418913638245:android:00026cebabc5a993cef38c",
+        "android_client_info": {
+          "package_name": "com.fanleague.fan_league"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "418913638245-e65kn91bfr49smkqfug3p2v9ifm2iobr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBeioMEGMeX3ZVDshOFwjpqIDJarXX5jUo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "418913638245-e65kn91bfr49smkqfug3p2v9ifm2iobr.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "418913638245-bqtj470v5kk7oig35l2s3ljqj9881h56.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.fanleague.fanLeague"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

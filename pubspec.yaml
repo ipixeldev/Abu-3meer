@@ -1,0 +1,47 @@
+name: fan_league
+description: "Fan League — a premium football fan engagement platform demo. Watch. Predict. Compete. Earn XP. Climb the league."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # State management
+  # Routing (deep links, web URLs, nested shells)
+  # Typography (fetches + caches fonts; falls back gracefully offline)
+  google_fonts: ^6.2.1
+
+  # Local persistence for the demo (survives refresh on web/mobile)
+  # Date / number formatting
+  intl: ^0.20.2
+  firebase_core: ^4.13.0
+  lottie: ^3.5.1
+  url_launcher: ^6.3.2
+  provider: ^6.1.5+1
+  go_router: ^17.5.0
+  shared_preferences: ^2.5.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/animations/
+
+  # Optional bundled fallback fonts. google_fonts is used at runtime for the
+  # premium look; if a machine is offline the theme gracefully falls back to
+  # these defaults. Licensed editorial photography is bundled locally so the
+  # client demo remains reliable during presentations.

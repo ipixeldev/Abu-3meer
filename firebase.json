@@ -1,0 +1,46 @@
+{
+  "hosting": {
+    "public": "build/web",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{"source": "**", "destination": "/index.html"}],
+    "headers": [
+      {
+        "source": "**/*.@(html|js|json)",
+        "headers": [{"key": "Cache-Control", "value": "no-cache,no-store,must-revalidate"}]
+      },
+      {
+        "source": "**/*.@(css|wasm|png|jpg|jpeg|woff|woff2|ttf)",
+        "headers": [{"key": "Cache-Control", "value": "public,max-age=86400"}]
+      }
+    ]
+  },
+  "flutter": {
+    "platforms": {
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "abu-3meer",
+          "configurations": {
+            "android": "1:418913638245:android:00026cebabc5a993cef38c",
+            "ios": "1:418913638245:ios:0ebbee61083eab4ccef38c",
+            "web": "1:418913638245:web:623c6dcae1e82ed7cef38c"
+          }
+        }
+      },
+      "android": {
+        "default": {
+          "projectId": "abu-3meer",
+          "appId": "1:418913638245:android:00026cebabc5a993cef38c",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "abu-3meer",
+          "appId": "1:418913638245:ios:0ebbee61083eab4ccef38c",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      }
+    }
+  }
+}
