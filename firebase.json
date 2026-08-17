@@ -1,4 +1,17 @@
 {
+  "functions": [{
+    "source": "functions",
+    "codebase": "default",
+    "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"],
+    "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
+  }],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "hosting": {
     "public": "build/web",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
@@ -20,8 +33,8 @@
         "lib/firebase_options.dart": {
           "projectId": "abu-3meer",
           "configurations": {
-            "android": "1:418913638245:android:00026cebabc5a993cef38c",
-            "ios": "1:418913638245:ios:0ebbee61083eab4ccef38c",
+            "android": "1:418913638245:android:52c9441f3ac24b78cef38c",
+            "ios": "1:418913638245:ios:a3b2f288d71ebfa2cef38c",
             "web": "1:418913638245:web:623c6dcae1e82ed7cef38c"
           }
         }
@@ -29,14 +42,14 @@
       "android": {
         "default": {
           "projectId": "abu-3meer",
-          "appId": "1:418913638245:android:00026cebabc5a993cef38c",
+          "appId": "1:418913638245:android:52c9441f3ac24b78cef38c",
           "fileOutput": "android/app/google-services.json"
         }
       },
       "ios": {
         "default": {
           "projectId": "abu-3meer",
-          "appId": "1:418913638245:ios:0ebbee61083eab4ccef38c",
+          "appId": "1:418913638245:ios:a3b2f288d71ebfa2cef38c",
           "uploadDebugSymbols": false,
           "fileOutput": "ios/Runner/GoogleService-Info.plist"
         }

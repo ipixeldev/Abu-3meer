@@ -1,4 +1,4 @@
-package com.fanleague.fan_league
+package com.abu3meer.app
 
 import io.flutter.embedding.android.FlutterActivity
 

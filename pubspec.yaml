@@ -1,5 +1,5 @@
-name: fan_league
-description: "Fan League — a premium football fan engagement platform demo. Watch. Predict. Compete. Earn XP. Climb the league."
+name: abu_3meer
+description: "Abu 3meer — predict exact scores, answer video questions, find Player Cards, and climb the leaderboard."
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -18,7 +18,7 @@ dependencies:
   # Typography (fetches + caches fonts; falls back gracefully offline)
   google_fonts: ^6.2.1
 
-  # Local persistence for the demo (survives refresh on web/mobile)
+  # Local persistence for non-sensitive preferences.
   # Date / number formatting
   intl: ^0.20.2
   firebase_core: ^4.13.0
@@ -27,6 +27,11 @@ dependencies:
   provider: ^6.1.5+1
   go_router: ^17.5.0
   shared_preferences: ^2.5.5
+  firebase_auth: ^6.5.7
+  cloud_firestore: ^6.8.0
+  cloud_functions: ^6.3.6
+  google_sign_in: ^7.2.0
+  firebase_storage: ^13.4.6
 
 dev_dependencies:
   flutter_test:
@@ -41,7 +46,4 @@ flutter:
     - assets/images/
     - assets/animations/
 
-  # Optional bundled fallback fonts. google_fonts is used at runtime for the
-  # premium look; if a machine is offline the theme gracefully falls back to
-  # these defaults. Licensed editorial photography is bundled locally so the
-  # client demo remains reliable during presentations.
+  # Brand and editorial assets are bundled for reliable mobile/PWA rendering.

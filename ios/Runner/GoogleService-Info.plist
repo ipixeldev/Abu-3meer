@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>418913638245-bqtj470v5kk7oig35l2s3ljqj9881h56.apps.googleusercontent.com</string>
+	<string>418913638245-mvnbj4infs8jkev15109pidlmb8m9j5k.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.418913638245-bqtj470v5kk7oig35l2s3ljqj9881h56</string>
+	<string>com.googleusercontent.apps.418913638245-mvnbj4infs8jkev15109pidlmb8m9j5k</string>
 	<key>API_KEY</key>
 	<string>AIzaSyADJTxDTHx-kWjIZp2rD-OaJUGFIl6adyI</string>
 	<key>GCM_SENDER_ID</key>
@@ -13,7 +13,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.fanleague.fanLeague</string>
+	<string>com.abu3meer.app</string>
 	<key>PROJECT_ID</key>
 	<string>abu-3meer</string>
 	<key>STORAGE_BUCKET</key>
@@ -29,6 +29,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:418913638245:ios:0ebbee61083eab4ccef38c</string>
+	<string>1:418913638245:ios:a3b2f288d71ebfa2cef38c</string>
 </dict>
 </plist>

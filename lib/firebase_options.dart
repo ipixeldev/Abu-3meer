@@ -58,7 +58,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBeioMEGMeX3ZVDshOFwjpqIDJarXX5jUo',
-    appId: '1:418913638245:android:00026cebabc5a993cef38c',
+    appId: '1:418913638245:android:52c9441f3ac24b78cef38c',
     messagingSenderId: '418913638245',
     projectId: 'abu-3meer',
     storageBucket: 'abu-3meer.firebasestorage.app',
@@ -66,11 +66,11 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyADJTxDTHx-kWjIZp2rD-OaJUGFIl6adyI',
-    appId: '1:418913638245:ios:0ebbee61083eab4ccef38c',
+    appId: '1:418913638245:ios:a3b2f288d71ebfa2cef38c',
     messagingSenderId: '418913638245',
     projectId: 'abu-3meer',
     storageBucket: 'abu-3meer.firebasestorage.app',
-    iosClientId: '418913638245-bqtj470v5kk7oig35l2s3ljqj9881h56.apps.googleusercontent.com',
-    iosBundleId: 'com.fanleague.fanLeague',
+    iosClientId: '418913638245-mvnbj4infs8jkev15109pidlmb8m9j5k.apps.googleusercontent.com',
+    iosBundleId: 'com.abu3meer.app',
   );
 }

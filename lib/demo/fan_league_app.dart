@@ -3,11 +3,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lottie/lottie.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../production/brand.dart';
+import '../production/models.dart';
+import '../production/production_repository.dart';
+
 part 'fan_league_extended.dart';
 part 'trivia_arena.dart';
+part 'production_ui.dart';
 
 const _ink = Color(0xFF080B10);
 const _surface = Color(0xFF11161E);
@@ -23,16 +29,16 @@ const _latestVideoId = 'u_pHQ5jAoWk';
 const _latestVideoUrl = 'https://www.youtube.com/watch?v=$_latestVideoId';
 const _latestVideoTitle = '🚨 يلي أهلو ما ربوه ميسي يربيه 🔥 انجلترا ❌ ارجنتين';
 
-class FanLeagueBootstrap extends StatefulWidget {
-  const FanLeagueBootstrap({super.key, required this.initializeFirebase});
+class Abu3meerBootstrap extends StatefulWidget {
+  const Abu3meerBootstrap({super.key, required this.initializeFirebase});
 
   final Future<Object?> Function() initializeFirebase;
 
   @override
-  State<FanLeagueBootstrap> createState() => _FanLeagueBootstrapState();
+  State<Abu3meerBootstrap> createState() => _Abu3meerBootstrapState();
 }
 
-class _FanLeagueBootstrapState extends State<FanLeagueBootstrap> {
+class _Abu3meerBootstrapState extends State<Abu3meerBootstrap> {
   bool _ready = false;
 
   @override
@@ -93,7 +99,10 @@ class _PremiumSplash extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 18),
-                Text('FAN LEAGUE', style: _display(35, spacing: 1.6)),
+                Text(
+                  AbuBrand.appName.toUpperCase(),
+                  style: _display(35, spacing: 1.6),
+                ),
                 const SizedBox(height: 8),
                 const Text(
                   'THE MATCH NEVER ENDS',
@@ -135,7 +144,7 @@ class FanLeagueApp extends StatelessWidget {
     final base = ThemeData.dark(useMaterial3: true);
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'The Fan League',
+      title: AbuBrand.appName,
       theme: base.copyWith(
         scaffoldBackgroundColor: _ink,
         colorScheme: const ColorScheme.dark(
@@ -166,7 +175,7 @@ class FanLeagueApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const _DemoGate(),
+      home: const _ProductionGate(),
     );
   }
 }

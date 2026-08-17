@@ -50,3 +50,6 @@ app.*.map.json
 # Local Firebase CLI cache and machine-specific assistant settings
 .firebase/
 .claude/
+.npm-cache/
+functions/node_modules/
+functions/lib/

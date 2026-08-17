@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    namespace = "com.fanleague.fan_league"
+    namespace = "com.abu3meer.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -18,8 +18,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.fanleague.fan_league"
+        applicationId = "com.abu3meer.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -34,8 +33,7 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // Replace this with the production Play signing configuration before release.
             signingConfig = signingConfigs.getByName("debug")
         }
     }

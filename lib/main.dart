@@ -7,7 +7,7 @@ import 'firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
-    FanLeagueBootstrap(
+    Abu3meerBootstrap(
       initializeFirebase: () => Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       ).timeout(const Duration(seconds: 6)),

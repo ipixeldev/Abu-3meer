@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function own(uid) { return signedIn() && request.auth.uid == uid; }
+    function role() {
+      return signedIn()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : 'none';
+    }
+    function admin() { return role() == 'admin' || role() == 'superAdmin'; }
+
+    match /users/{uid} {
+      allow read: if own(uid) || admin();
+      allow create: if false;
+      allow update: if own(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'country', 'supportedTeam', 'avatarUrl', 'updatedAt'
+        ]);
+      allow delete: if false;
+
+      match /playerCards/{cardId} {
+        allow read: if own(uid) || admin();
+        allow write: if false;
+      }
+    }
+
+    match /usernames/{username} { allow read, write: if false; }
+
+    match /matches/{matchId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /predictions/{predictionId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || admin());
+      allow write: if false;
+    }
+
+    match /pointTransactions/{transactionId} {
+      allow read: if signedIn() && (resource.data.userId == request.auth.uid || admin());
+      allow write: if false;
+    }
+
+    match /leaderboardEntries/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /platformSettings/{settingId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /videoQuestions/{questionId} {
+      allow read: if signedIn();
+      allow write: if false;
+      match /private/{document} { allow read, write: if false; }
+      match /attempts/{uid} { allow read: if own(uid) || admin(); allow write: if false; }
+    }
+
+    match /playerCards/{cardId} {
+      allow read: if signedIn();
+      allow write: if false;
+      match /private/{document} { allow read, write: if false; }
+      match /attempts/{uid} { allow read: if own(uid) || admin(); allow write: if false; }
+    }
+
+    match /adminAuditLogs/{logId} {
+      allow read: if admin();
+      allow write: if false;
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
