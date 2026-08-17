@@ -85,6 +85,82 @@ class ProductionRepository {
                 snapshot.docs.map(LeaderboardEntry.fromDocument).toList(),
           );
 
+  Stream<List<AbuChallenge>> watchChallenges() => firestore
+      .collection('videoQuestions')
+      .orderBy('availableFrom', descending: true)
+      .limit(30)
+      .snapshots()
+      .asyncMap((questions) async {
+        final cards = await firestore
+            .collection('playerCards')
+            .orderBy('availableFrom', descending: true)
+            .limit(30)
+            .get();
+        final result = <AbuChallenge>[
+          ...questions.docs.map(
+            (doc) => AbuChallenge.fromDocument(doc, 'videoQuestion'),
+          ),
+          ...cards.docs.map(
+            (doc) => AbuChallenge.fromDocument(doc, 'playerCard'),
+          ),
+        ]..sort((a, b) => b.availableFrom.compareTo(a.availableFrom));
+        return result;
+      });
+
+  Stream<List<AbuPost>> watchPosts() => firestore
+      .collection('posts')
+      .orderBy('publishedAt', descending: true)
+      .limit(40)
+      .snapshots()
+      .map((snapshot) => snapshot.docs.map(AbuPost.fromDocument).toList());
+
+  Stream<List<AbuComment>> watchPostComments(String postId) => firestore
+      .collection('posts')
+      .doc(postId)
+      .collection('comments')
+      .orderBy('createdAt')
+      .limit(200)
+      .snapshots()
+      .map((snapshot) => snapshot.docs.map(AbuComment.fromDocument).toList());
+
+  Stream<LaunchAnnouncement?> watchLaunchAnnouncement() => firestore
+      .collection('platformSettings')
+      .doc('launchAnnouncement')
+      .snapshots()
+      .map(
+        (snapshot) =>
+            snapshot.exists ? LaunchAnnouncement.fromDocument(snapshot) : null,
+      );
+
+  Stream<List<AbuUserProfile>> watchUsers() => firestore
+      .collection('users')
+      .orderBy('createdAt', descending: true)
+      .limit(200)
+      .snapshots()
+      .map(
+        (snapshot) => snapshot.docs.map(AbuUserProfile.fromDocument).toList(),
+      );
+
+  Stream<FanDuel?> watchFanDuel(String code) => firestore
+      .collection('duelRooms')
+      .doc(code.toUpperCase())
+      .snapshots()
+      .map(
+        (snapshot) => snapshot.exists ? FanDuel.fromDocument(snapshot) : null,
+      );
+
+  Stream<Map<String, DateTime>> watchDuelTaps(String code) => firestore
+      .collection('duelRooms')
+      .doc(code.toUpperCase())
+      .collection('taps')
+      .snapshots()
+      .map(
+        (snapshot) => {
+          for (final doc in snapshot.docs)
+            doc.id: (doc.data()['tappedAt'] as Timestamp).toDate(),
+        },
+      );
+
   Future<void> signInWithEmail({
     required String email,
     required String password,
@@ -226,6 +302,246 @@ class ProductionRepository {
     });
   }
 
+  Future<void> updateProfile({
+    required String username,
+    required String displayName,
+    required String country,
+    required String supportedTeam,
+  }) async {
+    final user = auth.currentUser;
+    if (user == null) throw StateError('Sign in is required.');
+    final normalized = username.trim().toLowerCase();
+    if (!RegExp(r'^[a-z0-9_]{3,24}$').hasMatch(normalized)) {
+      throw ArgumentError(
+        'Username must be 3–24 letters, numbers, or underscores.',
+      );
+    }
+    final userRef = firestore.collection('users').doc(user.uid);
+    final leaderboardRef = firestore
+        .collection('leaderboardEntries')
+        .doc(user.uid);
+    await firestore.runTransaction((transaction) async {
+      final current = await transaction.get(userRef);
+      if (!current.exists) throw StateError('Profile not found.');
+      final oldUsername = current.data()?['username'] as String? ?? '';
+      final nextUsernameRef = firestore.collection('usernames').doc(normalized);
+      final claimed = await transaction.get(nextUsernameRef);
+      if (claimed.exists && claimed.data()?['uid'] != user.uid) {
+        throw StateError('That username is already taken.');
+      }
+      final timestamp = FieldValue.serverTimestamp();
+      transaction.set(nextUsernameRef, {
+        'uid': user.uid,
+        'createdAt': timestamp,
+      });
+      if (oldUsername.isNotEmpty && oldUsername != normalized) {
+        transaction.delete(firestore.collection('usernames').doc(oldUsername));
+      }
+      transaction.update(userRef, {
+        'username': normalized,
+        'displayName': displayName.trim(),
+        'country': country.trim(),
+        'supportedTeam': supportedTeam,
+        'updatedAt': timestamp,
+      });
+      transaction.update(leaderboardRef, {
+        'username': normalized,
+        'supportedTeam': supportedTeam,
+        'updatedAt': timestamp,
+      });
+    });
+  }
+
+  Future<Map<String, dynamic>> submitChallengeAnswer({
+    required AbuChallenge challenge,
+    required String answer,
+  }) async {
+    if (TemporaryMockData.instance.enabled) {
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      final correct = answer.trim().isNotEmpty;
+      return {
+        'correct': correct,
+        'points': correct ? challenge.rewardPoints : 0,
+      };
+    }
+    final name = challenge.kind == 'playerCard'
+        ? 'claimPlayerCard'
+        : 'submitVideoAnswer';
+    final idKey = challenge.kind == 'playerCard' ? 'cardId' : 'questionId';
+    final result = await functions
+        .httpsCallable(name)
+        .call<Map<String, dynamic>>({
+          idKey: challenge.id,
+          'answer': answer.trim(),
+        });
+    return result.data;
+  }
+
+  Future<void> createChallenge({
+    required String kind,
+    required String title,
+    required String description,
+    required String videoUrl,
+    required String answer,
+    required int rewardPoints,
+    required DateTime availableFrom,
+    required DateTime availableUntil,
+  }) async {
+    final collection = kind == 'playerCard' ? 'playerCards' : 'videoQuestions';
+    final ref = firestore.collection(collection).doc();
+    final batch = firestore.batch();
+    batch.set(ref, {
+      'title': title.trim(),
+      'description': description.trim(),
+      'videoUrl': videoUrl.trim(),
+      'rewardPoints': rewardPoints,
+      'status': 'open',
+      'availableFrom': Timestamp.fromDate(availableFrom),
+      'availableUntil': Timestamp.fromDate(availableUntil),
+      'createdBy': auth.currentUser!.uid,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    batch.set(ref.collection('private').doc('answer'), {
+      'normalizedAnswer': answer.trim().toLowerCase(),
+    });
+    await batch.commit();
+  }
+
+  Future<void> createPost({
+    required String title,
+    required String body,
+    required String imageUrl,
+    required String linkUrl,
+    required String authorName,
+  }) => firestore.collection('posts').add({
+    'title': title.trim(),
+    'body': body.trim(),
+    'imageUrl': imageUrl.trim(),
+    'linkUrl': linkUrl.trim(),
+    'authorName': authorName.trim(),
+    'createdBy': auth.currentUser!.uid,
+    'publishedAt': FieldValue.serverTimestamp(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+
+  Future<void> reactToPost(String postId) => firestore
+      .collection('posts')
+      .doc(postId)
+      .collection('reactions')
+      .doc(auth.currentUser!.uid)
+      .set({
+        'userId': auth.currentUser!.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+  Future<void> addPostComment({
+    required String postId,
+    required String userName,
+    required String body,
+  }) => firestore.collection('posts').doc(postId).collection('comments').add({
+    'userId': auth.currentUser!.uid,
+    'userName': userName.trim(),
+    'body': body.trim(),
+    'createdAt': FieldValue.serverTimestamp(),
+  });
+
+  Future<void> saveAnnouncement({
+    required bool enabled,
+    required String title,
+    required String body,
+    required String imageUrl,
+    required String linkUrl,
+    required String buttonLabel,
+  }) => firestore.collection('platformSettings').doc('launchAnnouncement').set({
+    'enabled': enabled,
+    'title': title.trim(),
+    'body': body.trim(),
+    'imageUrl': imageUrl.trim(),
+    'linkUrl': linkUrl.trim(),
+    'buttonLabel': buttonLabel.trim(),
+    'revision': DateTime.now().millisecondsSinceEpoch,
+    'updatedBy': auth.currentUser!.uid,
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+
+  Future<void> setUserRole({required String uid, required String role}) async {
+    if (!const ['user', 'moderator', 'editor', 'admin'].contains(role)) {
+      throw ArgumentError('Unsupported role.');
+    }
+    final batch = firestore.batch();
+    batch.update(firestore.collection('users').doc(uid), {
+      'role': role,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    batch.set(firestore.collection('adminAuditLogs').doc(), {
+      'adminId': auth.currentUser!.uid,
+      'action': 'SET_ROLE',
+      'targetId': uid,
+      'role': role,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
+  }
+
+  Future<String> createFanDuel({required String hostName}) async {
+    final uid = auth.currentUser?.uid;
+    if (uid == null) throw StateError('Sign in is required.');
+    final generated = firestore.collection('duelRooms').doc().id;
+    final code = generated.substring(0, 6).toUpperCase();
+    await firestore.collection('duelRooms').doc(code).set({
+      'hostUid': uid,
+      'hostName': hostName.trim(),
+      'guestUid': '',
+      'guestName': '',
+      'status': 'waiting',
+      'startAt': null,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return code;
+  }
+
+  Future<void> joinFanDuel({
+    required String code,
+    required String guestName,
+  }) async {
+    final uid = auth.currentUser?.uid;
+    if (uid == null) throw StateError('Sign in is required.');
+    final ref = firestore
+        .collection('duelRooms')
+        .doc(code.trim().toUpperCase());
+    await firestore.runTransaction((transaction) async {
+      final room = await transaction.get(ref);
+      if (!room.exists) throw StateError('Duel code not found.');
+      final data = room.data()!;
+      if ((data['guestUid'] as String? ?? '').isNotEmpty) {
+        throw StateError('This duel already has two players.');
+      }
+      if (data['hostUid'] == uid) {
+        throw StateError('Share this code with another user.');
+      }
+      transaction.update(ref, {
+        'guestUid': uid,
+        'guestName': guestName.trim(),
+        'status': 'ready',
+        'startAt': Timestamp.fromDate(
+          DateTime.now().add(const Duration(seconds: 6)),
+        ),
+      });
+    });
+  }
+
+  Future<void> tapFanDuel(String code) async {
+    final uid = auth.currentUser?.uid;
+    if (uid == null) throw StateError('Sign in is required.');
+    await firestore
+        .collection('duelRooms')
+        .doc(code.toUpperCase())
+        .collection('taps')
+        .doc(uid)
+        .set({'userId': uid, 'tappedAt': FieldValue.serverTimestamp()});
+  }
+
   Future<void> submitPrediction({
     required String matchId,
     required int homeScore,
@@ -251,16 +567,26 @@ class ProductionRepository {
     required DateTime predictionClosesAt,
     String homeLogoUrl = '',
     String awayLogoUrl = '',
-  }) => _call('adminCreateMatch', {
-    'homeTeam': homeTeam.trim(),
-    'awayTeam': awayTeam.trim(),
-    'competition': competition.trim(),
-    'kickoffAt': kickoffAt.millisecondsSinceEpoch,
-    'predictionOpensAt': predictionOpensAt.millisecondsSinceEpoch,
-    'predictionClosesAt': predictionClosesAt.millisecondsSinceEpoch,
-    'homeLogoUrl': homeLogoUrl.trim(),
-    'awayLogoUrl': awayLogoUrl.trim(),
-  });
+  }) async {
+    if (!(predictionOpensAt.isBefore(predictionClosesAt) &&
+        !predictionClosesAt.isAfter(kickoffAt))) {
+      throw ArgumentError('Prediction times must be ordered before kickoff.');
+    }
+    await firestore.collection('matches').add({
+      'homeTeam': homeTeam.trim(),
+      'awayTeam': awayTeam.trim(),
+      'competition': competition.trim(),
+      'kickoffAt': Timestamp.fromDate(kickoffAt),
+      'predictionOpensAt': Timestamp.fromDate(predictionOpensAt),
+      'predictionClosesAt': Timestamp.fromDate(predictionClosesAt),
+      'homeLogoUrl': homeLogoUrl.trim(),
+      'awayLogoUrl': awayLogoUrl.trim(),
+      'status': 'open',
+      'createdBy': auth.currentUser!.uid,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
 
   Future<void> publishMatchResult({
     required String matchId,
@@ -277,11 +603,13 @@ class ProductionRepository {
     required int videoQuestion,
     required int playerCard,
     required double memberMultiplier,
-  }) => _call('adminUpdatePointRules', {
+  }) => firestore.collection('platformSettings').doc('points').set({
     'exactPrediction': exactPrediction,
     'videoQuestion': videoQuestion,
     'playerCard': playerCard,
     'memberMultiplier': memberMultiplier,
+    'updatedBy': auth.currentUser!.uid,
+    'updatedAt': FieldValue.serverTimestamp(),
   });
 
   Future<void> _call(String name, Map<String, Object?> data) async {

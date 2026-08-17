@@ -12,8 +12,8 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <meta name="apple-mobile-web-app-title" content="Abu 3meer">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
-  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="icons/Abu3meer-192.png">
+  <link rel="icon" type="image/png" href="icons/Abu3meer-64.png">
   <link rel="manifest" href="manifest.json">
   <title>Abu 3meer</title>
   <style>
@@ -44,6 +44,12 @@
       padding: 11px 22px; color: #080b10; background: #c8ff38; cursor: pointer; font: 900 12px/1 system-ui;
       letter-spacing: 1.2px; }
     #retry-button:disabled { opacity: .65; cursor: wait; }
+    #pwa-install { position: fixed; right: 18px; bottom: 18px; z-index: 9998; display: none;
+      align-items: center; gap: 9px; border: 1px solid rgba(200,255,56,.5); border-radius: 999px;
+      padding: 12px 18px; color: #080b10; background: #c8ff38; box-shadow: 0 14px 45px rgba(0,0,0,.38);
+      cursor: pointer; font: 900 11px/1 system-ui; letter-spacing: 1px; }
+    #pwa-install.visible { display: inline-flex; }
+    @media (max-width: 520px) { #pwa-install { right: 12px; bottom: 82px; } }
   </style>
 </head>
 <body>
@@ -60,6 +66,7 @@
       </div>
     </div>
   </div>
+  <button id="pwa-install" type="button" aria-label="Install Abu 3meer app">⬇ INSTALL APP</button>
 
   <script src="lottie.min.js"></script>
   <script>
@@ -142,16 +149,48 @@
         showFailure('Startup is taking longer than expected. Clear the previous Flutter cache and retry.');
       }, 15000);
 
-      // Old Flutter builds can remain controlled by a service worker even after a new deployment.
-      // Unregister it now; the custom bootstrap below deliberately does not install another one.
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function (registrations) {
-          registrations.forEach(function (registration) { registration.unregister(); });
-        });
-      }
-
       if (window.location.protocol === 'file:') {
         showFailure('Flutter Web must be served. Run: flutter run -d web-server');
+      }
+    }());
+  </script>
+  <script>
+    (function () {
+      const installButton = document.getElementById('pwa-install');
+      let installPrompt = null;
+      const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      const isiOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+      window.addEventListener('beforeinstallprompt', function (event) {
+        event.preventDefault();
+        installPrompt = event;
+        if (!standalone) installButton.classList.add('visible');
+      });
+      window.addEventListener('appinstalled', function () {
+        installPrompt = null;
+        installButton.classList.remove('visible');
+      });
+      if (isiOS && !standalone) installButton.classList.add('visible');
+
+      installButton.addEventListener('click', async function () {
+        if (installPrompt) {
+          installPrompt.prompt();
+          await installPrompt.userChoice;
+          installPrompt = null;
+          installButton.classList.remove('visible');
+          return;
+        }
+        if (isiOS) {
+          window.alert('To install Abu 3meer: tap Share, then choose “Add to Home Screen”.');
+        }
+      });
+
+      if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/pwa_service_worker.js').catch(function (error) {
+            console.warn('PWA service worker registration failed:', error);
+          });
+        });
       }
     }());
   </script>

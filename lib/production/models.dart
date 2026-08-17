@@ -41,6 +41,10 @@ class AbuUserProfile {
   bool get onboardingComplete =>
       username.isNotEmpty && displayName.isNotEmpty && supportedTeam.isNotEmpty;
   bool get isAdmin => role == 'admin' || role == 'superAdmin';
+  bool get canManageContent =>
+      isAdmin || role == 'editor' || role == 'contentManager';
+  bool get canModerate => isAdmin || role == 'moderator';
+  bool get canManageRoles => isAdmin;
   bool get isYouTubeMember => membershipMultiplier > 1;
 
   factory AbuUserProfile.fromDocument(
@@ -62,6 +66,183 @@ class AbuUserProfile {
       monthlyPoints: (data['monthlyPoints'] as num? ?? 0).toInt(),
       seasonPoints: (data['seasonPoints'] as num? ?? 0).toInt(),
       suspended: data['suspended'] as bool? ?? false,
+    );
+  }
+}
+
+class AbuChallenge {
+  const AbuChallenge({
+    required this.id,
+    required this.kind,
+    required this.title,
+    required this.description,
+    required this.rewardPoints,
+    required this.status,
+    required this.videoUrl,
+    required this.availableFrom,
+    required this.availableUntil,
+  });
+
+  final String id;
+  final String kind;
+  final String title;
+  final String description;
+  final int rewardPoints;
+  final String status;
+  final String videoUrl;
+  final DateTime availableFrom;
+  final DateTime availableUntil;
+
+  bool get isOpen {
+    final now = DateTime.now();
+    return status == 'open' &&
+        !now.isBefore(availableFrom) &&
+        now.isBefore(availableUntil);
+  }
+
+  factory AbuChallenge.fromDocument(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+    String kind,
+  ) {
+    final data = doc.data() ?? const <String, dynamic>{};
+    return AbuChallenge(
+      id: doc.id,
+      kind: kind,
+      title:
+          data['title'] as String? ??
+          (kind == 'playerCard' ? 'Find the Player Card' : 'Secret phrase'),
+      description: data['description'] as String? ?? '',
+      rewardPoints: (data['rewardPoints'] as num? ?? 0).toInt(),
+      status: data['status'] as String? ?? 'draft',
+      videoUrl: data['videoUrl'] as String? ?? '',
+      availableFrom: _date(data['availableFrom']),
+      availableUntil: _date(data['availableUntil']),
+    );
+  }
+}
+
+class AbuPost {
+  const AbuPost({
+    required this.id,
+    required this.title,
+    required this.body,
+    required this.imageUrl,
+    required this.linkUrl,
+    required this.authorName,
+    required this.publishedAt,
+  });
+
+  final String id;
+  final String title;
+  final String body;
+  final String imageUrl;
+  final String linkUrl;
+  final String authorName;
+  final DateTime publishedAt;
+
+  factory AbuPost.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? const <String, dynamic>{};
+    return AbuPost(
+      id: doc.id,
+      title: data['title'] as String? ?? '',
+      body: data['body'] as String? ?? '',
+      imageUrl: data['imageUrl'] as String? ?? '',
+      linkUrl: data['linkUrl'] as String? ?? '',
+      authorName: data['authorName'] as String? ?? 'Abu 3meer',
+      publishedAt: _date(data['publishedAt']),
+    );
+  }
+}
+
+class AbuComment {
+  const AbuComment({
+    required this.id,
+    required this.userName,
+    required this.body,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String userName;
+  final String body;
+  final DateTime createdAt;
+
+  factory AbuComment.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? const <String, dynamic>{};
+    return AbuComment(
+      id: doc.id,
+      userName: data['userName'] as String? ?? 'Fan',
+      body: data['body'] as String? ?? '',
+      createdAt: _date(data['createdAt']),
+    );
+  }
+}
+
+class LaunchAnnouncement {
+  const LaunchAnnouncement({
+    required this.enabled,
+    required this.title,
+    required this.body,
+    required this.imageUrl,
+    required this.linkUrl,
+    required this.buttonLabel,
+    required this.revision,
+  });
+
+  final bool enabled;
+  final String title;
+  final String body;
+  final String imageUrl;
+  final String linkUrl;
+  final String buttonLabel;
+  final int revision;
+
+  factory LaunchAnnouncement.fromDocument(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data() ?? const <String, dynamic>{};
+    return LaunchAnnouncement(
+      enabled: data['enabled'] as bool? ?? false,
+      title: data['title'] as String? ?? '',
+      body: data['body'] as String? ?? '',
+      imageUrl: data['imageUrl'] as String? ?? '',
+      linkUrl: data['linkUrl'] as String? ?? '',
+      buttonLabel: data['buttonLabel'] as String? ?? 'OPEN',
+      revision: (data['revision'] as num? ?? 0).toInt(),
+    );
+  }
+}
+
+class FanDuel {
+  const FanDuel({
+    required this.code,
+    required this.hostUid,
+    required this.hostName,
+    required this.guestUid,
+    required this.guestName,
+    required this.status,
+    required this.startAt,
+  });
+
+  final String code;
+  final String hostUid;
+  final String hostName;
+  final String guestUid;
+  final String guestName;
+  final String status;
+  final DateTime? startAt;
+
+  factory FanDuel.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? const <String, dynamic>{};
+    final rawStart = data['startAt'];
+    return FanDuel(
+      code: doc.id,
+      hostUid: data['hostUid'] as String? ?? '',
+      hostName: data['hostName'] as String? ?? '',
+      guestUid: data['guestUid'] as String? ?? '',
+      guestName: data['guestName'] as String? ?? '',
+      status: data['status'] as String? ?? 'waiting',
+      startAt: rawStart == null ? null : _date(rawStart),
     );
   }
 }

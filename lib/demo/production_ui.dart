@@ -602,6 +602,26 @@ class _ProductionShell extends StatefulWidget {
 
 class _ProductionShellState extends State<_ProductionShell> {
   int index = 0;
+  StreamSubscription<LaunchAnnouncement?>? announcementSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    announcementSubscription = widget.repository
+        .watchLaunchAnnouncement()
+        .listen((announcement) {
+          if (announcement == null || !mounted) return;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) showLaunchAnnouncement(context, announcement);
+          });
+        });
+  }
+
+  @override
+  void dispose() {
+    announcementSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -617,9 +637,26 @@ class _ProductionShellState extends State<_ProductionShell> {
         repository: widget.repository,
         profile: widget.profile,
       ),
+      _ProductionChallenges(repository: widget.repository),
+      _ProductionGames(repository: widget.repository, profile: widget.profile),
+      _ProductionCommunity(
+        repository: widget.repository,
+        profile: widget.profile,
+      ),
+      _ProductionFanWar(repository: widget.repository),
+      _ProductionAchievements(profile: widget.profile),
+      _ProductionRewards(profile: widget.profile),
       _ProductionSettings(profile: widget.profile),
-      if (widget.profile.isAdmin)
-        _ProductionAdmin(repository: widget.repository),
+      _ProductionObsOverlay(
+        repository: widget.repository,
+        profile: widget.profile,
+        onExit: () => setState(() => index = 0),
+      ),
+      if (widget.profile.canManageContent)
+        _ProductionAdmin(
+          repository: widget.repository,
+          profile: widget.profile,
+        ),
     ];
     if (index >= pages.length) index = 0;
     final items = <(IconData, String)>[
@@ -628,58 +665,158 @@ class _ProductionShellState extends State<_ProductionShell> {
       (Icons.leaderboard_rounded, abuText(context, 'Leaders', 'الترتيب')),
       (Icons.receipt_long_rounded, abuText(context, 'Points', 'النقاط')),
       (Icons.person_rounded, abuText(context, 'Profile', 'حسابي')),
+      (Icons.bolt_rounded, abuText(context, 'Challenges', 'التحديات')),
+      (Icons.sports_esports_rounded, abuText(context, 'Games', 'الألعاب')),
+      (Icons.forum_rounded, abuText(context, 'Community', 'المجتمع')),
+      (Icons.shield_rounded, abuText(context, 'Fan War', 'حرب الجماهير')),
+      (
+        Icons.emoji_events_rounded,
+        abuText(context, 'Achievements', 'الإنجازات'),
+      ),
+      (Icons.card_giftcard_rounded, abuText(context, 'Rewards', 'المكافآت')),
+      (Icons.settings_rounded, abuText(context, 'Settings', 'الإعدادات')),
+      (Icons.live_tv_rounded, 'OBS Overlay'),
+      if (widget.profile.canManageContent)
+        (Icons.admin_panel_settings_rounded, 'Admin Studio'),
     ];
     final desktop = MediaQuery.sizeOf(context).width >= 900;
+    const mobileIndexes = [0, 1, 6, 7, 4];
+    final mobileSelected = mobileIndexes.indexOf(index);
+    if (index == 12) return pages[index];
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: Row(
-          children: [
-            const _LogoMark(size: 30),
-            const SizedBox(width: 10),
-            Text(
-              abuText(context, 'ABU 3MEER', 'أبو عمير'),
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+      appBar: desktop
+          ? null
+          : AppBar(
+              automaticallyImplyLeading: false,
+              title: Row(
+                children: [
+                  const _LogoMark(size: 30),
+                  const SizedBox(width: 10),
+                  Text(
+                    abuText(context, 'ABU 3MEER', 'أبو عمير'),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                _Pill(
+                  icon: Icons.stars_rounded,
+                  text: '${widget.profile.totalPoints}',
+                  color: _gold,
+                  compact: true,
+                ),
+                IconButton(
+                  tooltip: abuText(context, 'Settings', 'الإعدادات'),
+                  onPressed: () => setState(() => index = 11),
+                  icon: const Icon(Icons.settings_rounded),
+                ),
+                if (!desktop)
+                  PopupMenuButton<int>(
+                    tooltip: 'More features',
+                    onSelected: (value) => setState(() => index = value),
+                    itemBuilder: (context) =>
+                        List.generate(items.length, (itemIndex) {
+                          if (mobileIndexes.contains(itemIndex) ||
+                              itemIndex == 11) {
+                            return null;
+                          }
+                          final item = items[itemIndex];
+                          return PopupMenuItem<int>(
+                            value: itemIndex,
+                            child: Row(
+                              children: [
+                                Icon(item.$1, size: 19),
+                                const SizedBox(width: 10),
+                                Text(item.$2),
+                              ],
+                            ),
+                          );
+                        }).whereType<PopupMenuEntry<int>>().toList(),
+                    icon: const Icon(Icons.apps_rounded),
+                  ),
+                if (widget.profile.canManageContent)
+                  IconButton(
+                    tooltip: 'Admin Dashboard',
+                    onPressed: () => setState(() => index = 13),
+                    icon: const Icon(Icons.admin_panel_settings_rounded),
+                  ),
+                const SizedBox(width: 8),
+              ],
             ),
-          ],
-        ),
-        actions: [
-          _Pill(
-            icon: Icons.stars_rounded,
-            text: '${widget.profile.totalPoints}',
-            color: _gold,
-            compact: true,
-          ),
-          IconButton(
-            tooltip: abuText(context, 'Settings', 'الإعدادات'),
-            onPressed: () => setState(() => index = 5),
-            icon: const Icon(Icons.settings_rounded),
-          ),
-          if (widget.profile.isAdmin)
-            IconButton(
-              tooltip: 'Admin Dashboard',
-              onPressed: () => setState(() => index = 6),
-              icon: const Icon(Icons.admin_panel_settings_rounded),
-            ),
-          const SizedBox(width: 8),
-        ],
-      ),
       body: desktop
           ? Row(
               children: [
-                NavigationRail(
-                  selectedIndex: index < 5 ? index : 0,
-                  onDestinationSelected: (value) =>
-                      setState(() => index = value),
-                  labelType: NavigationRailLabelType.all,
-                  destinations: items
-                      .map(
-                        (item) => NavigationRailDestination(
-                          icon: Icon(item.$1),
-                          label: Text(item.$2),
+                Container(
+                  width: 226,
+                  color: Theme.of(context).cardColor,
+                  padding: const EdgeInsets.fromLTRB(14, 18, 14, 14),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const _LogoMark(size: 36),
+                          const SizedBox(width: 11),
+                          Expanded(
+                            child: Text(
+                              abuText(context, 'ABU 3MEER', 'أبو عمير'),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: .8,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: items.length,
+                          itemBuilder: (context, itemIndex) {
+                            final item = items[itemIndex];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: _SideItem(
+                                icon: item.$1,
+                                label: item.$2,
+                                selected: itemIndex == index,
+                                onTap: () => setState(() => index = itemIndex),
+                              ),
+                            );
+                          },
                         ),
-                      )
-                      .toList(),
+                      ),
+                      const Divider(),
+                      ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                        ),
+                        leading: CircleAvatar(
+                          backgroundColor: _lime,
+                          foregroundColor: _ink,
+                          child: Text(
+                            widget.profile.displayName.isEmpty
+                                ? '?'
+                                : widget.profile.displayName[0].toUpperCase(),
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        title: Text(
+                          widget.profile.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Text(
+                          '@${widget.profile.username}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () => setState(() => index = 4),
+                      ),
+                    ],
+                  ),
                 ),
                 const VerticalDivider(width: 1, color: _line),
                 Expanded(child: pages[index]),
@@ -690,9 +827,11 @@ class _ProductionShellState extends State<_ProductionShell> {
           ? null
           : NavigationBar(
               height: 66,
-              selectedIndex: index < 5 ? index : 0,
-              onDestinationSelected: (value) => setState(() => index = value),
-              destinations: items
+              selectedIndex: mobileSelected < 0 ? 0 : mobileSelected,
+              onDestinationSelected: (value) =>
+                  setState(() => index = mobileIndexes[value]),
+              destinations: mobileIndexes
+                  .map((itemIndex) => items[itemIndex])
                   .map(
                     (item) => NavigationDestination(
                       icon: Icon(item.$1),
@@ -711,47 +850,76 @@ class _ProductionHome extends StatelessWidget {
   final AbuUserProfile profile;
 
   @override
-  Widget build(BuildContext context) => _PageFrame(
-    kicker: profile.isYouTubeMember
-        ? 'YouTube Member · 2× points'
-        : 'Abu 3meer Community',
-    title: 'Welcome, ${profile.displayName}',
-    child: Column(
-      children: [
-        _ProductionPointsHero(profile: profile),
-        const SizedBox(height: 16),
-        StreamBuilder<List<MatchEvent>>(
-          stream: repository.watchMatches(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const _ProductionSkeleton(height: 190);
-            }
-            if (snapshot.hasError) {
-              return _ProductionEmpty(
-                icon: Icons.cloud_off_rounded,
-                title: 'Matches unavailable',
-                body: productionErrorMessage(snapshot.error!),
-              );
-            }
-            final matches = snapshot.data ?? const [];
-            if (matches.isEmpty) {
-              return const _ProductionEmpty(
-                icon: Icons.event_busy_rounded,
-                title: 'No prediction is open',
-                body: 'The next Abu 3meer match event will appear here.',
-              );
-            }
-            return _ProductionMatchCard(
-              event: matches.first,
-              repository: repository,
+  Widget build(BuildContext context) {
+    final match = StreamBuilder<List<MatchEvent>>(
+      stream: repository.watchMatches(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const _ProductionSkeleton(height: 190);
+        }
+        if (snapshot.hasError) {
+          return _ProductionEmpty(
+            icon: Icons.cloud_off_rounded,
+            title: 'Matches unavailable',
+            body: productionErrorMessage(snapshot.error!),
+          );
+        }
+        final matches = snapshot.data ?? const [];
+        if (matches.isEmpty) {
+          return const _ProductionEmpty(
+            icon: Icons.event_busy_rounded,
+            title: 'No prediction is open',
+            body: 'The next Abu 3meer match event will appear here.',
+          );
+        }
+        return _ProductionMatchCard(
+          event: matches.first,
+          repository: repository,
+        );
+      },
+    );
+    return _PageFrame(
+      kicker: profile.isYouTubeMember
+          ? 'YouTube Member · 2× points'
+          : 'Abu 3meer Community',
+      title: 'Welcome, ${profile.displayName}',
+      child: LayoutBuilder(
+        builder: (context, box) {
+          if (box.maxWidth < 850) {
+            return Column(
+              children: [
+                _ProductionPointsHero(profile: profile),
+                const SizedBox(height: 16),
+                match,
+                const SizedBox(height: 16),
+                _ProductionLatestVideoCard(repository: repository),
+              ],
             );
-          },
-        ),
-        const SizedBox(height: 16),
-        _ProductionLatestVideoCard(repository: repository),
-      ],
-    ),
-  );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 6,
+                child: Column(
+                  children: [
+                    _ProductionPointsHero(profile: profile),
+                    const SizedBox(height: 16),
+                    match,
+                  ],
+                ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                flex: 5,
+                child: _ProductionLatestVideoCard(repository: repository),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 }
 
 class _ProductionLatestVideoCard extends StatefulWidget {
@@ -979,11 +1147,17 @@ class _ProductionMatches extends StatelessWidget {
         return Column(
           children: events
               .map(
-                (event) => Padding(
-                  padding: const EdgeInsets.only(bottom: 14),
-                  child: _ProductionMatchCard(
-                    event: event,
-                    repository: repository,
+                (event) => Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 900),
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 14),
+                      child: _ProductionMatchCard(
+                        event: event,
+                        repository: repository,
+                      ),
+                    ),
                   ),
                 ),
               )
@@ -1007,21 +1181,25 @@ class _ProductionMatchCard extends StatelessWidget {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Exact score prediction'),
-          content: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _ScoreInput(
-                label: event.homeTeam,
-                value: home,
-                onChanged: (value) => setDialogState(() => home = value),
-              ),
-              Text('–', style: _display(34)),
-              _ScoreInput(
-                label: event.awayTeam,
-                value: away,
-                onChanged: (value) => setDialogState(() => away = value),
-              ),
-            ],
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 430),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _ScoreInput(
+                  label: event.homeTeam,
+                  value: home,
+                  onChanged: (value) => setDialogState(() => home = value),
+                ),
+                Text('–', style: _display(34)),
+                _ScoreInput(
+                  label: event.awayTeam,
+                  value: away,
+                  onChanged: (value) => setDialogState(() => away = value),
+                ),
+              ],
+            ),
           ),
           actions: [
             TextButton(
@@ -1066,83 +1244,89 @@ class _ProductionMatchCard extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 900),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  event.competition.toUpperCase(),
-                  style: const TextStyle(
-                    color: _gold,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.3,
-                  ),
-                ),
-                const Spacer(),
-                _LiveDot(text: event.status.toUpperCase()),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                SizedBox(
-                  width: 72,
-                  height: 48,
-                  child: Stack(
-                    children: [
-                      _ProductionTeamBadge(
-                        team: event.homeTeam,
-                        source: event.homeLogoUrl,
+                Row(
+                  children: [
+                    Text(
+                      event.competition.toUpperCase(),
+                      style: const TextStyle(
+                        color: _gold,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.3,
                       ),
-                      Positioned(
-                        left: 27,
-                        child: _ProductionTeamBadge(
-                          team: event.awayTeam,
-                          source: event.awayLogoUrl,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                    const Spacer(),
+                    _LiveDot(text: event.status.toUpperCase()),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 72,
+                      height: 48,
+                      child: Stack(
+                        children: [
+                          _ProductionTeamBadge(
+                            team: event.homeTeam,
+                            source: event.homeLogoUrl,
+                          ),
+                          Positioned(
+                            left: 27,
+                            child: _ProductionTeamBadge(
+                              team: event.awayTeam,
+                              source: event.awayLogoUrl,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        '${event.homeTeam}\nvs ${event.awayTeam}',
+                        style: _display(21, height: 1.05),
+                      ),
+                    ),
+                    Text(
+                      event.homeScore == null
+                          ? _productionDate(event.kickoffAt)
+                          : '${event.homeScore} – ${event.awayScore}',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        color: event.homeScore == null ? _muted : _lime,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 15),
+                FilledButton(
+                  onPressed: open ? () => predict(context) : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: _lime,
+                    foregroundColor: _ink,
+                  ),
                   child: Text(
-                    '${event.homeTeam}\nvs ${event.awayTeam}',
-                    style: _display(21, height: 1.05),
-                  ),
-                ),
-                Text(
-                  event.homeScore == null
-                      ? _productionDate(event.kickoffAt)
-                      : '${event.homeScore} – ${event.awayScore}',
-                  textAlign: TextAlign.right,
-                  style: TextStyle(
-                    color: event.homeScore == null ? _muted : _lime,
-                    fontWeight: FontWeight.w800,
+                    open
+                        ? 'PREDICT EXACT SCORE'
+                        : event.status == 'completed'
+                        ? 'RESULT PUBLISHED'
+                        : event.id.startsWith('external_')
+                        ? 'NEXT MATCH · EVENT OPENS SOON'
+                        : 'PREDICTIONS CLOSED',
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 15),
-            FilledButton(
-              onPressed: open ? () => predict(context) : null,
-              style: FilledButton.styleFrom(
-                backgroundColor: _lime,
-                foregroundColor: _ink,
-              ),
-              child: Text(
-                open
-                    ? 'PREDICT EXACT SCORE'
-                    : event.status == 'completed'
-                    ? 'RESULT PUBLISHED'
-                    : event.id.startsWith('external_')
-                    ? 'NEXT MATCH · EVENT OPENS SOON'
-                    : 'PREDICTIONS CLOSED',
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -1406,57 +1590,202 @@ class _ProductionPoints extends StatelessWidget {
   );
 }
 
-class _ProductionProfile extends StatelessWidget {
+class _ProductionProfile extends StatefulWidget {
   const _ProductionProfile({required this.repository, required this.profile});
   final ProductionRepository repository;
   final AbuUserProfile profile;
+
   @override
-  Widget build(BuildContext context) => _PageFrame(
-    kicker: profile.role.toUpperCase(),
-    title: '@${profile.username}',
-    child: Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            CircleAvatar(
-              radius: 42,
-              backgroundColor: _lime,
-              foregroundImage: profile.avatarUrl.isEmpty
-                  ? null
-                  : NetworkImage(profile.avatarUrl),
-              child: profile.avatarUrl.isEmpty
-                  ? Text(
-                      profile.displayName.isEmpty
-                          ? '?'
-                          : profile.displayName[0].toUpperCase(),
-                      style: _display(30, color: _ink),
-                    )
-                  : null,
-            ),
-            const SizedBox(height: 14),
-            Text(profile.displayName, style: _display(25)),
-            Text(
-              '${profile.country} · ${profile.supportedTeam}',
-              style: const TextStyle(color: _muted),
-            ),
-            const SizedBox(height: 20),
-            if (profile.isYouTubeMember)
-              const _LiveDot(text: 'YOUTUBE MEMBER · 2×'),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: repository.signOut,
-                icon: const Icon(Icons.logout_rounded),
-                label: const Text('SIGN OUT'),
+  State<_ProductionProfile> createState() => _ProductionProfileState();
+}
+
+class _ProductionProfileState extends State<_ProductionProfile> {
+  Uint8List? temporaryImage;
+
+  Future<void> pickTemporaryImage() async {
+    final image = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1400,
+      imageQuality: 88,
+    );
+    if (image == null) return;
+    final bytes = await image.readAsBytes();
+    if (mounted) setState(() => temporaryImage = bytes);
+  }
+
+  Future<void> editProfile() async {
+    final profile = widget.profile;
+    final username = TextEditingController(text: profile.username);
+    final name = TextEditingController(text: profile.displayName);
+    final country = TextEditingController(text: profile.country);
+    var team = profile.supportedTeam;
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit profile'),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: username,
+                    decoration: const InputDecoration(
+                      labelText: 'Username',
+                      prefixText: '@',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: name,
+                    decoration: const InputDecoration(labelText: 'Name'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: country,
+                    decoration: const InputDecoration(labelText: 'Country'),
+                  ),
+                  const SizedBox(height: 14),
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 'Barcelona',
+                        label: Text('Barcelona'),
+                      ),
+                      ButtonSegment(
+                        value: 'Real Madrid',
+                        label: Text('Real Madrid'),
+                      ),
+                    ],
+                    selected: {team},
+                    onSelectionChanged: (value) =>
+                        setDialogState(() => team = value.first),
+                  ),
+                ],
               ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('CANCEL'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('SAVE'),
             ),
           ],
         ),
       ),
-    ),
-  );
+    );
+    if (save != true || !mounted) return;
+    try {
+      await widget.repository.updateProfile(
+        username: username.text,
+        displayName: name.text,
+        country: country.text,
+        supportedTeam: team,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Profile saved.')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(productionErrorMessage(error))));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = widget.profile;
+    return _PageFrame(
+      kicker: '${profile.role.toUpperCase()} · INTERACTIVE FAN CARD',
+      title: '@${profile.username}',
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final card = Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: AspectRatio(
+                aspectRatio: .72,
+                child: _InteractiveFanCard(
+                  profile: profile,
+                  temporaryImage: temporaryImage,
+                ),
+              ),
+            ),
+          );
+          final controls = Card(
+            child: Padding(
+              padding: const EdgeInsets.all(22),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(profile.displayName, style: _display(29)),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${profile.country} · ${profile.supportedTeam}',
+                    style: const TextStyle(color: _muted),
+                  ),
+                  const SizedBox(height: 18),
+                  if (profile.isYouTubeMember)
+                    const Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: _LiveDot(text: 'YOUTUBE MEMBER · 2×'),
+                    ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    onPressed: editProfile,
+                    icon: const Icon(Icons.edit_rounded),
+                    label: const Text('EDIT NAME & USERNAME'),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: pickTemporaryImage,
+                    icon: const Icon(Icons.add_photo_alternate_rounded),
+                    label: const Text('TRY A PHOTO ON THE CARD'),
+                  ),
+                  const SizedBox(height: 7),
+                  const Text(
+                    'Preview only: this image stays in memory and is not uploaded or saved.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: _gold, fontSize: 10),
+                  ),
+                  if (temporaryImage != null)
+                    TextButton(
+                      onPressed: () => setState(() => temporaryImage = null),
+                      child: const Text('REMOVE PREVIEW PHOTO'),
+                    ),
+                  const Divider(height: 30),
+                  OutlinedButton.icon(
+                    onPressed: widget.repository.signOut,
+                    icon: const Icon(Icons.logout_rounded),
+                    label: const Text('SIGN OUT'),
+                  ),
+                ],
+              ),
+            ),
+          );
+          return box.maxWidth >= 820
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 5, child: card),
+                    const SizedBox(width: 28),
+                    Expanded(flex: 6, child: controls),
+                  ],
+                )
+              : Column(children: [card, const SizedBox(height: 20), controls]);
+        },
+      ),
+    );
+  }
 }
 
 class _ProductionSettings extends StatelessWidget {
@@ -1472,171 +1801,191 @@ class _ProductionSettings extends StatelessWidget {
       builder: (context, _) => _PageFrame(
         kicker: abuText(context, 'Personalize Abu 3meer', 'خصص تطبيق أبو عمير'),
         title: abuText(context, 'Settings', 'الإعدادات'),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Card(
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.contrast_rounded, color: _lime),
-                    title: Text(abuText(context, 'Appearance', 'المظهر')),
-                    subtitle: Text(
-                      abuText(
-                        context,
-                        'Choose the theme used across the app.',
-                        'اختر المظهر المستخدم في التطبيق.',
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: SegmentedButton<ThemeMode>(
-                        segments: [
-                          ButtonSegment(
-                            value: ThemeMode.dark,
-                            icon: const Icon(Icons.dark_mode_rounded),
-                            label: Text(abuText(context, 'Dark', 'داكن')),
-                          ),
-                          ButtonSegment(
-                            value: ThemeMode.light,
-                            icon: const Icon(Icons.light_mode_rounded),
-                            label: Text(abuText(context, 'Light', 'فاتح')),
-                          ),
-                        ],
-                        selected: {preferences.themeMode},
-                        onSelectionChanged: (selection) =>
-                            preferences.setThemeMode(selection.first),
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.language_rounded, color: _lime),
-                    title: Text(abuText(context, 'Language', 'اللغة')),
-                    subtitle: Text(
-                      abuText(
-                        context,
-                        'The layout changes direction immediately.',
-                        'يتغير اتجاه واجهة التطبيق مباشرة.',
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: SegmentedButton<AbuLanguage>(
-                        segments: const [
-                          ButtonSegment(
-                            value: AbuLanguage.english,
-                            label: Text('English'),
-                          ),
-                          ButtonSegment(
-                            value: AbuLanguage.arabic,
-                            label: Text('العربية'),
-                          ),
-                        ],
-                        selected: {preferences.language},
-                        onSelectionChanged: (selection) =>
-                            preferences.setLanguage(selection.first),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.workspace_premium_rounded,
-                          color: _red,
+        child: Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 900),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(
+                          Icons.contrast_rounded,
+                          color: _lime,
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
+                        title: Text(abuText(context, 'Appearance', 'المظهر')),
+                        subtitle: Text(
+                          abuText(
+                            context,
+                            'Choose the theme used across the app.',
+                            'اختر المظهر المستخدم في التطبيق.',
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: SegmentedButton<ThemeMode>(
+                            segments: [
+                              ButtonSegment(
+                                value: ThemeMode.dark,
+                                icon: const Icon(Icons.dark_mode_rounded),
+                                label: Text(abuText(context, 'Dark', 'داكن')),
+                              ),
+                              ButtonSegment(
+                                value: ThemeMode.light,
+                                icon: const Icon(Icons.light_mode_rounded),
+                                label: Text(abuText(context, 'Light', 'فاتح')),
+                              ),
+                            ],
+                            selected: {preferences.themeMode},
+                            onSelectionChanged: (selection) =>
+                                preferences.setThemeMode(selection.first),
+                          ),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      ListTile(
+                        leading: const Icon(
+                          Icons.language_rounded,
+                          color: _lime,
+                        ),
+                        title: Text(abuText(context, 'Language', 'اللغة')),
+                        subtitle: Text(
+                          abuText(
+                            context,
+                            'The layout changes direction immediately.',
+                            'يتغير اتجاه واجهة التطبيق مباشرة.',
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: SegmentedButton<AbuLanguage>(
+                            segments: const [
+                              ButtonSegment(
+                                value: AbuLanguage.english,
+                                label: Text('English'),
+                              ),
+                              ButtonSegment(
+                                value: AbuLanguage.arabic,
+                                label: Text('العربية'),
+                              ),
+                            ],
+                            selected: {preferences.language},
+                            onSelectionChanged: (selection) =>
+                                preferences.setLanguage(selection.first),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.workspace_premium_rounded,
+                              color: _red,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                abuText(
+                                  context,
+                                  'YOUTUBE MEMBERSHIP',
+                                  'عضوية يوتيوب',
+                                ),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ),
+                            _LiveDot(
+                              text: profile.isYouTubeMember
+                                  ? abuText(
+                                      context,
+                                      'VERIFIED · 2×',
+                                      'موثق · 2×',
+                                    )
+                                  : abuText(
+                                      context,
+                                      'NOT VERIFIED',
+                                      'غير موثق',
+                                    ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          abuText(
+                            context,
+                            'Member points will only be activated after secure verification with the creator\'s YouTube account. They are never granted from a user-entered claim.',
+                            'يتم تفعيل نقاط الأعضاء فقط بعد التحقق الآمن باستخدام حساب منشئ القناة، ولا تُمنح بناءً على اختيار يدوي.',
+                          ),
+                          style: const TextStyle(color: _muted, height: 1.45),
+                        ),
+                        const SizedBox(height: 14),
+                        OutlinedButton.icon(
+                          onPressed: () => launchUrl(
+                            Uri.parse(
+                              'https://www.youtube.com/channel/${AbuExternalContentService.youtubeChannelId}/join',
+                            ),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                          icon: const Icon(Icons.open_in_new_rounded),
+                          label: Text(
                             abuText(
                               context,
-                              'YOUTUBE MEMBERSHIP',
-                              'عضوية يوتيوب',
-                            ),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1,
+                              'OPEN CHANNEL MEMBERSHIP',
+                              'فتح عضوية القناة',
                             ),
                           ),
-                        ),
-                        _LiveDot(
-                          text: profile.isYouTubeMember
-                              ? abuText(context, 'VERIFIED · 2×', 'موثق · 2×')
-                              : abuText(context, 'NOT VERIFIED', 'غير موثق'),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Text(
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Card(
+                  color: _gold.withValues(alpha: .09),
+                  child: SwitchListTile.adaptive(
+                    value: mockData.enabled,
+                    onChanged: mockData.setEnabled,
+                    secondary: const Icon(Icons.science_rounded, color: _gold),
+                    title: Text(
                       abuText(
                         context,
-                        'Member points will only be activated after secure verification with the creator\'s YouTube account. They are never granted from a user-entered claim.',
-                        'يتم تفعيل نقاط الأعضاء فقط بعد التحقق الآمن باستخدام حساب منشئ القناة، ولا تُمنح بناءً على اختيار يدوي.',
+                        'Temporary mock data',
+                        'بيانات تجريبية مؤقتة',
                       ),
-                      style: const TextStyle(color: _muted, height: 1.45),
+                      style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
-                    const SizedBox(height: 14),
-                    OutlinedButton.icon(
-                      onPressed: () => launchUrl(
-                        Uri.parse(
-                          'https://www.youtube.com/channel/${AbuExternalContentService.youtubeChannelId}/join',
-                        ),
-                        mode: LaunchMode.externalApplication,
-                      ),
-                      icon: const Icon(Icons.open_in_new_rounded),
-                      label: Text(
-                        abuText(
-                          context,
-                          'OPEN CHANNEL MEMBERSHIP',
-                          'فتح عضوية القناة',
-                        ),
+                    subtitle: Text(
+                      abuText(
+                        context,
+                        'Testing only. Replaces the live match and video with predictable sample content. This isolated option can be removed before launch.',
+                        'للاختبار فقط. يستبدل المباراة والفيديو المباشرين ببيانات ثابتة، ويمكن حذف هذا الخيار قبل الإطلاق.',
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 14),
-            Card(
-              color: _gold.withValues(alpha: .09),
-              child: SwitchListTile.adaptive(
-                value: mockData.enabled,
-                onChanged: mockData.setEnabled,
-                secondary: const Icon(Icons.science_rounded, color: _gold),
-                title: Text(
-                  abuText(
-                    context,
-                    'Temporary mock data',
-                    'بيانات تجريبية مؤقتة',
-                  ),
-                  style: const TextStyle(fontWeight: FontWeight.w800),
-                ),
-                subtitle: Text(
-                  abuText(
-                    context,
-                    'Testing only. Replaces the live match and video with predictable sample content. This isolated option can be removed before launch.',
-                    'للاختبار فقط. يستبدل المباراة والفيديو المباشرين ببيانات ثابتة، ويمكن حذف هذا الخيار قبل الإطلاق.',
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1644,8 +1993,9 @@ class _ProductionSettings extends StatelessWidget {
 }
 
 class _ProductionAdmin extends StatelessWidget {
-  const _ProductionAdmin({required this.repository});
+  const _ProductionAdmin({required this.repository, required this.profile});
   final ProductionRepository repository;
+  final AbuUserProfile profile;
 
   @override
   Widget build(BuildContext context) => _PageFrame(
@@ -1654,20 +2004,24 @@ class _ProductionAdmin extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _ProductionAdminTools(repository: repository, profile: profile),
+        const SizedBox(height: 18),
         Wrap(
           spacing: 12,
           runSpacing: 12,
           children: [
-            FilledButton.icon(
-              onPressed: () => _showCreateMatch(context),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('CREATE MATCH EVENT'),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => _showPointRules(context),
-              icon: const Icon(Icons.tune_rounded),
-              label: const Text('POINT RULES'),
-            ),
+            if (profile.isAdmin) ...[
+              FilledButton.icon(
+                onPressed: () => _showCreateMatch(context),
+                icon: const Icon(Icons.add_rounded),
+                label: const Text('CREATE MATCH EVENT'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _showPointRules(context),
+                icon: const Icon(Icons.tune_rounded),
+                label: const Text('POINT RULES'),
+              ),
+            ],
           ],
         ),
         const SizedBox(height: 18),

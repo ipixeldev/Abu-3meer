@@ -9,6 +9,10 @@ service cloud.firestore {
         : 'none';
     }
     function admin() { return role() == 'admin' || role() == 'superAdmin'; }
+    function contentManager() {
+      return admin() || role() == 'editor' || role() == 'contentManager';
+    }
+    function moderator() { return admin() || role() == 'moderator'; }
     function validTeam(team) {
       return team == 'Barcelona' || team == 'Real Madrid';
     }
@@ -37,6 +41,9 @@ service cloud.firestore {
         && request.resource.data.country is string
         && request.resource.data.country.size() >= 1
         && request.resource.data.country.size() <= 60
+        && request.resource.data.country is string
+        && request.resource.data.country.size() >= 1
+        && request.resource.data.country.size() <= 60
         && validTeam(request.resource.data.supportedTeam)
         && request.resource.data.avatarUrl is string
         && request.resource.data.role == 'user'
@@ -54,10 +61,26 @@ service cloud.firestore {
         && getAfter(
           /databases/$(database)/documents/leaderboardEntries/$(uid)
         ).data.username == request.resource.data.username;
-      allow update: if own(uid)
+      allow update: if (own(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'displayName', 'country', 'supportedTeam', 'avatarUrl', 'updatedAt'
-        ]);
+          'username', 'displayName', 'country', 'supportedTeam', 'avatarUrl',
+          'updatedAt'
+        ])
+        && validUsername(request.resource.data.username)
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 1
+        && request.resource.data.displayName.size() <= 60
+        && validTeam(request.resource.data.supportedTeam)
+        && getAfter(
+          /databases/$(database)/documents/usernames/$(request.resource.data.username)
+        ).data.uid == uid)
+        || (admin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'role', 'suspended', 'updatedAt'
+          ])
+          && request.resource.data.role in [
+            'user', 'moderator', 'editor', 'contentManager', 'admin'
+          ]);
       allow delete: if false;
 
       match /playerCards/{cardId} {
@@ -76,12 +99,22 @@ service cloud.firestore {
         && getAfter(
           /databases/$(database)/documents/users/$(request.auth.uid)
         ).data.username == username;
-      allow update, delete: if false;
+      allow update: if own(resource.data.uid)
+        && request.resource.data.uid == resource.data.uid;
+      allow delete: if own(resource.data.uid)
+        && getAfter(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.username != username;
     }
 
     match /matches/{matchId} {
       allow read: if signedIn();
-      allow write: if false;
+      allow create: if admin()
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.predictionOpensAt < request.resource.data.predictionClosesAt
+        && request.resource.data.predictionClosesAt <= request.resource.data.kickoffAt;
+      allow update, delete: if false;
     }
 
     match /predictions/{predictionId} {
@@ -111,31 +144,102 @@ service cloud.firestore {
         && getAfter(
           /databases/$(database)/documents/users/$(uid)
         ).data.username == request.resource.data.username;
-      allow update, delete: if false;
+      allow update: if own(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'username', 'avatarUrl', 'supportedTeam', 'updatedAt'
+        ])
+        && request.resource.data.username == getAfter(
+          /databases/$(database)/documents/users/$(uid)
+        ).data.username;
+      allow delete: if false;
     }
 
     match /platformSettings/{settingId} {
       allow read: if signedIn();
-      allow write: if false;
+      allow write: if contentManager();
     }
 
     match /videoQuestions/{questionId} {
       allow read: if signedIn();
-      allow write: if false;
-      match /private/{document} { allow read, write: if false; }
+      allow write: if contentManager();
+      match /private/{document} {
+        allow read: if contentManager();
+        allow write: if contentManager();
+      }
       match /attempts/{uid} { allow read: if own(uid) || admin(); allow write: if false; }
     }
 
     match /playerCards/{cardId} {
       allow read: if signedIn();
-      allow write: if false;
-      match /private/{document} { allow read, write: if false; }
+      allow write: if contentManager();
+      match /private/{document} {
+        allow read: if contentManager();
+        allow write: if contentManager();
+      }
       match /attempts/{uid} { allow read: if own(uid) || admin(); allow write: if false; }
+    }
+
+    match /posts/{postId} {
+      allow read: if signedIn();
+      allow write: if contentManager();
+      match /reactions/{uid} {
+        allow read: if signedIn();
+        allow create, update: if own(uid)
+          && request.resource.data.userId == uid;
+        allow delete: if own(uid);
+      }
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.body is string
+          && request.resource.data.body.size() >= 1
+          && request.resource.data.body.size() <= 800
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if moderator()
+          || (signedIn() && resource.data.userId == request.auth.uid);
+      }
+    }
+
+    match /duelRooms/{code} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.hostUid == request.auth.uid
+        && request.resource.data.guestUid == ''
+        && request.resource.data.status == 'waiting';
+      allow update: if signedIn()
+        && resource.data.guestUid == ''
+        && resource.data.hostUid != request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'guestUid', 'guestName', 'status', 'startAt'
+        ])
+        && request.resource.data.guestUid == request.auth.uid
+        && request.resource.data.status == 'ready'
+        && request.resource.data.startAt > request.time;
+      allow delete: if signedIn() && resource.data.hostUid == request.auth.uid;
+
+      match /taps/{uid} {
+        allow read: if signedIn();
+        allow create: if own(uid)
+          && request.resource.data.userId == uid
+          && request.resource.data.tappedAt == request.time
+          && get(/databases/$(database)/documents/duelRooms/$(code)).data.status == 'ready'
+          && request.time >= get(
+            /databases/$(database)/documents/duelRooms/$(code)
+          ).data.startAt
+          && (uid == get(
+            /databases/$(database)/documents/duelRooms/$(code)
+          ).data.hostUid || uid == get(
+            /databases/$(database)/documents/duelRooms/$(code)
+          ).data.guestUid);
+        allow update, delete: if false;
+      }
     }
 
     match /adminAuditLogs/{logId} {
       allow read: if admin();
-      allow write: if false;
+      allow create: if admin() && request.resource.data.adminId == request.auth.uid;
+      allow update, delete: if false;
     }
 
     match /{document=**} { allow read, write: if false; }
