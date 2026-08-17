@@ -189,6 +189,7 @@ class _ProductionAuthState extends State<_ProductionAuth> {
                 labelText: 'Password',
                 prefixIcon: const Icon(Icons.lock_outline_rounded),
                 suffixIcon: IconButton(
+                  tooltip: hidden ? 'Show password' : 'Hide password',
                   onPressed: () => setState(() => hidden = !hidden),
                   icon: Icon(
                     hidden

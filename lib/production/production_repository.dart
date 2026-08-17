@@ -121,13 +121,83 @@ class ProductionRepository {
     required String country,
     required String supportedTeam,
     String avatarUrl = '',
-  }) => _call('completeOnboarding', {
-    'username': username.trim().toLowerCase(),
-    'displayName': displayName.trim(),
-    'country': country.trim(),
-    'supportedTeam': supportedTeam,
-    'avatarUrl': avatarUrl.trim(),
-  });
+  }) async {
+    final user = auth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'unauthenticated',
+        message: 'Sign in is required.',
+      );
+    }
+    final normalizedUsername = username.trim().toLowerCase();
+    if (!RegExp(r'^[a-z0-9_]{3,24}$').hasMatch(normalizedUsername)) {
+      throw ArgumentError(
+        'Username must be 3–24 letters, numbers, or underscores.',
+      );
+    }
+    final normalizedDisplayName = displayName.trim();
+    final normalizedCountry = country.trim();
+    if (normalizedDisplayName.isEmpty || normalizedDisplayName.length > 60) {
+      throw ArgumentError('Enter a valid display name.');
+    }
+    if (normalizedCountry.isEmpty || normalizedCountry.length > 60) {
+      throw ArgumentError('Enter a valid country.');
+    }
+    if (supportedTeam != 'Barcelona' && supportedTeam != 'Real Madrid') {
+      throw ArgumentError('Choose Barcelona or Real Madrid.');
+    }
+
+    final userRef = firestore.collection('users').doc(user.uid);
+    final usernameRef = firestore
+        .collection('usernames')
+        .doc(normalizedUsername);
+    final leaderboardRef = firestore
+        .collection('leaderboardEntries')
+        .doc(user.uid);
+    final now = DateTime.now().toUtc();
+    final monthlyPeriod = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+
+    await firestore.runTransaction((transaction) async {
+      final claimed = await transaction.get(usernameRef);
+      final existing = await transaction.get(userRef);
+      if (claimed.exists && claimed.data()?['uid'] != user.uid) {
+        throw StateError('That username is already taken.');
+      }
+      if (existing.exists) {
+        throw StateError('Your profile already exists. Refresh the page.');
+      }
+      final timestamp = FieldValue.serverTimestamp();
+      transaction.set(usernameRef, {'uid': user.uid, 'createdAt': timestamp});
+      transaction.set(userRef, {
+        'email': user.email ?? '',
+        'username': normalizedUsername,
+        'displayName': normalizedDisplayName,
+        'country': normalizedCountry,
+        'supportedTeam': supportedTeam,
+        'avatarUrl': avatarUrl.trim(),
+        'role': 'user',
+        'membershipMultiplier': 1,
+        'suspended': false,
+        'totalPoints': 0,
+        'monthlyPoints': 0,
+        'seasonPoints': 0,
+        'monthlyPeriod': monthlyPeriod,
+        'onboardingComplete': true,
+        'createdAt': timestamp,
+        'updatedAt': timestamp,
+      });
+      transaction.set(leaderboardRef, {
+        'username': normalizedUsername,
+        'avatarUrl': avatarUrl.trim(),
+        'supportedTeam': supportedTeam,
+        'monthlyPoints': 0,
+        'seasonPoints': 0,
+        'isMember': false,
+        'monthlyPeriod': monthlyPeriod,
+        'updatedAt': timestamp,
+      });
+    });
+  }
 
   Future<void> submitPrediction({
     required String matchId,
@@ -202,6 +272,20 @@ String productionErrorMessage(Object error) {
   }
   if (error is FirebaseFunctionsException) {
     return error.message ?? 'The server could not complete this request.';
+  }
+  if (error is FirebaseException) {
+    return switch (error.code) {
+      'permission-denied' =>
+        'Firebase rejected this request. Refresh and try again.',
+      'unavailable' => 'The service is temporarily unavailable. Try again.',
+      _ => error.message ?? 'Firebase could not complete this request.',
+    };
+  }
+  if (error is ArgumentError || error is StateError) {
+    return error.toString().replaceFirst(
+      RegExp(r'^(Invalid argument|Bad state): '),
+      '',
+    );
   }
   return 'Something went wrong. Please try again.';
 }

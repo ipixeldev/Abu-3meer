@@ -9,10 +9,51 @@ service cloud.firestore {
         : 'none';
     }
     function admin() { return role() == 'admin' || role() == 'superAdmin'; }
+    function validTeam(team) {
+      return team == 'Barcelona' || team == 'Real Madrid';
+    }
+    function validUsername(username) {
+      return username is string
+        && username.size() >= 3
+        && username.size() <= 24
+        && username.matches('^[a-z0-9_]+$');
+    }
 
     match /users/{uid} {
       allow read: if own(uid) || admin();
-      allow create: if false;
+      allow create: if own(uid)
+        && request.auth.token.email is string
+        && request.resource.data.keys().hasOnly([
+          'email', 'username', 'displayName', 'country', 'supportedTeam',
+          'avatarUrl', 'role', 'membershipMultiplier', 'suspended',
+          'totalPoints', 'monthlyPoints', 'seasonPoints', 'monthlyPeriod',
+          'onboardingComplete', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.email == request.auth.token.email
+        && validUsername(request.resource.data.username)
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 1
+        && request.resource.data.displayName.size() <= 60
+        && request.resource.data.country is string
+        && request.resource.data.country.size() >= 1
+        && request.resource.data.country.size() <= 60
+        && validTeam(request.resource.data.supportedTeam)
+        && request.resource.data.avatarUrl is string
+        && request.resource.data.role == 'user'
+        && request.resource.data.membershipMultiplier == 1
+        && request.resource.data.suspended == false
+        && request.resource.data.totalPoints == 0
+        && request.resource.data.monthlyPoints == 0
+        && request.resource.data.seasonPoints == 0
+        && request.resource.data.onboardingComplete == true
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && getAfter(
+          /databases/$(database)/documents/usernames/$(request.resource.data.username)
+        ).data.uid == uid
+        && getAfter(
+          /databases/$(database)/documents/leaderboardEntries/$(uid)
+        ).data.username == request.resource.data.username;
       allow update: if own(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName', 'country', 'supportedTeam', 'avatarUrl', 'updatedAt'
@@ -25,7 +66,18 @@ service cloud.firestore {
       }
     }
 
-    match /usernames/{username} { allow read, write: if false; }
+    match /usernames/{username} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && validUsername(username)
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && getAfter(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.username == username;
+      allow update, delete: if false;
+    }
 
     match /matches/{matchId} {
       allow read: if signedIn();
@@ -44,7 +96,22 @@ service cloud.firestore {
 
     match /leaderboardEntries/{uid} {
       allow read: if signedIn();
-      allow write: if false;
+      allow create: if own(uid)
+        && request.resource.data.keys().hasOnly([
+          'username', 'avatarUrl', 'supportedTeam', 'monthlyPoints',
+          'seasonPoints', 'isMember', 'monthlyPeriod', 'updatedAt'
+        ])
+        && validUsername(request.resource.data.username)
+        && request.resource.data.avatarUrl is string
+        && validTeam(request.resource.data.supportedTeam)
+        && request.resource.data.monthlyPoints == 0
+        && request.resource.data.seasonPoints == 0
+        && request.resource.data.isMember == false
+        && request.resource.data.updatedAt == request.time
+        && getAfter(
+          /databases/$(database)/documents/users/$(uid)
+        ).data.username == request.resource.data.username;
+      allow update, delete: if false;
     }
 
     match /platformSettings/{settingId} {

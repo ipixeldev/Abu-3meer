@@ -32,7 +32,7 @@ const _latestVideoTitle = '🚨 يلي أهلو ما ربوه ميسي يربي�
 class Abu3meerBootstrap extends StatefulWidget {
   const Abu3meerBootstrap({super.key, required this.initializeFirebase});
 
-  final Future<Object?> Function() initializeFirebase;
+  final Future<void> Function() initializeFirebase;
 
   @override
   State<Abu3meerBootstrap> createState() => _Abu3meerBootstrapState();
