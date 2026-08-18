@@ -1,6 +1,7 @@
 import {initializeApp} from "firebase-admin/app";
 import {
   FieldValue,
+  QueryDocumentSnapshot,
   Timestamp,
   getFirestore,
 } from "firebase-admin/firestore";
@@ -9,6 +10,7 @@ import {
   DEFAULT_POINTS,
   PointSource,
   calculatePoints,
+  didBothTeamsScore,
   predictionIsOpen,
   rewardLedgerId,
 } from "./domain.js";
@@ -47,6 +49,23 @@ function text(value: unknown, field: string, max = 120): string {
     throw new HttpsError("invalid-argument", `${field} is invalid.`);
   }
   return result;
+}
+
+function textList(value: unknown, field: string, maxItems = 60, maxLength = 80): string[] {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > maxItems) {
+    throw new HttpsError("invalid-argument", `${field} is invalid.`);
+  }
+  const unique = new Map<string, string>();
+  for (const item of value) {
+    const label = text(item, field, maxLength).replace(/\s+/g, " ");
+    unique.set(normalizedLabel(label), label);
+  }
+  return [...unique.values()];
+}
+
+function normalizedLabel(value: string): string {
+  return value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-US");
 }
 
 function integer(value: unknown, field: string, min = 0, max = 20): number {
@@ -237,6 +256,11 @@ export const submitPrediction = onCall({region, enforceAppCheck: false}, async (
   const matchId = text(request.data?.matchId, "Match", 128);
   const homeScore = integer(request.data?.homeScore, "Home score");
   const awayScore = integer(request.data?.awayScore, "Away score");
+  const firstScorerInput = text(request.data?.firstScorer, "First scorer", 80).replace(/\s+/g, " ");
+  if (typeof request.data?.bothTeamsScore !== "boolean") {
+    throw new HttpsError("invalid-argument", "Both teams score prediction is required.");
+  }
+  const bothTeamsScore = request.data.bothTeamsScore as boolean;
   const matchRef = db.collection("matches").doc(matchId);
   const predictionRef = db.collection("predictions").doc(`${matchId}_${auth.uid}`);
   await db.runTransaction(async (transaction) => {
@@ -251,11 +275,20 @@ export const submitPrediction = onCall({region, enforceAppCheck: false}, async (
     if (match.status !== "open" || !predictionIsOpen(now, match.predictionOpensAt.toMillis(), match.predictionClosesAt.toMillis())) {
       throw new HttpsError("failed-precondition", "Predictions are closed for this match.");
     }
+    const options = textList(match.firstScorerOptions, "First scorer options");
+    const firstScorerKey = normalizedLabel(firstScorerInput);
+    const canonicalFirstScorer = options.find((option) => normalizedLabel(option) === firstScorerKey) ?? firstScorerInput;
+    if (options.length > 0 && !options.some((option) => normalizedLabel(option) === firstScorerKey)) {
+      throw new HttpsError("invalid-argument", "Choose a first scorer from this match's options.");
+    }
     transaction.set(predictionRef, {
       userId: auth.uid,
       matchId,
       homeScore,
       awayScore,
+      firstScorer: canonicalFirstScorer,
+      firstScorerKey,
+      bothTeamsScore,
       submittedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
       rewarded: false,
@@ -274,12 +307,17 @@ export const adminCreateMatch = onCall({region}, async (request) => {
     throw new HttpsError("invalid-argument", "Prediction times must be ordered before kickoff.");
   }
   const ref = db.collection("matches").doc();
+  const firstScorerOptions = textList(request.data?.firstScorerOptions, "First scorer options", 59);
+  if (firstScorerOptions.length > 0 && !firstScorerOptions.some((option) => normalizedLabel(option) === "no scorer")) {
+    firstScorerOptions.push("No scorer");
+  }
   await ref.create({
     homeTeam: text(request.data?.homeTeam, "Home team", 60),
     awayTeam: text(request.data?.awayTeam, "Away team", 60),
     competition: text(request.data?.competition, "Competition", 80),
     homeLogoUrl: typeof request.data?.homeLogoUrl === "string" ? request.data.homeLogoUrl.trim() : "",
     awayLogoUrl: typeof request.data?.awayLogoUrl === "string" ? request.data.awayLogoUrl.trim() : "",
+    firstScorerOptions,
     kickoffAt,
     predictionOpensAt,
     predictionClosesAt,
@@ -298,51 +336,133 @@ export const adminPublishMatchResult = onCall({region, timeoutSeconds: 540}, asy
   const matchId = text(request.data?.matchId, "Match", 128);
   const homeScore = integer(request.data?.homeScore, "Home score");
   const awayScore = integer(request.data?.awayScore, "Away score");
+  const firstScorerInput = text(request.data?.firstScorer, "First scorer", 80).replace(/\s+/g, " ");
+  const firstScorerKey = normalizedLabel(firstScorerInput);
+  const bothTeamsScored = didBothTeamsScore(homeScore, awayScore);
   const matchRef = db.collection("matches").doc(matchId);
   await db.runTransaction(async (transaction) => {
     const match = await transaction.get(matchRef);
     if (!match.exists) throw new HttpsError("not-found", "Match not found.");
     const data = match.data()!;
-    if (data.resultProcessed === true && (data.homeScore !== homeScore || data.awayScore !== awayScore)) {
-      throw new HttpsError("already-exists", "This result was already processed with a different score.");
+    const options = textList(data.firstScorerOptions, "First scorer options");
+    if (options.length > 0 && !options.some((option) => normalizedLabel(option) === firstScorerKey)) {
+      throw new HttpsError("invalid-argument", "Choose the official first scorer from the match options.");
     }
-    transaction.update(matchRef, {homeScore, awayScore, status: "completed", resultProcessing: true, updatedAt: FieldValue.serverTimestamp()});
+    if (data.resultProcessed === true) {
+      const sameResult = data.homeScore === homeScore &&
+        data.awayScore === awayScore &&
+        normalizedLabel(String(data.firstScorer ?? "")) === firstScorerKey;
+      throw new HttpsError(
+        "already-exists",
+        sameResult ?
+          "This result was already processed." :
+          "This result was already processed with a different score.",
+      );
+    }
+    transaction.update(matchRef, {
+      homeScore,
+      awayScore,
+      firstScorer: firstScorerInput,
+      firstScorerKey,
+      bothTeamsScored,
+      status: "completed",
+      resultProcessing: true,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
   });
   const settings = await pointSettings();
-  const winners = await db.collection("predictions")
-    .where("matchId", "==", matchId)
-    .where("homeScore", "==", homeScore)
-    .where("awayScore", "==", awayScore)
-    .get();
-  let awarded = 0;
-  for (let index = 0; index < winners.docs.length; index += 40) {
-    const chunk = winners.docs.slice(index, index + 40);
-    const results = await Promise.all(chunk.map((doc) => awardPoints({
-      userId: doc.data().userId,
-      sourceType: "exactPrediction",
-      sourceId: matchId,
-      basePoints: Number(settings.exactPrediction),
-      reason: `Exact prediction: ${homeScore}–${awayScore}`,
-    })));
-    awarded += results.filter((result) => result.awarded).length;
-  }
-  await matchRef.update({resultProcessed: true, resultProcessing: false, rewardedUsers: awarded, processedAt: FieldValue.serverTimestamp()});
-  await db.collection("adminAuditLogs").add({adminId: auth.uid, action: "PUBLISH_MATCH_RESULT", targetId: matchId, awardedUsers: awarded, createdAt: FieldValue.serverTimestamp()});
-  return {ok: true, awardedUsers: awarded};
+  const [exactWinners, firstScorerWinners, bothTeamsWinners] = await Promise.all([
+    db.collection("predictions")
+      .where("matchId", "==", matchId)
+      .where("homeScore", "==", homeScore)
+      .where("awayScore", "==", awayScore)
+      .get(),
+    db.collection("predictions")
+      .where("matchId", "==", matchId)
+      .where("firstScorerKey", "==", firstScorerKey)
+      .get(),
+    db.collection("predictions")
+      .where("matchId", "==", matchId)
+      .where("bothTeamsScore", "==", bothTeamsScored)
+      .get(),
+  ]);
+  const awardWinners = async (
+    docs: QueryDocumentSnapshot[],
+    sourceType: PointSource,
+    basePoints: number,
+    reason: string,
+  ): Promise<number> => {
+    let awarded = 0;
+    for (let index = 0; index < docs.length; index += 40) {
+      const chunk = docs.slice(index, index + 40);
+      const results = await Promise.all(chunk.map((doc) => awardPoints({
+        userId: doc.data().userId,
+        sourceType,
+        sourceId: matchId,
+        basePoints,
+        reason,
+      })));
+      awarded += results.filter((result) => result.awarded).length;
+    }
+    return awarded;
+  };
+  const [exactAwarded, firstScorerAwarded, bothTeamsAwarded] = await Promise.all([
+    awardWinners(
+      exactWinners.docs,
+      "exactPrediction",
+      Number(settings.exactPrediction),
+      `Exact prediction: ${homeScore}–${awayScore}`,
+    ),
+    awardWinners(
+      firstScorerWinners.docs,
+      "firstScorer",
+      Number(settings.firstScorer),
+      `First scorer: ${firstScorerInput}`,
+    ),
+    awardWinners(
+      bothTeamsWinners.docs,
+      "bothTeamsScore",
+      Number(settings.bothTeamsScore),
+      `Both teams score: ${bothTeamsScored ? "Yes" : "No"}`,
+    ),
+  ]);
+  const awarded = exactAwarded + firstScorerAwarded + bothTeamsAwarded;
+  await matchRef.update({
+    resultProcessed: true,
+    resultProcessing: false,
+    rewardedUsers: awarded,
+    exactRewardedUsers: exactAwarded,
+    firstScorerRewardedUsers: firstScorerAwarded,
+    bothTeamsRewardedUsers: bothTeamsAwarded,
+    processedAt: FieldValue.serverTimestamp(),
+  });
+  await db.collection("adminAuditLogs").add({
+    adminId: auth.uid,
+    action: "PUBLISH_MATCH_RESULT",
+    targetId: matchId,
+    awardedUsers: awarded,
+    exactAwarded,
+    firstScorerAwarded,
+    bothTeamsAwarded,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return {ok: true, awardedUsers: awarded, exactAwarded, firstScorerAwarded, bothTeamsAwarded};
 });
 
 export const adminUpdatePointRules = onCall({region}, async (request) => {
   const auth = requireAuth(request.auth);
   await requireAdmin(auth.uid);
   const exactPrediction = integer(request.data?.exactPrediction, "Exact prediction points", 0, 10000);
+  const firstScorer = integer(request.data?.firstScorer, "First scorer points", 0, 10000);
+  const bothTeamsScore = integer(request.data?.bothTeamsScore, "Both teams score points", 0, 10000);
   const videoQuestion = integer(request.data?.videoQuestion, "Video question points", 0, 10000);
   const playerCard = integer(request.data?.playerCard, "Player Card points", 0, 10000);
   const memberMultiplier = Number(request.data?.memberMultiplier);
   if (!Number.isFinite(memberMultiplier) || memberMultiplier < 1 || memberMultiplier > 10) {
     throw new HttpsError("invalid-argument", "Member multiplier must be between 1 and 10.");
   }
-  await db.collection("platformSettings").doc("points").set({exactPrediction, videoQuestion, playerCard, memberMultiplier, updatedBy: auth.uid, updatedAt: FieldValue.serverTimestamp()});
-  await db.collection("adminAuditLogs").add({adminId: auth.uid, action: "UPDATE_POINT_RULES", changes: {exactPrediction, videoQuestion, playerCard, memberMultiplier}, createdAt: FieldValue.serverTimestamp()});
+  await db.collection("platformSettings").doc("points").set({exactPrediction, firstScorer, bothTeamsScore, videoQuestion, playerCard, memberMultiplier, updatedBy: auth.uid, updatedAt: FieldValue.serverTimestamp()});
+  await db.collection("adminAuditLogs").add({adminId: auth.uid, action: "UPDATE_POINT_RULES", changes: {exactPrediction, firstScorer, bothTeamsScore, videoQuestion, playerCard, memberMultiplier}, createdAt: FieldValue.serverTimestamp()});
   return {ok: true};
 });
 

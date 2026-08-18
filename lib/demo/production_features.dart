@@ -21,7 +21,11 @@ class _ProductionChallenges extends StatelessWidget {
         if (snapshot.hasError) {
           return _ProductionEmpty(
             icon: Icons.cloud_off_rounded,
-            title: 'Challenges unavailable',
+            title: abuText(
+              context,
+              'Challenges unavailable',
+              'التحديات غير متاحة',
+            ),
             body: productionErrorMessage(snapshot.error!),
           );
         }
@@ -51,25 +55,49 @@ class _ProductionChallengeEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      if (constraints.maxWidth < 900) {
-        return const _ProductionEmpty(
+      if (constraints.maxWidth < 1100) {
+        return _ProductionEmpty(
           icon: Icons.bolt_rounded,
-          title: 'The next challenge is being prepared',
-          body: 'Secret phrases and hidden Player Cards published by Abu 3meer will appear here.',
+          title: abuText(
+            context,
+            'The next challenge is being prepared',
+            'يجري تحضير التحدي القادم',
+          ),
+          body: abuText(
+            context,
+            'Secret phrases and hidden Player Cards published by Abu 3meer will appear here.',
+            'ستظهر هنا العبارات السرية وبطاقات اللاعبين التي ينشرها أبو عمير.',
+          ),
         );
       }
-      final types = const [
+      final types = [
         (
           Icons.subtitles_rounded,
-          'SECRET PHRASE',
-          'Listen closely to the latest video',
+          abuText(context, 'SECRET PHRASE', 'العبارة السرية'),
+          abuText(
+            context,
+            'Listen closely to the latest video',
+            'استمع جيداً إلى أحدث فيديو',
+          ),
         ),
         (
           Icons.style_rounded,
-          'PLAYER CARD',
-          'Find the hidden player and claim it',
+          abuText(context, 'PLAYER CARD', 'بطاقة اللاعب'),
+          abuText(
+            context,
+            'Find the hidden player and claim it',
+            'اعثر على اللاعب المخفي واحصل على بطاقته',
+          ),
         ),
-        (Icons.quiz_rounded, 'MATCH QUIZ', 'Timed football knowledge rounds'),
+        (
+          Icons.quiz_rounded,
+          abuText(context, 'MATCH QUIZ', 'اختبار المباراة'),
+          abuText(
+            context,
+            'Timed football knowledge rounds',
+            'جولات معلومات كروية محددة الوقت',
+          ),
+        ),
       ];
       return SizedBox(
         height: 280,
@@ -105,16 +133,29 @@ class _ProductionChallengeEmptyState extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const _LiveDot(text: 'NEXT DROP'),
+                            _LiveDot(
+                              text: abuText(context, 'NEXT DROP', 'القادم'),
+                            ),
                             const SizedBox(height: 13),
                             Text(
-                              'The next challenge is being prepared',
+                              abuText(
+                                context,
+                                'The next challenge is being prepared',
+                                'يجري تحضير التحدي القادم',
+                              ),
                               style: _display(29),
                             ),
                             const SizedBox(height: 8),
-                            const Text(
-                              'New playable events appear here as soon as Abu 3meer publishes them from Admin Studio.',
-                              style: TextStyle(color: _muted, height: 1.5),
+                            Text(
+                              abuText(
+                                context,
+                                'New playable events appear here as soon as Abu 3meer publishes them from Admin Studio.',
+                                'تظهر الفعاليات الجديدة هنا فور نشرها من استوديو الإدارة.',
+                              ),
+                              style: const TextStyle(
+                                color: _muted,
+                                height: 1.5,
+                              ),
                             ),
                           ],
                         ),
@@ -133,7 +174,10 @@ class _ProductionChallengeEmptyState extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('CHALLENGE FORMATS', style: _display(19)),
+                      Text(
+                        abuText(context, 'CHALLENGE FORMATS', 'أنواع التحديات'),
+                        style: _display(19),
+                      ),
                       const SizedBox(height: 12),
                       for (final type in types)
                         Expanded(
@@ -194,8 +238,12 @@ class _ProductionChallengeCard extends StatelessWidget {
       builder: (context) => AlertDialog(
         title: Text(
           challenge.kind == 'playerCard'
-              ? 'Claim Player Card'
-              : 'Enter the secret phrase',
+              ? abuText(context, 'Claim Player Card', 'احصل على بطاقة اللاعب')
+              : abuText(
+                  context,
+                  'Enter the secret phrase',
+                  'أدخل العبارة السرية',
+                ),
         ),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 430),
@@ -203,17 +251,19 @@ class _ProductionChallengeCard extends StatelessWidget {
             controller: controller,
             autofocus: true,
             textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(labelText: 'Your answer'),
+            decoration: InputDecoration(
+              labelText: abuText(context, 'Your answer', 'إجابتك'),
+            ),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCEL'),
+            child: Text(abuText(context, 'CANCEL', 'إلغاء')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('SUBMIT'),
+            child: Text(abuText(context, 'SUBMIT', 'إرسال')),
           ),
         ],
       ),
@@ -230,8 +280,16 @@ class _ProductionChallengeCard extends StatelessWidget {
         SnackBar(
           content: Text(
             correct
-                ? 'Correct! +${result['points'] ?? 0} points.'
-                : 'Not this time. Watch closely and try again.',
+                ? abuText(
+                    context,
+                    'Correct! +${result['points'] ?? 0} points.',
+                    'إجابة صحيحة! +${result['points'] ?? 0} نقطة.',
+                  )
+                : abuText(
+                    context,
+                    'Not this time. Watch closely and try again.',
+                    'ليست صحيحة هذه المرة. شاهد جيداً وحاول مجدداً.',
+                  ),
           ),
         ),
       );
@@ -280,13 +338,17 @@ class _ProductionChallengeCard extends StatelessWidget {
             TextButton.icon(
               onPressed: () => launchUrl(Uri.parse(challenge.videoUrl)),
               icon: const Icon(Icons.play_circle_rounded),
-              label: const Text('WATCH VIDEO'),
+              label: Text(abuText(context, 'WATCH VIDEO', 'شاهد الفيديو')),
             ),
           SizedBox(
             width: double.infinity,
             child: FilledButton(
               onPressed: challenge.isOpen ? () => answer(context) : null,
-              child: Text(challenge.isOpen ? 'PLAY NOW' : 'CLOSED'),
+              child: Text(
+                challenge.isOpen
+                    ? abuText(context, 'PLAY NOW', 'العب الآن')
+                    : abuText(context, 'CLOSED', 'مغلق'),
+              ),
             ),
           ),
         ],
@@ -306,20 +368,44 @@ class _ProductionHomeActivityFeed extends StatelessWidget {
       if (snapshot.connectionState == ConnectionState.waiting) {
         return const _ProductionSkeleton(height: 210);
       }
+      if (snapshot.hasError) {
+        return _ProductionEmpty(
+          icon: Icons.cloud_off_rounded,
+          title: abuText(context, 'Activity unavailable', 'النشاط غير متاح'),
+          body: productionErrorMessage(snapshot.error!),
+        );
+      }
       final active = (snapshot.data ?? const <AbuChallenge>[])
           .where((event) => event.isOpen)
           .take(3)
           .toList();
-      if (active.isEmpty) return const SizedBox.shrink();
+      if (active.isEmpty) {
+        return _ProductionEmpty(
+          icon: Icons.event_available_rounded,
+          title: abuText(context, 'You are all caught up', 'أكملت كل شيء'),
+          body: abuText(
+            context,
+            'New challenges and activities will appear here.',
+            'ستظهر التحديات والأنشطة الجديدة هنا.',
+          ),
+        );
+      }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Text('YOUR NEXT MOVES', style: _display(22)),
+              Text(
+                abuText(context, 'YOUR NEXT MOVES', 'خطواتك القادمة'),
+                style: _display(22),
+              ),
               const Spacer(),
               Text(
-                '${active.length} LIVE',
+                abuText(
+                  context,
+                  '${active.length} LIVE',
+                  '${active.length} متاح',
+                ),
                 style: const TextStyle(
                   color: _lime,
                   fontWeight: FontWeight.w900,
@@ -367,7 +453,7 @@ class _ProductionCommunity extends StatelessWidget {
         if (snapshot.hasError) {
           return _ProductionEmpty(
             icon: Icons.cloud_off_rounded,
-            title: 'Feed unavailable',
+            title: abuText(context, 'Feed unavailable', 'المنشورات غير متاحة'),
             body: productionErrorMessage(snapshot.error!),
           );
         }
@@ -391,11 +477,15 @@ class _ProductionCommunityEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      if (constraints.maxWidth < 980) {
-        return const _ProductionEmpty(
+      if (constraints.maxWidth < 1100) {
+        return _ProductionEmpty(
           icon: Icons.article_rounded,
-          title: 'No posts yet',
-          body: 'New articles, match reactions and community updates will appear here.',
+          title: abuText(context, 'No posts yet', 'لا توجد منشورات بعد'),
+          body: abuText(
+            context,
+            'New articles, match reactions and community updates will appear here.',
+            'ستظهر هنا المقالات الجديدة وردود أفعال المباريات وأخبار المجتمع.',
+          ),
         );
       }
       return Row(
@@ -427,16 +517,30 @@ class _ProductionCommunityEmptyState extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const _LiveDot(text: 'EDITORIAL DESK'),
+                          _LiveDot(
+                            text: abuText(
+                              context,
+                              'EDITORIAL DESK',
+                              'قسم التحرير',
+                            ),
+                          ),
                           const SizedBox(height: 12),
                           Text(
-                            'The first story is being prepared',
+                            abuText(
+                              context,
+                              'The first story is being prepared',
+                              'يجري تحضير أول منشور',
+                            ),
                             style: _display(29),
                           ),
                           const SizedBox(height: 8),
-                          const Text(
-                            'Match reactions, creator updates and community stories will be published here from Admin Studio.',
-                            style: TextStyle(color: _muted, height: 1.5),
+                          Text(
+                            abuText(
+                              context,
+                              'Match reactions, creator updates and community stories will be published here from Admin Studio.',
+                              'ستنشر هنا ردود أفعال المباريات وأخبار صانع المحتوى وقصص المجتمع من استوديو الإدارة.',
+                            ),
+                            style: const TextStyle(color: _muted, height: 1.5),
                           ),
                         ],
                       ),
@@ -455,18 +559,29 @@ class _ProductionCommunityEmptyState extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('COMMUNITY DESK', style: _display(20)),
+                    Text(
+                      abuText(context, 'COMMUNITY DESK', 'قسم المجتمع'),
+                      style: _display(20),
+                    ),
                     const Spacer(),
-                    const _CommunityDeskMetric(
+                    _CommunityDeskMetric(
                       icon: Icons.article_outlined,
                       value: '0',
-                      label: 'PUBLISHED STORIES',
+                      label: abuText(
+                        context,
+                        'PUBLISHED STORIES',
+                        'المنشورات المنشورة',
+                      ),
                     ),
                     const SizedBox(height: 18),
-                    const _CommunityDeskMetric(
+                    _CommunityDeskMetric(
                       icon: Icons.forum_outlined,
-                      value: 'LIVE',
-                      label: 'COMMENTS & REACTIONS',
+                      value: abuText(context, 'LIVE', 'مباشر'),
+                      label: abuText(
+                        context,
+                        'COMMENTS & REACTIONS',
+                        'التعليقات والتفاعلات',
+                      ),
                     ),
                     const Spacer(),
                   ],
@@ -494,7 +609,7 @@ class _ProductionCommunityContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      if (constraints.maxWidth < 980) {
+      if (constraints.maxWidth < 1100) {
         return Column(
           children: posts
               .map(
@@ -536,18 +651,25 @@ class _ProductionCommunityContent extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('COMMUNITY DESK', style: _display(20)),
+                        Text(
+                          abuText(context, 'COMMUNITY DESK', 'قسم المجتمع'),
+                          style: _display(20),
+                        ),
                         const SizedBox(height: 18),
                         _CommunityDeskMetric(
                           icon: Icons.article_outlined,
                           value: '${posts.length}',
-                          label: 'PUBLISHED STORIES',
+                          label: abuText(
+                            context,
+                            'PUBLISHED STORIES',
+                            'المنشورات المنشورة',
+                          ),
                         ),
                         const SizedBox(height: 16),
                         _CommunityDeskMetric(
                           icon: Icons.schedule_rounded,
                           value: _productionDate(latest.publishedAt),
-                          label: 'LATEST UPDATE',
+                          label: abuText(context, 'LATEST UPDATE', 'آخر تحديث'),
                         ),
                       ],
                     ),
@@ -561,7 +683,10 @@ class _ProductionCommunityContent extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('MORE STORIES', style: _display(18)),
+                          Text(
+                            abuText(context, 'MORE STORIES', 'منشورات أخرى'),
+                            style: _display(18),
+                          ),
                           const SizedBox(height: 8),
                           for (final post in recent)
                             InkWell(
@@ -728,7 +853,7 @@ class _ProductionPostCard extends StatelessWidget {
                   OutlinedButton.icon(
                     onPressed: () => repository.reactToPost(post.id),
                     icon: const Icon(Icons.favorite_border_rounded),
-                    label: const Text('SUPPORT'),
+                    label: Text(abuText(context, 'SUPPORT', 'دعم')),
                   ),
                   OutlinedButton.icon(
                     onPressed: () => showDialog<void>(
@@ -740,7 +865,7 @@ class _ProductionPostCard extends StatelessWidget {
                       ),
                     ),
                     icon: const Icon(Icons.chat_bubble_outline_rounded),
-                    label: const Text('COMMENTS'),
+                    label: Text(abuText(context, 'COMMENTS', 'التعليقات')),
                   ),
                   if (post.linkUrl.isNotEmpty)
                     TextButton.icon(
@@ -754,7 +879,7 @@ class _ProductionPostCard extends StatelessWidget {
                         }
                       },
                       icon: const Icon(Icons.open_in_new_rounded),
-                      label: const Text('OPEN LINK'),
+                      label: Text(abuText(context, 'OPEN LINK', 'فتح الرابط')),
                     ),
                 ],
               ),
@@ -841,12 +966,30 @@ class _PostCommentsDialogState extends State<_PostCommentsDialog> {
             child: StreamBuilder<List<AbuComment>>(
               stream: widget.repository.watchPostComments(widget.post.id),
               builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return _ProductionEmpty(
+                    icon: Icons.cloud_off_rounded,
+                    title: abuText(
+                      context,
+                      'Comments unavailable',
+                      'التعليقات غير متاحة',
+                    ),
+                    body: productionErrorMessage(snapshot.error!),
+                  );
+                }
                 final comments = snapshot.data ?? const [];
                 if (comments.isEmpty) {
-                  return const Center(
+                  return Center(
                     child: Text(
-                      'Start the conversation.',
-                      style: TextStyle(color: _muted),
+                      abuText(
+                        context,
+                        'Start the conversation.',
+                        'ابدأ المحادثة.',
+                      ),
+                      style: const TextStyle(color: _muted),
                     ),
                   );
                 }
@@ -876,8 +1019,12 @@ class _PostCommentsDialogState extends State<_PostCommentsDialog> {
                 child: TextField(
                   controller: comment,
                   maxLength: 800,
-                  decoration: const InputDecoration(
-                    labelText: 'Write a comment',
+                  decoration: InputDecoration(
+                    labelText: abuText(
+                      context,
+                      'Write a comment',
+                      'اكتب تعليقاً',
+                    ),
                     counterText: '',
                   ),
                   onSubmitted: (_) => busy ? null : send(),
@@ -896,7 +1043,7 @@ class _PostCommentsDialogState extends State<_PostCommentsDialog> {
     actions: [
       TextButton(
         onPressed: () => Navigator.pop(context),
-        child: const Text('CLOSE'),
+        child: Text(abuText(context, 'CLOSE', 'إغلاق')),
       ),
     ],
   );
@@ -929,7 +1076,7 @@ class _ProductionGamesState extends State<_ProductionGames> {
                 child: TextButton.icon(
                   onPressed: () => setState(() => showEhzerha = false),
                   icon: const Icon(Icons.arrow_back_rounded),
-                  label: const Text('ALL GAMES'),
+                  label: Text(abuText(context, 'ALL GAMES', 'كل الألعاب')),
                 ),
               ),
               const SizedBox(height: 8),
@@ -951,16 +1098,24 @@ class _ProductionGamesState extends State<_ProductionGames> {
                 icon: Icons.psychology_alt_rounded,
                 color: _lime,
                 title: 'Ehzerha',
-                detail: 'The full guessing game, embedded inside the web app.',
-                action: 'PLAY EHZERHA',
+                detail: abuText(
+                  context,
+                  'The full guessing game, embedded inside the web app.',
+                  'لعبة التخمين الكاملة داخل تطبيق الويب.',
+                ),
+                action: abuText(context, 'PLAY EHZERHA', 'العب احزرها'),
                 onTap: () => setState(() => showEhzerha = true),
               ),
               _GameLaunchCard(
                 icon: Icons.groups_rounded,
                 color: _gold,
-                title: 'Fan Duels',
-                detail: 'Challenge another supporter in quick football trivia.',
-                action: 'START A DUEL',
+                title: abuText(context, 'Fan Duels', 'مواجهات الجماهير'),
+                detail: abuText(
+                  context,
+                  'Challenge another supporter in quick football trivia.',
+                  'تحدَّ مشجعاً آخر في أسئلة كروية سريعة.',
+                ),
+                action: abuText(context, 'START A DUEL', 'ابدأ مواجهة'),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => _FanDuelPage(
@@ -973,9 +1128,13 @@ class _ProductionGamesState extends State<_ProductionGames> {
               _GameLaunchCard(
                 icon: Icons.quiz_rounded,
                 color: _blue,
-                title: 'Trivia Arena',
-                detail: 'Fast football questions built for mobile and desktop.',
-                action: 'ENTER ARENA',
+                title: abuText(context, 'Trivia Arena', 'ساحة المعلومات'),
+                detail: abuText(
+                  context,
+                  'Fast football questions built for mobile and desktop.',
+                  'أسئلة كروية سريعة للجوال وسطح المكتب.',
+                ),
+                action: abuText(context, 'ENTER ARENA', 'ادخل الساحة'),
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => const Scaffold(body: _TriviaArenaPage()),
@@ -1046,7 +1205,9 @@ class _FanDuelPageState extends State<_FanDuelPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('FAN DUELS')),
+    appBar: AppBar(
+      title: Text(abuText(context, 'FAN DUELS', 'مواجهات الجماهير')),
+    ),
     body: activeCode.isEmpty
         ? Center(
             child: SingleChildScrollView(
@@ -1066,37 +1227,60 @@ class _FanDuelPageState extends State<_FanDuelPage> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'One room. Two fans.',
+                          abuText(
+                            context,
+                            'One room. Two fans.',
+                            'غرفة واحدة. مشجعان.',
+                          ),
                           textAlign: TextAlign.center,
                           style: _display(31),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          'Create a room and share its six-character code, or join a friend. The first valid server-timed tap after the countdown wins.',
+                        Text(
+                          abuText(
+                            context,
+                            'Create a room and share its six-character code, or join a friend. The first valid server-timed tap after the countdown wins.',
+                            'أنشئ غرفة وشارك رمزها المكوّن من ستة أحرف، أو انضم إلى صديق. يفوز أول ضغط صحيح بعد انتهاء العد التنازلي.',
+                          ),
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: _muted, height: 1.5),
+                          style: const TextStyle(color: _muted, height: 1.5),
                         ),
                         const SizedBox(height: 24),
                         FilledButton.icon(
                           onPressed: busy ? null : create,
                           icon: const Icon(Icons.add_rounded),
-                          label: const Text('CREATE DUEL ROOM'),
+                          label: Text(
+                            abuText(
+                              context,
+                              'CREATE DUEL ROOM',
+                              'إنشاء غرفة مواجهة',
+                            ),
+                          ),
                         ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 15),
-                          child: Text('OR', textAlign: TextAlign.center),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          child: Text(
+                            abuText(context, 'OR', 'أو'),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                         TextField(
                           controller: code,
                           textCapitalization: TextCapitalization.characters,
                           maxLength: 6,
-                          decoration: const InputDecoration(
-                            labelText: 'Room code',
+                          decoration: InputDecoration(
+                            labelText: abuText(
+                              context,
+                              'Room code',
+                              'رمز الغرفة',
+                            ),
                           ),
                         ),
                         OutlinedButton(
                           onPressed: busy ? null : join,
-                          child: const Text('JOIN FRIEND'),
+                          child: Text(
+                            abuText(context, 'JOIN FRIEND', 'الانضمام لصديق'),
+                          ),
                         ),
                         if (error != null) ...[
                           const SizedBox(height: 12),
@@ -1116,8 +1300,34 @@ class _FanDuelPageState extends State<_FanDuelPage> {
         : StreamBuilder<FanDuel?>(
             stream: widget.repository.watchFanDuel(activeCode),
             builder: (context, snapshot) {
-              if (!snapshot.hasData) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return _ProductionEmpty(
+                  icon: Icons.cloud_off_rounded,
+                  title: abuText(
+                    context,
+                    'Duel unavailable',
+                    'المواجهة غير متاحة',
+                  ),
+                  body: productionErrorMessage(snapshot.error!),
+                );
+              }
+              if (!snapshot.hasData || snapshot.data == null) {
+                return _ProductionEmpty(
+                  icon: Icons.sports_esports_rounded,
+                  title: abuText(
+                    context,
+                    'Room not found',
+                    'الغرفة غير موجودة',
+                  ),
+                  body: abuText(
+                    context,
+                    'Return to Game Center and create or join another room.',
+                    'ارجع إلى مركز الألعاب وأنشئ غرفة أخرى أو انضم إليها.',
+                  ),
+                );
               }
               final room = snapshot.data!;
               return _FanDuelArena(
@@ -1187,14 +1397,18 @@ class _FanDuelArenaState extends State<_FanDuelArena> {
           children: [
             const _ProductionLottieLoader(),
             const SizedBox(height: 20),
-            const Text('SHARE THIS ROOM CODE'),
+            Text(abuText(context, 'SHARE THIS ROOM CODE', 'شارك رمز الغرفة')),
             SelectableText(
               room.code,
               style: _display(58, color: _lime, spacing: 4),
             ),
-            const Text(
-              'Waiting for the second fan…',
-              style: TextStyle(color: _muted),
+            Text(
+              abuText(
+                context,
+                'Waiting for the second fan…',
+                'بانتظار المشجع الثاني…',
+              ),
+              style: const TextStyle(color: _muted),
             ),
           ],
         ),
@@ -1206,6 +1420,20 @@ class _FanDuelArenaState extends State<_FanDuelArena> {
     return StreamBuilder<Map<String, DateTime>>(
       stream: widget.repository.watchDuelTaps(room.code),
       builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return _ProductionEmpty(
+            icon: Icons.cloud_off_rounded,
+            title: abuText(
+              context,
+              'Duel updates unavailable',
+              'تحديثات المواجهة غير متاحة',
+            ),
+            body: productionErrorMessage(snapshot.error!),
+          );
+        }
         final taps = snapshot.data ?? const {};
         final ordered = taps.entries.toList()
           ..sort((a, b) => a.value.compareTo(b.value));
@@ -1228,7 +1456,11 @@ class _FanDuelArenaState extends State<_FanDuelArena> {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    'ROOM ${room.code}',
+                    abuText(
+                      context,
+                      'ROOM ${room.code}',
+                      'الغرفة ${room.code}',
+                    ),
                     style: const TextStyle(color: _muted),
                   ),
                   const SizedBox(height: 36),
@@ -1239,11 +1471,18 @@ class _FanDuelArenaState extends State<_FanDuelArena> {
                       size: 72,
                     ),
                     const SizedBox(height: 12),
-                    Text('$winnerName WINS', style: _display(43, color: _gold)),
+                    Text(
+                      abuText(
+                        context,
+                        '$winnerName WINS',
+                        'الفائز: $winnerName',
+                      ),
+                      style: _display(43, color: _gold),
+                    ),
                   ] else ...[
                     Text(
                       started
-                          ? 'TAP!'
+                          ? abuText(context, 'TAP!', 'اضغط!')
                           : '${math.max(1, remaining.inSeconds + 1)}',
                       style: _display(72, color: started ? _lime : _gold),
                     ),
@@ -1257,7 +1496,15 @@ class _FanDuelArenaState extends State<_FanDuelArena> {
                           backgroundColor: started ? _lime : _surface2,
                           foregroundColor: _ink,
                         ),
-                        child: Text(mine ? 'TAP REGISTERED' : 'STRIKE'),
+                        child: Text(
+                          mine
+                              ? abuText(
+                                  context,
+                                  'TAP REGISTERED',
+                                  'تم تسجيل الضغط',
+                                )
+                              : abuText(context, 'STRIKE', 'اضغط'),
+                        ),
                       ),
                     ),
                   ],
@@ -1338,6 +1585,17 @@ class _ProductionFanWar extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const _ProductionSkeleton(height: 360);
         }
+        if (snapshot.hasError) {
+          return _ProductionEmpty(
+            icon: Icons.cloud_off_rounded,
+            title: abuText(
+              context,
+              'Fan War unavailable',
+              'حرب الجماهير غير متاحة',
+            ),
+            body: productionErrorMessage(snapshot.error!),
+          );
+        }
         final entries = snapshot.data ?? const [];
         final barca = entries
             .where((entry) => entry.supportedTeam == 'Barcelona')
@@ -1381,9 +1639,9 @@ class _ProductionFanWarContent extends StatelessWidget {
       );
       final contributors = _FanWarContributorCard(
         entries: entries.take(12).toList(),
-        desktop: constraints.maxWidth >= 1040,
+        desktop: constraints.maxWidth >= 1100,
       );
-      if (constraints.maxWidth < 1040) {
+      if (constraints.maxWidth < 1100) {
         return Column(
           children: [battle, const SizedBox(height: 16), contributors],
         );
@@ -1409,7 +1667,11 @@ class _ProductionFanWarContent extends StatelessWidget {
                 child: _FanWarKpi(
                   icon: Icons.groups_rounded,
                   value: '${entries.length}',
-                  label: 'ACTIVE SUPPORTERS',
+                  label: abuText(
+                    context,
+                    'ACTIVE SUPPORTERS',
+                    'المشجعون النشطون',
+                  ),
                   color: _lime,
                 ),
               ),
@@ -1418,7 +1680,7 @@ class _ProductionFanWarContent extends StatelessWidget {
                 child: _FanWarKpi(
                   icon: Icons.stars_rounded,
                   value: '${barcaPoints + madridPoints}',
-                  label: 'VERIFIED POINTS',
+                  label: abuText(context, 'VERIFIED POINTS', 'النقاط الموثقة'),
                   color: _gold,
                 ),
               ),
@@ -1426,8 +1688,18 @@ class _ProductionFanWarContent extends StatelessWidget {
               Expanded(
                 child: _FanWarKpi(
                   icon: Icons.flag_rounded,
-                  value: leader,
-                  label: margin == 0 ? 'CURRENTLY TIED' : '$margin POINT LEAD',
+                  value: leader == 'LEVEL'
+                      ? abuText(context, 'LEVEL', 'تعادل')
+                      : leader == 'BARCELONA'
+                      ? abuText(context, 'BARCELONA', 'برشلونة')
+                      : abuText(context, 'REAL MADRID', 'ريال مدريد'),
+                  label: margin == 0
+                      ? abuText(context, 'CURRENTLY TIED', 'تعادل حالياً')
+                      : abuText(
+                          context,
+                          '$margin POINT LEAD',
+                          'متقدم بفارق $margin نقطة',
+                        ),
                   color: leader == 'BARCELONA' ? _blue : _gold,
                 ),
               ),
@@ -1436,7 +1708,11 @@ class _ProductionFanWarContent extends StatelessWidget {
                 child: _FanWarKpi(
                   icon: Icons.sports_soccer_rounded,
                   value: '$barcaFans / $madridFans',
-                  label: 'BARÇA / MADRID FANS',
+                  label: abuText(
+                    context,
+                    'BARÇA / MADRID FANS',
+                    'مشجعو برشلونة / مدريد',
+                  ),
                   color: _red,
                 ),
               ),
@@ -1539,8 +1815,13 @@ class _FanWarBattleCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const _LiveDot(text: 'LIVE BATTLE'),
-                Text('ALL TIME', style: _display(13, color: _muted)),
+                _LiveDot(
+                  text: abuText(context, 'LIVE BATTLE', 'المواجهة المباشرة'),
+                ),
+                Text(
+                  abuText(context, 'ALL TIME', 'كل الوقت'),
+                  style: _display(13, color: _muted),
+                ),
               ],
             ),
             const SizedBox(height: 28),
@@ -1548,7 +1829,12 @@ class _FanWarBattleCard extends StatelessWidget {
               children: [
                 const _ProductionTeamBadge(team: 'Barcelona', source: ''),
                 const SizedBox(width: 12),
-                Expanded(child: Text('BARCELONA', style: _display(22))),
+                Expanded(
+                  child: Text(
+                    abuText(context, 'BARCELONA', 'برشلونة'),
+                    style: _display(22),
+                  ),
+                ),
                 Text(
                   '${(barcaShare * 100).toStringAsFixed(1)}%',
                   style: _display(30, color: _blue),
@@ -1581,7 +1867,7 @@ class _FanWarBattleCard extends StatelessWidget {
             Row(
               children: [
                 Text(
-                  '$barcaPoints PTS',
+                  abuText(context, '$barcaPoints PTS', '$barcaPoints نقطة'),
                   style: const TextStyle(
                     color: _blue,
                     fontWeight: FontWeight.w900,
@@ -1589,7 +1875,7 @@ class _FanWarBattleCard extends StatelessWidget {
                 ),
                 const Spacer(),
                 Text(
-                  '$madridPoints PTS',
+                  abuText(context, '$madridPoints PTS', '$madridPoints نقطة'),
                   style: const TextStyle(
                     color: _gold,
                     fontWeight: FontWeight.w900,
@@ -1617,12 +1903,20 @@ class _FanWarContributorCard extends StatelessWidget {
     child: Padding(
       padding: EdgeInsets.all(desktop ? 22 : 0),
       child: entries.isEmpty
-          ? const Padding(
-              padding: EdgeInsets.all(28),
+          ? Padding(
+              padding: const EdgeInsets.all(28),
               child: _ProductionEmpty(
                 icon: Icons.groups_rounded,
-                title: 'No contributors yet',
-                body: 'Verified fan activity will populate this table.',
+                title: abuText(
+                  context,
+                  'No contributors yet',
+                  'لا يوجد مساهمون بعد',
+                ),
+                body: abuText(
+                  context,
+                  'Verified fan activity will populate this table.',
+                  'سيظهر نشاط المشجعين الموثق في هذا الجدول.',
+                ),
               ),
             )
           : Column(
@@ -1632,11 +1926,22 @@ class _FanWarContributorCard extends StatelessWidget {
                   Row(
                     children: [
                       Expanded(
-                        child: Text('TOP CONTRIBUTORS', style: _display(20)),
+                        child: Text(
+                          abuText(
+                            context,
+                            'TOP CONTRIBUTORS',
+                            'أبرز المساهمين',
+                          ),
+                          style: _display(20),
+                        ),
                       ),
-                      const Text(
-                        'LIVE VERIFIED TOTALS',
-                        style: TextStyle(
+                      Text(
+                        abuText(
+                          context,
+                          'LIVE VERIFIED TOTALS',
+                          'إجماليات موثقة مباشرة',
+                        ),
+                        style: const TextStyle(
                           color: _lime,
                           fontSize: 10,
                           fontWeight: FontWeight.w900,
@@ -1646,16 +1951,28 @@ class _FanWarContributorCard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 15),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
                     child: Row(
                       children: [
-                        SizedBox(width: 48, child: Text('RANK')),
-                        Expanded(flex: 3, child: Text('SUPPORTER')),
-                        Expanded(flex: 2, child: Text('CLUB')),
+                        SizedBox(
+                          width: 48,
+                          child: Text(abuText(context, 'RANK', 'الترتيب')),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: Text(abuText(context, 'SUPPORTER', 'المشجع')),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(abuText(context, 'CLUB', 'النادي')),
+                        ),
                         SizedBox(
                           width: 90,
-                          child: Text('POINTS', textAlign: TextAlign.end),
+                          child: Text(
+                            abuText(context, 'POINTS', 'النقاط'),
+                            textAlign: TextAlign.end,
+                          ),
                         ),
                       ],
                     ),
@@ -1734,12 +2051,32 @@ class _ProductionAchievements extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const milestones = <(int, String, IconData)>[
-      (100, 'First Century', Icons.looks_one_rounded),
-      (500, 'Rising Fan', Icons.trending_up_rounded),
-      (1000, 'One Thousand Club', Icons.workspace_premium_rounded),
-      (5000, 'Ultra Supporter', Icons.local_fire_department_rounded),
-      (10000, 'Abu 3meer Legend', Icons.emoji_events_rounded),
+    final milestones = <(int, String, IconData)>[
+      (
+        100,
+        abuText(context, 'First Century', 'المئة الأولى'),
+        Icons.looks_one_rounded,
+      ),
+      (
+        500,
+        abuText(context, 'Rising Fan', 'مشجع صاعد'),
+        Icons.trending_up_rounded,
+      ),
+      (
+        1000,
+        abuText(context, 'One Thousand Club', 'نادي الألف'),
+        Icons.workspace_premium_rounded,
+      ),
+      (
+        5000,
+        abuText(context, 'Ultra Supporter', 'مشجع ألترا'),
+        Icons.local_fire_department_rounded,
+      ),
+      (
+        10000,
+        abuText(context, 'Abu 3meer Legend', 'أسطورة أبو عمير'),
+        Icons.emoji_events_rounded,
+      ),
     ];
     return _PageFrame(
       kicker: abuText(
@@ -1767,8 +2104,12 @@ class _ProductionAchievements extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     unlocked
-                        ? 'UNLOCKED'
-                        : '${profile.totalPoints} / ${milestone.$1} PTS',
+                        ? abuText(context, 'UNLOCKED', 'تم الفتح')
+                        : abuText(
+                            context,
+                            '${profile.totalPoints} / ${milestone.$1} PTS',
+                            '${profile.totalPoints} / ${milestone.$1} نقطة',
+                          ),
                     style: TextStyle(
                       color: unlocked ? _lime : _muted,
                       fontWeight: FontWeight.w900,
@@ -1805,32 +2146,56 @@ class _ProductionRewards extends StatelessWidget {
       ),
       title: abuText(context, 'Rewards', 'المكافآت'),
       child: !mock
-          ? const _ProductionEmpty(
+          ? _ProductionEmpty(
               icon: Icons.card_giftcard_rounded,
-              title: 'Reward catalogue coming soon',
-              body: 'The owner will publish real rewards here. No redemption is simulated and no points are removed until the catalogue is connected.',
+              title: abuText(
+                context,
+                'Reward catalogue coming soon',
+                'متجر المكافآت قريباً',
+              ),
+              body: abuText(
+                context,
+                'The owner will publish real rewards here. No redemption is simulated and no points are removed until the catalogue is connected.',
+                'سينشر المالك المكافآت الحقيقية هنا. لن تتم محاكاة الاستبدال أو خصم النقاط حتى يتم ربط المتجر.',
+              ),
             )
           : _ResponsiveGrid(
               children:
-                  const [
+                  [
                         (
-                          'SIGNED HOME SHIRT',
-                          '5,000 PTS',
+                          abuText(
+                            context,
+                            'SIGNED HOME SHIRT',
+                            'قميص منزلي موقّع',
+                          ),
+                          abuText(context, '5,000 PTS', '5,000 نقطة'),
                           Icons.checkroom_rounded,
                         ),
                         (
-                          'ABU 3MEER VIDEO SHOUTOUT',
-                          '2,500 PTS',
+                          abuText(
+                            context,
+                            'ABU 3MEER VIDEO SHOUTOUT',
+                            'تحية فيديو من أبو عمير',
+                          ),
+                          abuText(context, '2,500 PTS', '2,500 نقطة'),
                           Icons.record_voice_over_rounded,
                         ),
                         (
-                          '€25 STORE CREDIT',
-                          '1,800 PTS',
+                          abuText(
+                            context,
+                            '€25 STORE CREDIT',
+                            'رصيد متجر بقيمة €25',
+                          ),
+                          abuText(context, '1,800 PTS', '1,800 نقطة'),
                           Icons.wallet_giftcard_rounded,
                         ),
                         (
-                          'MONTHLY GIVEAWAY ENTRY',
-                          '500 PTS',
+                          abuText(
+                            context,
+                            'MONTHLY GIVEAWAY ENTRY',
+                            'دخول السحب الشهري',
+                          ),
+                          abuText(context, '500 PTS', '500 نقطة'),
                           Icons.confirmation_number_rounded,
                         ),
                       ]
@@ -1853,11 +2218,17 @@ class _ProductionRewards extends StatelessWidget {
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                const SizedBox(
+                                SizedBox(
                                   width: double.infinity,
                                   child: OutlinedButton(
                                     onPressed: null,
-                                    child: Text('PREVIEW REWARD'),
+                                    child: Text(
+                                      abuText(
+                                        context,
+                                        'PREVIEW REWARD',
+                                        'معاينة المكافأة',
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -2413,11 +2784,11 @@ class _ProductionStreak extends StatelessWidget {
                     style: _display(22),
                   ),
                   const SizedBox(height: 16),
-                  for (final milestone in const [
-                    (3, 'Warm up'),
-                    (7, 'On fire'),
-                    (14, 'Unstoppable'),
-                    (30, 'Club legend'),
+                  for (final milestone in [
+                    (3, abuText(context, 'Warm up', 'بداية قوية')),
+                    (7, abuText(context, 'On fire', 'متألق')),
+                    (14, abuText(context, 'Unstoppable', 'لا يُوقَف')),
+                    (30, abuText(context, 'Club legend', 'أسطورة النادي')),
                   ])
                     ListTile(
                       contentPadding: EdgeInsets.zero,
@@ -2458,7 +2829,7 @@ class _ProductionStreak extends StatelessWidget {
               ),
             ),
           );
-          if (constraints.maxWidth >= 820) {
+          if (constraints.maxWidth >= 1100) {
             return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -2526,9 +2897,16 @@ class _ProductionObsOverlayState extends State<_ProductionObsOverlay> {
               children: [
                 Row(
                   children: [
-                    const _LiveDot(text: 'LIVE'),
+                    _LiveDot(text: abuText(context, 'LIVE', 'مباشر')),
                     const Spacer(),
-                    Text('ABU 3MEER LEADERBOARD', style: _display(17)),
+                    Text(
+                      abuText(
+                        context,
+                        'ABU 3MEER LEADERBOARD',
+                        'ترتيب أبو عمير',
+                      ),
+                      style: _display(17),
+                    ),
                     const SizedBox(width: 10),
                     const _LogoMark(size: 30),
                   ],
@@ -2537,7 +2915,42 @@ class _ProductionObsOverlayState extends State<_ProductionObsOverlay> {
                 StreamBuilder<List<LeaderboardEntry>>(
                   stream: widget.repository.watchLeaderboard(monthly: false),
                   builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Expanded(
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
+                    if (snapshot.hasError) {
+                      return Expanded(
+                        child: _ProductionEmpty(
+                          icon: Icons.cloud_off_rounded,
+                          title: abuText(
+                            context,
+                            'Leaderboard unavailable',
+                            'الترتيب غير متاح',
+                          ),
+                          body: productionErrorMessage(snapshot.error!),
+                        ),
+                      );
+                    }
                     final entries = snapshot.data ?? const [];
+                    if (entries.isEmpty) {
+                      return Expanded(
+                        child: _ProductionEmpty(
+                          icon: Icons.leaderboard_rounded,
+                          title: abuText(
+                            context,
+                            'No rankings yet',
+                            'لا يوجد ترتيب بعد',
+                          ),
+                          body: abuText(
+                            context,
+                            'Rankings will appear after fans earn points.',
+                            'سيظهر الترتيب بعد أن يجمع المشجعون النقاط.',
+                          ),
+                        ),
+                      );
+                    }
                     return Expanded(
                       child: ListView.separated(
                         itemCount: math.min(10, entries.length),
@@ -2568,9 +2981,13 @@ class _ProductionObsOverlayState extends State<_ProductionObsOverlay> {
                     );
                   },
                 ),
-                const Text(
-                  'Browser Source · transparent-safe · updates live',
-                  style: TextStyle(color: _muted, fontSize: 10),
+                Text(
+                  abuText(
+                    context,
+                    'Browser Source · transparent-safe · updates live',
+                    'مصدر متصفح · يدعم الشفافية · تحديث مباشر',
+                  ),
+                  style: const TextStyle(color: _muted, fontSize: 10),
                 ),
               ],
             ),
@@ -2587,7 +3004,7 @@ class _ProductionObsOverlayState extends State<_ProductionObsOverlay> {
                 color: _gold,
               ),
               const SizedBox(width: 10),
-              const _LiveDot(text: 'LIVE'),
+              _LiveDot(text: abuText(context, 'LIVE', 'مباشر')),
             ],
           ),
         ),
@@ -2597,13 +3014,338 @@ class _ProductionObsOverlayState extends State<_ProductionObsOverlay> {
           child: FilledButton.icon(
             onPressed: widget.onExit,
             icon: const Icon(Icons.close_fullscreen_rounded),
-            label: const Text('EXIT OVERLAY'),
+            label: Text(abuText(context, 'EXIT OVERLAY', 'إغلاق العرض')),
           ),
         ),
       ],
     ),
   );
 }
+
+const int _maximumCampaignImageBytes = 8 * 1024 * 1024;
+const Set<String> _campaignImageExtensions = {
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'gif',
+};
+
+String? _campaignImageUrlError(BuildContext context, String raw) {
+  if (raw.trim().isEmpty) return null;
+  if (externalHttpUri(raw) == null) {
+    return abuText(
+      context,
+      'Enter a valid HTTPS image URL.',
+      'أدخل رابط صورة HTTPS صالحاً.',
+    );
+  }
+  return null;
+}
+
+Future<String?> _pickedCampaignImageError(
+  BuildContext context,
+  XFile image,
+) async {
+  final tooLargeMessage = abuText(
+    context,
+    'The image must be smaller than 8 MB.',
+    'يجب أن يكون حجم الصورة أقل من 8 ميغابايت.',
+  );
+  final emptyMessage = abuText(
+    context,
+    'The selected image is empty.',
+    'الصورة المحددة فارغة.',
+  );
+  final extension = image.name.contains('.')
+      ? image.name.split('.').last.toLowerCase()
+      : '';
+  final mimeType = image.mimeType?.toLowerCase();
+  if (!_campaignImageExtensions.contains(extension) ||
+      (mimeType != null && !mimeType.startsWith('image/'))) {
+    return abuText(
+      context,
+      'Choose a JPG, PNG, WebP or GIF image.',
+      'اختر صورة بصيغة JPG أو PNG أو WebP أو GIF.',
+    );
+  }
+  final length = await image.length();
+  if (length > _maximumCampaignImageBytes) {
+    return tooLargeMessage;
+  }
+  if (length == 0) {
+    return emptyMessage;
+  }
+  return null;
+}
+
+Widget _campaignImagePreview({
+  required BuildContext context,
+  required String imageUrl,
+  dynamic imageBytes,
+  double height = 220,
+}) {
+  final fallback = ColoredBox(
+    color: _surface2,
+    child: Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.broken_image_rounded, color: _muted),
+            const SizedBox(height: 8),
+            Text(
+              abuText(
+                context,
+                'Image unavailable. Check the URL or upload another image.',
+                'الصورة غير متاحة. تحقق من الرابط أو ارفع صورة أخرى.',
+              ),
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _muted, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  final child = imageBytes != null
+      ? Image.memory(
+          imageBytes,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => fallback,
+        )
+      : imageUrl.trim().isEmpty
+      ? ColoredBox(
+          color: _surface2,
+          child: Center(
+            child: Text(
+              abuText(context, 'No image selected', 'لم يتم اختيار صورة'),
+              style: const TextStyle(color: _muted),
+            ),
+          ),
+        )
+      : Stack(
+          fit: StackFit.expand,
+          children: [
+            const Center(child: CircularProgressIndicator()),
+            _ProductionRemoteImage(
+              url: externalHttpUri(imageUrl)?.toString() ?? imageUrl,
+              fit: BoxFit.cover,
+              fallback: fallback,
+            ),
+          ],
+        );
+  return ClipRRect(
+    borderRadius: BorderRadius.circular(18),
+    child: SizedBox(height: height, width: double.infinity, child: child),
+  );
+}
+
+Future<void> _showAdminChallengePreview(
+  BuildContext context, {
+  required String kind,
+  required String title,
+  required String description,
+  required int rewardPoints,
+  required String status,
+}) => showDialog<void>(
+  context: context,
+  builder: (context) => AlertDialog(
+    title: Text(abuText(context, 'CHALLENGE PREVIEW', 'معاينة التحدي')),
+    content: SizedBox(
+      width: 500,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: _lime.withValues(alpha: .12),
+                    child: Icon(
+                      kind == 'playerCard'
+                          ? Icons.style_rounded
+                          : Icons.subtitles_rounded,
+                      color: _lime,
+                    ),
+                  ),
+                  const Spacer(),
+                  _RewardChip(text: '+$rewardPoints PTS'),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Text(
+                title.trim().isEmpty
+                    ? abuText(context, 'Untitled challenge', 'تحدٍ بلا عنوان')
+                    : title.trim(),
+                style: _display(24),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                description.trim().isEmpty
+                    ? abuText(
+                        context,
+                        'Add a description before publishing.',
+                        'أضف وصفاً قبل النشر.',
+                      )
+                    : description.trim(),
+                style: const TextStyle(color: _muted, height: 1.5),
+              ),
+              const SizedBox(height: 18),
+              _LiveDot(
+                text: status == 'open'
+                    ? abuText(context, 'LIVE', 'مباشر')
+                    : status.toUpperCase(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(abuText(context, 'CLOSE', 'إغلاق')),
+      ),
+    ],
+  ),
+);
+
+Future<void> _showAdminPostPreview(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String imageUrl,
+  required String authorName,
+}) => showDialog<void>(
+  context: context,
+  builder: (context) => AlertDialog(
+    title: Text(abuText(context, 'POST PREVIEW', 'معاينة المنشور')),
+    content: SizedBox(
+      width: 620,
+      child: SingleChildScrollView(
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (imageUrl.trim().isNotEmpty)
+                _campaignImagePreview(
+                  context: context,
+                  imageUrl: imageUrl,
+                  height: 240,
+                ),
+              Padding(
+                padding: const EdgeInsets.all(22),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      authorName.toUpperCase(),
+                      style: const TextStyle(
+                        color: _lime,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      title.trim().isEmpty
+                          ? abuText(context, 'Untitled post', 'منشور بلا عنوان')
+                          : title.trim(),
+                      style: _display(27),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      body.trim().isEmpty
+                          ? abuText(
+                              context,
+                              'Add post content before publishing.',
+                              'أضف محتوى المنشور قبل النشر.',
+                            )
+                          : body.trim(),
+                      style: const TextStyle(color: _muted, height: 1.6),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(abuText(context, 'CLOSE', 'إغلاق')),
+      ),
+    ],
+  ),
+);
+
+Future<void> _showAdminAnnouncementPreview(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String imageUrl,
+  required String buttonLabel,
+  dynamic imageBytes,
+}) => showDialog<void>(
+  context: context,
+  builder: (context) => AlertDialog(
+    clipBehavior: Clip.antiAlias,
+    titlePadding: EdgeInsets.zero,
+    title: imageUrl.trim().isEmpty && imageBytes == null
+        ? null
+        : _campaignImagePreview(
+            context: context,
+            imageUrl: imageUrl,
+            imageBytes: imageBytes,
+            height: 230,
+          ),
+    content: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.trim().isEmpty
+                ? abuText(context, 'Popup title', 'عنوان النافذة')
+                : title.trim(),
+            style: _display(27),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            body.trim().isEmpty
+                ? abuText(context, 'Popup message', 'رسالة النافذة')
+                : body.trim(),
+            style: const TextStyle(color: _muted, height: 1.5),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(abuText(context, 'LATER', 'لاحقاً')),
+      ),
+      FilledButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(
+          buttonLabel.trim().isEmpty
+              ? abuText(context, 'OPEN', 'فتح')
+              : buttonLabel.trim(),
+        ),
+      ),
+    ],
+  ),
+);
 
 class _ProductionAdminTools extends StatelessWidget {
   const _ProductionAdminTools({
@@ -2616,35 +3358,51 @@ class _ProductionAdminTools extends StatelessWidget {
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
-      if (constraints.maxWidth < 980) return _buildMobile(context);
+      if (constraints.maxWidth < 1100) return _buildMobile(context);
       final actions = <Widget>[
         _AdminQuickAction(
           icon: Icons.bolt_rounded,
-          label: 'NEW CHALLENGE',
-          detail: 'Publish a phrase, quiz or Player Card challenge.',
+          label: abuText(context, 'NEW CHALLENGE', 'تحدٍ جديد'),
+          detail: abuText(
+            context,
+            'Publish a phrase, quiz or Player Card challenge.',
+            'انشر عبارة أو اختباراً أو تحدي بطاقة لاعب.',
+          ),
           color: _lime,
           primary: true,
           onTap: () => createChallenge(context),
         ),
         _AdminQuickAction(
           icon: Icons.post_add_rounded,
-          label: 'NEW POST',
-          detail: 'Add an article, image, reaction or external link.',
+          label: abuText(context, 'NEW POST', 'منشور جديد'),
+          detail: abuText(
+            context,
+            'Add an article, image, reaction or external link.',
+            'أضف مقالاً أو صورة أو تفاعلاً أو رابطاً خارجياً.',
+          ),
           color: _blue,
           onTap: () => createPost(context),
         ),
         _AdminQuickAction(
           icon: Icons.campaign_rounded,
-          label: 'LAUNCH POPUP',
-          detail: 'Schedule an in-app campaign for every platform.',
+          label: abuText(context, 'LAUNCH POPUP', 'نافذة بدء'),
+          detail: abuText(
+            context,
+            'Schedule an in-app campaign for every platform.',
+            'جدول حملة داخل التطبيق لكل المنصات.',
+          ),
           color: _gold,
           onTap: () => editAnnouncement(context),
         ),
         if (profile.canManageRoles)
           _AdminQuickAction(
             icon: Icons.manage_accounts_rounded,
-            label: 'ROLES & ADMINS',
-            detail: 'Grant scoped access to trusted collaborators.',
+            label: abuText(context, 'ROLES & ADMINS', 'الأدوار والمشرفون'),
+            detail: abuText(
+              context,
+              'Grant scoped access to trusted collaborators.',
+              'امنح صلاحيات محددة للمتعاونين الموثوقين.',
+            ),
             color: _red,
             onTap: () => manageRoles(context),
           ),
@@ -2686,15 +3444,26 @@ class _ProductionAdminTools extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('ENGAGEMENT CONTROL', style: _display(22)),
                             Text(
-                              'Live content operations · signed in as ${profile.role.toUpperCase()}',
+                              abuText(
+                                context,
+                                'ENGAGEMENT CONTROL',
+                                'إدارة التفاعل',
+                              ),
+                              style: _display(22),
+                            ),
+                            Text(
+                              abuText(
+                                context,
+                                'Live content operations · signed in as ${profile.role.toUpperCase()}',
+                                'إدارة المحتوى المباشر · مسجل بصلاحية ${profile.role}',
+                              ),
                               style: const TextStyle(color: _muted),
                             ),
                           ],
                         ),
                       ),
-                      const _LiveDot(text: 'REAL-TIME'),
+                      _LiveDot(text: abuText(context, 'REAL-TIME', 'فوري')),
                     ],
                   ),
                   const SizedBox(height: 18),
@@ -2716,10 +3485,17 @@ class _ProductionAdminTools extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('CONTENT & ACCESS', style: _display(22)),
+          Text(
+            abuText(context, 'CONTENT & ACCESS', 'المحتوى والصلاحيات'),
+            style: _display(22),
+          ),
           const SizedBox(height: 6),
           Text(
-            'Publish the experiences users see without rebuilding the app. Signed in as ${profile.role}.',
+            abuText(
+              context,
+              'Publish the experiences users see without rebuilding the app. Signed in as ${profile.role}.',
+              'انشر التجارب التي يراها المستخدمون دون إعادة بناء التطبيق. مسجل بصلاحية ${profile.role}.',
+            ),
             style: const TextStyle(color: _muted),
           ),
           const SizedBox(height: 16),
@@ -2730,23 +3506,25 @@ class _ProductionAdminTools extends StatelessWidget {
               FilledButton.icon(
                 onPressed: () => createChallenge(context),
                 icon: const Icon(Icons.bolt_rounded),
-                label: const Text('NEW CHALLENGE'),
+                label: Text(abuText(context, 'NEW CHALLENGE', 'تحدٍ جديد')),
               ),
               OutlinedButton.icon(
                 onPressed: () => createPost(context),
                 icon: const Icon(Icons.post_add_rounded),
-                label: const Text('NEW POST'),
+                label: Text(abuText(context, 'NEW POST', 'منشور جديد')),
               ),
               OutlinedButton.icon(
                 onPressed: () => editAnnouncement(context),
                 icon: const Icon(Icons.campaign_rounded),
-                label: const Text('LAUNCH POPUP'),
+                label: Text(abuText(context, 'LAUNCH POPUP', 'نافذة بدء')),
               ),
               if (profile.canManageRoles)
                 OutlinedButton.icon(
                   onPressed: () => manageRoles(context),
                   icon: const Icon(Icons.manage_accounts_rounded),
-                  label: const Text('ROLES & ADMINS'),
+                  label: Text(
+                    abuText(context, 'ROLES & ADMINS', 'الأدوار والمشرفون'),
+                  ),
                 ),
             ],
           ),
@@ -2774,7 +3552,7 @@ class _ProductionAdminTools extends StatelessWidget {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Create challenge'),
+          title: Text(abuText(context, 'Create challenge', 'إنشاء تحدٍ')),
           content: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 540),
             child: SingleChildScrollView(
@@ -2782,14 +3560,18 @@ class _ProductionAdminTools extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   SegmentedButton<String>(
-                    segments: const [
+                    segments: [
                       ButtonSegment(
                         value: 'videoQuestion',
-                        label: Text('SECRET PHRASE'),
+                        label: Text(
+                          abuText(context, 'SECRET PHRASE', 'العبارة السرية'),
+                        ),
                       ),
                       ButtonSegment(
                         value: 'playerCard',
-                        label: Text('PLAYER CARD'),
+                        label: Text(
+                          abuText(context, 'PLAYER CARD', 'بطاقة اللاعب'),
+                        ),
                       ),
                     ],
                     selected: {kind},
@@ -2801,71 +3583,99 @@ class _ProductionAdminTools extends StatelessWidget {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: status,
-                    decoration: const InputDecoration(labelText: 'Status'),
-                    items: const [
-                      DropdownMenuItem(value: 'draft', child: Text('Draft')),
+                    decoration: InputDecoration(
+                      labelText: abuText(context, 'Status', 'الحالة'),
+                    ),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'draft',
+                        child: Text(abuText(context, 'Draft', 'مسودة')),
+                      ),
                       DropdownMenuItem(
                         value: 'scheduled',
-                        child: Text('Scheduled'),
+                        child: Text(abuText(context, 'Scheduled', 'مجدول')),
                       ),
-                      DropdownMenuItem(value: 'open', child: Text('Live')),
+                      DropdownMenuItem(
+                        value: 'open',
+                        child: Text(abuText(context, 'Live', 'مباشر')),
+                      ),
                       DropdownMenuItem(
                         value: 'disabled',
-                        child: Text('Disabled'),
+                        child: Text(abuText(context, 'Disabled', 'معطّل')),
                       ),
                     ],
                     onChanged: (value) =>
                         setDialogState(() => status = value ?? 'draft'),
                   ),
                   _AdminDateTile(
-                    label: 'Starts',
+                    label: abuText(context, 'Starts', 'يبدأ'),
                     value: startsAt,
                     onChanged: (value) =>
                         setDialogState(() => startsAt = value),
                   ),
                   _AdminDateTile(
-                    label: 'Ends',
+                    label: abuText(context, 'Ends', 'ينتهي'),
                     value: endsAt,
                     onChanged: (value) => setDialogState(() => endsAt = value),
                   ),
                   const SizedBox(height: 14),
                   TextField(
                     controller: title,
-                    decoration: const InputDecoration(labelText: 'Title'),
+                    decoration: InputDecoration(
+                      labelText: abuText(context, 'Title', 'العنوان'),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: description,
                     maxLines: 3,
-                    decoration: const InputDecoration(labelText: 'Description'),
+                    decoration: InputDecoration(
+                      labelText: abuText(context, 'Description', 'الوصف'),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: video,
-                    decoration: const InputDecoration(
-                      labelText: 'YouTube/video URL',
+                    decoration: InputDecoration(
+                      labelText: abuText(
+                        context,
+                        'YouTube/video URL',
+                        'رابط يوتيوب/الفيديو',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: answer,
-                    decoration: const InputDecoration(
-                      labelText: 'Private correct answer',
+                    decoration: InputDecoration(
+                      labelText: abuText(
+                        context,
+                        'Private correct answer',
+                        'الإجابة الصحيحة الخاصة',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: points,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Reward points',
+                    decoration: InputDecoration(
+                      labelText: abuText(
+                        context,
+                        'Reward points',
+                        'نقاط المكافأة',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
                   DropdownButtonFormField<int>(
                     initialValue: maximumAttempts,
-                    decoration: const InputDecoration(
-                      labelText: 'Maximum attempts',
+                    decoration: InputDecoration(
+                      labelText: abuText(
+                        context,
+                        'Maximum attempts',
+                        'الحد الأقصى للمحاولات',
+                      ),
                     ),
                     items: const [1, 2, 3, 5, 10]
                         .map(
@@ -2883,14 +3693,26 @@ class _ProductionAdminTools extends StatelessWidget {
                     value: memberOnly,
                     onChanged: (value) =>
                         setDialogState(() => memberOnly = value),
-                    title: const Text('YouTube members only'),
+                    title: Text(
+                      abuText(
+                        context,
+                        'YouTube members only',
+                        'لأعضاء يوتيوب فقط',
+                      ),
+                    ),
                   ),
                   SwitchListTile.adaptive(
                     contentPadding: EdgeInsets.zero,
                     value: notifyOnLive,
                     onChanged: (value) =>
                         setDialogState(() => notifyOnLive = value),
-                    title: const Text('Notify users when live'),
+                    title: Text(
+                      abuText(
+                        context,
+                        'Notify users when live',
+                        'إشعار المستخدمين عند النشر',
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -2899,11 +3721,46 @@ class _ProductionAdminTools extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('CANCEL'),
+              child: Text(abuText(context, 'CANCEL', 'إلغاء')),
+            ),
+            TextButton.icon(
+              onPressed: () => _showAdminChallengePreview(
+                context,
+                kind: kind,
+                title: title.text,
+                description: description.text,
+                rewardPoints: int.tryParse(points.text) ?? 0,
+                status: status,
+              ),
+              icon: const Icon(Icons.visibility_rounded),
+              label: Text(abuText(context, 'PREVIEW', 'معاينة')),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('PUBLISH'),
+              onPressed: () {
+                final reward = int.tryParse(points.text);
+                final invalid =
+                    title.text.trim().isEmpty ||
+                    answer.text.trim().isEmpty ||
+                    reward == null ||
+                    reward <= 0 ||
+                    !endsAt.isAfter(startsAt);
+                if (invalid) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        abuText(
+                          context,
+                          'Add a title, correct answer, positive reward and valid schedule.',
+                          'أضف عنواناً وإجابة صحيحة ومكافأة موجبة وجدولاً زمنياً صالحاً.',
+                        ),
+                      ),
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(context, true);
+              },
+              child: Text(abuText(context, 'PUBLISH', 'نشر')),
             ),
           ],
         ),
@@ -2917,7 +3774,7 @@ class _ProductionAdminTools extends StatelessWidget {
         description: description.text,
         videoUrl: video.text,
         answer: answer.text,
-        rewardPoints: int.parse(points.text),
+        rewardPoints: int.tryParse(points.text) ?? 0,
         availableFrom: startsAt,
         availableUntil: endsAt,
         status: status,
@@ -2925,7 +3782,7 @@ class _ProductionAdminTools extends StatelessWidget {
         memberOnly: memberOnly,
         notifyOnLive: notifyOnLive,
       );
-    }, 'Challenge published.');
+    }, abuText(context, 'Challenge published.', 'تم نشر التحدي.'));
   }
 
   Future<void> createPost(BuildContext context) async {
@@ -2936,7 +3793,7 @@ class _ProductionAdminTools extends StatelessWidget {
     final submit = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Publish a post'),
+        title: Text(abuText(context, 'Publish a post', 'نشر منشور')),
         content: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
           child: SingleChildScrollView(
@@ -2945,26 +3802,38 @@ class _ProductionAdminTools extends StatelessWidget {
               children: [
                 TextField(
                   controller: title,
-                  decoration: const InputDecoration(labelText: 'Headline'),
+                  decoration: InputDecoration(
+                    labelText: abuText(context, 'Headline', 'العنوان'),
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: body,
                   maxLines: 6,
-                  decoration: const InputDecoration(labelText: 'Post'),
+                  decoration: InputDecoration(
+                    labelText: abuText(context, 'Post', 'المنشور'),
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: image,
-                  decoration: const InputDecoration(
-                    labelText: 'Image URL (optional)',
+                  decoration: InputDecoration(
+                    labelText: abuText(
+                      context,
+                      'Image URL (optional)',
+                      'رابط الصورة (اختياري)',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: link,
-                  decoration: const InputDecoration(
-                    labelText: 'Clickable link (optional)',
+                  decoration: InputDecoration(
+                    labelText: abuText(
+                      context,
+                      'Clickable link (optional)',
+                      'الرابط القابل للنقر (اختياري)',
+                    ),
                   ),
                 ),
               ],
@@ -2974,11 +3843,50 @@ class _ProductionAdminTools extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCEL'),
+            child: Text(abuText(context, 'CANCEL', 'إلغاء')),
+          ),
+          TextButton.icon(
+            onPressed: () => _showAdminPostPreview(
+              context,
+              title: title.text,
+              body: body.text,
+              imageUrl: image.text,
+              authorName: profile.displayName,
+            ),
+            icon: const Icon(Icons.visibility_rounded),
+            label: Text(abuText(context, 'PREVIEW', 'معاينة')),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('PUBLISH'),
+            onPressed: () {
+              final imageError = _campaignImageUrlError(context, image.text);
+              final linkError =
+                  link.text.trim().isNotEmpty &&
+                  externalHttpUri(link.text) == null;
+              if (title.text.trim().isEmpty ||
+                  body.text.trim().isEmpty ||
+                  imageError != null ||
+                  linkError) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      imageError ??
+                          abuText(
+                            context,
+                            linkError
+                                ? 'Enter a valid clickable link.'
+                                : 'Add a headline and post content.',
+                            linkError
+                                ? 'أدخل رابطاً صالحاً.'
+                                : 'أضف عنواناً ومحتوى للمنشور.',
+                          ),
+                    ),
+                  ),
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            child: Text(abuText(context, 'PUBLISH', 'نشر')),
           ),
         ],
       ),
@@ -2993,7 +3901,7 @@ class _ProductionAdminTools extends StatelessWidget {
         linkUrl: link.text,
         authorName: profile.displayName,
       ),
-      'Post published.',
+      abuText(context, 'Post published.', 'تم نشر المنشور.'),
     );
   }
 
@@ -3018,11 +3926,18 @@ class _ProductionAdminTools extends StatelessWidget {
     var startsAt = existing?.startsAt ?? DateTime.now();
     var endsAt =
         existing?.endsAt ?? DateTime.now().add(const Duration(days: 7));
-    final submit = await showDialog<bool>(
+    XFile? selectedImage;
+    dynamic selectedImageBytes;
+    String? imageValidationError;
+    String? uploadError;
+    var uploading = false;
+    final submission = await showDialog<({String imageUrl})?>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('APP-LAUNCH POPUP'),
+          title: Text(
+            abuText(context, 'APP-LAUNCH POPUP', 'نافذة بدء التطبيق'),
+          ),
           content: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 720),
             child: SingleChildScrollView(
@@ -3033,7 +3948,13 @@ class _ProductionAdminTools extends StatelessWidget {
                   SwitchListTile.adaptive(
                     value: enabled,
                     onChanged: (value) => setDialogState(() => enabled = value),
-                    title: const Text('Show on app launch'),
+                    title: Text(
+                      abuText(
+                        context,
+                        'Show on app launch',
+                        'إظهار عند بدء التطبيق',
+                      ),
+                    ),
                   ),
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -3045,9 +3966,13 @@ class _ProductionAdminTools extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text(
-                          'SCHEDULE & DELIVERY',
-                          style: TextStyle(
+                        Text(
+                          abuText(
+                            context,
+                            'SCHEDULE & DELIVERY',
+                            'الجدولة والعرض',
+                          ),
+                          style: const TextStyle(
                             color: _lime,
                             fontWeight: FontWeight.w900,
                             letterSpacing: 1.1,
@@ -3056,25 +3981,49 @@ class _ProductionAdminTools extends StatelessWidget {
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
                           initialValue: frequency,
-                          decoration: const InputDecoration(
-                            labelText: 'How often should each user see it?',
+                          decoration: InputDecoration(
+                            labelText: abuText(
+                              context,
+                              'How often should each user see it?',
+                              'كم مرة يراها كل مستخدم؟',
+                            ),
                           ),
-                          items: const [
+                          items: [
                             DropdownMenuItem(
                               value: 'once',
-                              child: Text('Once for this campaign'),
+                              child: Text(
+                                abuText(
+                                  context,
+                                  'Once for this campaign',
+                                  'مرة واحدة لهذه الحملة',
+                                ),
+                              ),
                             ),
                             DropdownMenuItem(
                               value: 'daily',
-                              child: Text('Once per day'),
+                              child: Text(
+                                abuText(context, 'Once per day', 'مرة يومياً'),
+                              ),
                             ),
                             DropdownMenuItem(
                               value: 'session',
-                              child: Text('Once per app session'),
+                              child: Text(
+                                abuText(
+                                  context,
+                                  'Once per app session',
+                                  'مرة في كل جلسة',
+                                ),
+                              ),
                             ),
                             DropdownMenuItem(
                               value: 'always',
-                              child: Text('Every app launch'),
+                              child: Text(
+                                abuText(
+                                  context,
+                                  'Every app launch',
+                                  'عند كل تشغيل',
+                                ),
+                              ),
                             ),
                           ],
                           onChanged: (value) =>
@@ -3084,13 +4033,21 @@ class _ProductionAdminTools extends StatelessWidget {
                         LayoutBuilder(
                           builder: (context, constraints) {
                             final start = _AdminDateTile(
-                              label: 'Starts (date & time)',
+                              label: abuText(
+                                context,
+                                'Starts (date & time)',
+                                'يبدأ (التاريخ والوقت)',
+                              ),
                               value: startsAt,
                               onChanged: (value) =>
                                   setDialogState(() => startsAt = value),
                             );
                             final end = _AdminDateTile(
-                              label: 'Expires (date & time)',
+                              label: abuText(
+                                context,
+                                'Expires (date & time)',
+                                'ينتهي (التاريخ والوقت)',
+                              ),
                               value: endsAt,
                               onChanged: (value) =>
                                   setDialogState(() => endsAt = value),
@@ -3113,38 +4070,158 @@ class _ProductionAdminTools extends StatelessWidget {
                   const SizedBox(height: 14),
                   TextField(
                     controller: title,
-                    decoration: const InputDecoration(labelText: 'Title'),
+                    decoration: InputDecoration(
+                      labelText: abuText(context, 'Title', 'العنوان'),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: body,
                     maxLines: 4,
-                    decoration: const InputDecoration(labelText: 'Message'),
+                    decoration: InputDecoration(
+                      labelText: abuText(context, 'Message', 'الرسالة'),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: image,
                     keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(
-                      labelText: 'Direct image URL (optional)',
-                      helperText: 'Use an http(s) image URL. Firebase Storage is recommended.',
+                    onChanged: (value) => setDialogState(() {
+                      imageValidationError = _campaignImageUrlError(
+                        context,
+                        value,
+                      );
+                      uploadError = null;
+                    }),
+                    decoration: InputDecoration(
+                      labelText: abuText(
+                        context,
+                        'Direct image URL (optional)',
+                        'رابط صورة مباشر (اختياري)',
+                      ),
+                      helperText: abuText(
+                        context,
+                        'Use an HTTPS image URL, or upload an image below.',
+                        'استخدم رابط HTTPS أو ارفع صورة أدناه.',
+                      ),
+                      errorText: imageValidationError,
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: uploading
+                              ? null
+                              : () async {
+                                  final picked = await ImagePicker().pickImage(
+                                    source: ImageSource.gallery,
+                                    imageQuality: 94,
+                                  );
+                                  if (picked == null || !context.mounted) {
+                                    return;
+                                  }
+                                  final validation =
+                                      await _pickedCampaignImageError(
+                                        context,
+                                        picked,
+                                      );
+                                  dynamic bytes;
+                                  if (validation == null) {
+                                    try {
+                                      bytes = await picked.readAsBytes();
+                                    } catch (_) {
+                                      if (context.mounted) {
+                                        imageValidationError = abuText(
+                                          context,
+                                          'The selected image could not be read.',
+                                          'تعذر قراءة الصورة المحددة.',
+                                        );
+                                      }
+                                    }
+                                  }
+                                  if (!context.mounted) return;
+                                  setDialogState(() {
+                                    selectedImage = validation == null
+                                        ? picked
+                                        : null;
+                                    selectedImageBytes = validation == null
+                                        ? bytes
+                                        : null;
+                                    imageValidationError = validation;
+                                    uploadError = null;
+                                  });
+                                },
+                          icon: const Icon(Icons.upload_rounded),
+                          label: Text(
+                            selectedImage == null
+                                ? abuText(context, 'UPLOAD IMAGE', 'رفع صورة')
+                                : selectedImage!.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      if (selectedImage != null) ...[
+                        const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: abuText(
+                            context,
+                            'Remove upload',
+                            'إزالة الصورة',
+                          ),
+                          onPressed: uploading
+                              ? null
+                              : () => setDialogState(() {
+                                  selectedImage = null;
+                                  selectedImageBytes = null;
+                                  uploadError = null;
+                                }),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ],
+                  ),
+                  if (selectedImage != null ||
+                      image.text.trim().isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    _campaignImagePreview(
+                      context: context,
+                      imageUrl: image.text,
+                      imageBytes: selectedImageBytes,
+                      height: 210,
+                    ),
+                  ],
+                  if (uploadError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      uploadError!,
+                      style: const TextStyle(color: _red, height: 1.35),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   TextField(
                     controller: link,
                     keyboardType: TextInputType.url,
-                    decoration: const InputDecoration(
-                      labelText: 'Clickable link (optional)',
-                      helperText:
-                          'iamr.dev is automatically saved as https://iamr.dev',
+                    decoration: InputDecoration(
+                      labelText: abuText(
+                        context,
+                        'Clickable link (optional)',
+                        'الرابط القابل للنقر (اختياري)',
+                      ),
+                      helperText: abuText(
+                        context,
+                        'iamr.dev is automatically saved as https://iamr.dev',
+                        'سيُحفظ iamr.dev تلقائياً بصيغة https://iamr.dev',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: label,
-                    decoration: const InputDecoration(
-                      labelText: 'Button label',
+                    decoration: InputDecoration(
+                      labelText: abuText(context, 'Button label', 'نص الزر'),
                     ),
                   ),
                 ],
@@ -3153,45 +4230,129 @@ class _ProductionAdminTools extends StatelessWidget {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('CANCEL'),
+              onPressed: uploading ? null : () => Navigator.pop(context),
+              child: Text(abuText(context, 'CANCEL', 'إلغاء')),
+            ),
+            TextButton.icon(
+              onPressed: uploading
+                  ? null
+                  : () => _showAdminAnnouncementPreview(
+                      context,
+                      title: title.text,
+                      body: body.text,
+                      imageUrl: image.text,
+                      imageBytes: selectedImageBytes,
+                      buttonLabel: label.text,
+                    ),
+              icon: const Icon(Icons.visibility_rounded),
+              label: Text(abuText(context, 'PREVIEW', 'معاينة')),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('SAVE'),
+              onPressed: uploading
+                  ? null
+                  : () async {
+                      final urlError = selectedImage == null
+                          ? _campaignImageUrlError(context, image.text)
+                          : null;
+                      final linkError =
+                          link.text.trim().isNotEmpty &&
+                          externalHttpUri(link.text) == null;
+                      if (title.text.trim().isEmpty ||
+                          body.text.trim().isEmpty ||
+                          !endsAt.isAfter(startsAt) ||
+                          urlError != null ||
+                          linkError) {
+                        setDialogState(() => imageValidationError = urlError);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              urlError ??
+                                  abuText(
+                                    context,
+                                    linkError
+                                        ? 'Enter a valid clickable link.'
+                                        : 'Add a title, message and valid schedule.',
+                                    linkError ? 'أدخل رابطاً صالحاً.' : 'أضف عنواناً ورسالة وجدولاً زمنياً صالحاً.',
+                                  ),
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      var finalImageUrl = image.text.trim();
+                      if (selectedImage != null) {
+                        setDialogState(() {
+                          uploading = true;
+                          uploadError = null;
+                        });
+                        try {
+                          finalImageUrl = await repository
+                              .uploadAnnouncementImage(selectedImage!);
+                          if (finalImageUrl.trim().isEmpty) {
+                            throw StateError('Empty image URL returned.');
+                          }
+                        } catch (error) {
+                          if (!context.mounted) return;
+                          setDialogState(() {
+                            uploading = false;
+                            uploadError = abuText(
+                              context,
+                              'Image upload is not available. Enable Firebase Storage for this project and try again. ${productionErrorMessage(error)}',
+                              'رفع الصور غير متاح. فعّل Firebase Storage لهذا المشروع ثم حاول مجدداً. ${productionErrorMessage(error)}',
+                            );
+                          });
+                          return;
+                        }
+                      }
+                      if (context.mounted) {
+                        Navigator.pop(context, (imageUrl: finalImageUrl));
+                      }
+                    },
+              child: uploading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(abuText(context, 'SAVE', 'حفظ')),
             ),
           ],
         ),
       ),
     );
-    if (submit != true || !context.mounted) return;
+    if (submission == null || !context.mounted) return;
     await _adminAction(
       context,
       () => repository.saveAnnouncement(
         enabled: enabled,
         title: title.text,
         body: body.text,
-        imageUrl: image.text,
+        imageUrl: submission.imageUrl,
         linkUrl: link.text,
         buttonLabel: label.text,
         frequency: frequency,
         startsAt: startsAt,
         endsAt: endsAt,
       ),
-      'Launch popup saved.',
+      abuText(context, 'Launch popup saved.', 'تم حفظ نافذة البدء.'),
     );
   }
 
   Future<void> manageRoles(BuildContext context) => showDialog<void>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('Roles & administrators'),
+      title: Text(
+        abuText(context, 'Roles & administrators', 'الأدوار والمشرفون'),
+      ),
       content: SizedBox(
         width: 680,
         height: 520,
         child: StreamBuilder<List<AbuUserProfile>>(
           stream: repository.watchUsers(),
           builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
             if (snapshot.hasError) {
               return Center(
                 child: Text(productionErrorMessage(snapshot.error!)),
@@ -3199,7 +4360,19 @@ class _ProductionAdminTools extends StatelessWidget {
             }
             final users = snapshot.data ?? const [];
             if (users.isEmpty) {
-              return const Center(child: CircularProgressIndicator());
+              return _ProductionEmpty(
+                icon: Icons.people_outline_rounded,
+                title: abuText(
+                  context,
+                  'No users found',
+                  'لم يتم العثور على مستخدمين',
+                ),
+                body: abuText(
+                  context,
+                  'New accounts will appear here after registration.',
+                  'ستظهر الحسابات الجديدة هنا بعد التسجيل.',
+                ),
+              );
             }
             return ListView.separated(
               itemCount: users.length,
@@ -3224,14 +4397,23 @@ class _ProductionAdminTools extends StatelessWidget {
                         ].contains(user.role)
                         ? user.role
                         : 'user',
-                    items: const [
-                      DropdownMenuItem(value: 'user', child: Text('User')),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'user',
+                        child: Text(abuText(context, 'User', 'مستخدم')),
+                      ),
                       DropdownMenuItem(
                         value: 'moderator',
-                        child: Text('Moderator'),
+                        child: Text(abuText(context, 'Moderator', 'مشرف')),
                       ),
-                      DropdownMenuItem(value: 'editor', child: Text('Editor')),
-                      DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                      DropdownMenuItem(
+                        value: 'editor',
+                        child: Text(abuText(context, 'Editor', 'محرر')),
+                      ),
+                      DropdownMenuItem(
+                        value: 'admin',
+                        child: Text(abuText(context, 'Admin', 'مدير')),
+                      ),
                     ],
                     onChanged: user.uid == profile.uid
                         ? null
@@ -3265,7 +4447,7 @@ class _ProductionAdminTools extends StatelessWidget {
       actions: [
         FilledButton(
           onPressed: () => Navigator.pop(dialogContext),
-          child: const Text('DONE'),
+          child: Text(abuText(context, 'DONE', 'تم')),
         ),
       ],
     ),
@@ -3359,12 +4541,34 @@ class _AdminEventManager extends StatelessWidget {
   Widget build(BuildContext context) => StreamBuilder<List<AbuChallenge>>(
     stream: repository.watchManagedChallenges(),
     builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const _ProductionSkeleton(height: 220);
+      }
+      if (snapshot.hasError) {
+        return _ProductionEmpty(
+          icon: Icons.cloud_off_rounded,
+          title: abuText(
+            context,
+            'Event control unavailable',
+            'إدارة الفعاليات غير متاحة',
+          ),
+          body: productionErrorMessage(snapshot.error!),
+        );
+      }
       final events = snapshot.data ?? const <AbuChallenge>[];
       if (events.isEmpty) {
-        return const _ProductionEmpty(
+        return _ProductionEmpty(
           icon: Icons.event_note_rounded,
-          title: 'No engagement events yet',
-          body: 'Create a Video Question or Player Card event above.',
+          title: abuText(
+            context,
+            'No engagement events yet',
+            'لا توجد فعاليات تفاعلية بعد',
+          ),
+          body: abuText(
+            context,
+            'Create a Video Question or Player Card event above.',
+            'أنشئ سؤال فيديو أو فعالية بطاقة لاعب أعلاه.',
+          ),
         );
       }
       return LayoutBuilder(
@@ -3374,18 +4578,39 @@ class _AdminEventManager extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (!desktop) ...[
-                Text('EVENT CONTROL', style: _display(18)),
+                Text(
+                  abuText(context, 'EVENT CONTROL', 'إدارة الفعاليات'),
+                  style: _display(18),
+                ),
                 const SizedBox(height: 8),
               ] else
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   child: Row(
                     children: [
-                      SizedBox(width: 52, child: Text('TYPE')),
-                      Expanded(flex: 4, child: Text('EVENT')),
-                      Expanded(flex: 2, child: Text('REWARD')),
-                      Expanded(flex: 2, child: Text('ENDS')),
-                      SizedBox(width: 130, child: Text('STATUS')),
+                      SizedBox(
+                        width: 52,
+                        child: Text(abuText(context, 'TYPE', 'النوع')),
+                      ),
+                      Expanded(
+                        flex: 4,
+                        child: Text(abuText(context, 'EVENT', 'الفعالية')),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(abuText(context, 'REWARD', 'المكافأة')),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(abuText(context, 'ENDS', 'تنتهي')),
+                      ),
+                      SizedBox(
+                        width: 130,
+                        child: Text(abuText(context, 'STATUS', 'الحالة')),
+                      ),
                     ],
                   ),
                 ),
@@ -3421,7 +4646,13 @@ class _AdminEventManager extends StatelessWidget {
                             ),
                             Expanded(
                               flex: 2,
-                              child: Text('${event.rewardPoints} points'),
+                              child: Text(
+                                abuText(
+                                  context,
+                                  '${event.rewardPoints} points',
+                                  '${event.rewardPoints} نقطة',
+                                ),
+                              ),
                             ),
                             Expanded(
                               flex: 2,
@@ -3446,7 +4677,11 @@ class _AdminEventManager extends StatelessWidget {
                         ),
                         title: Text(event.title),
                         subtitle: Text(
-                          '${event.rewardPoints} points · ${_productionDate(event.availableUntil)}',
+                          abuText(
+                            context,
+                            '${event.rewardPoints} points · ${_productionDate(event.availableUntil)}',
+                            '${event.rewardPoints} نقطة · ${_productionDate(event.availableUntil)}',
+                          ),
                         ),
                         trailing: _statusPicker(context, event),
                       ),
@@ -3470,13 +4705,31 @@ class _AdminEventManager extends StatelessWidget {
     return DropdownButton<String>(
       isExpanded: true,
       value: statuses.contains(event.status) ? event.status : 'draft',
-      items: const [
-        DropdownMenuItem(value: 'draft', child: Text('Draft')),
-        DropdownMenuItem(value: 'scheduled', child: Text('Scheduled')),
-        DropdownMenuItem(value: 'open', child: Text('Live')),
-        DropdownMenuItem(value: 'disabled', child: Text('Disabled')),
-        DropdownMenuItem(value: 'ended', child: Text('Ended')),
-        DropdownMenuItem(value: 'archived', child: Text('Archived')),
+      items: [
+        DropdownMenuItem(
+          value: 'draft',
+          child: Text(abuText(context, 'Draft', 'مسودة')),
+        ),
+        DropdownMenuItem(
+          value: 'scheduled',
+          child: Text(abuText(context, 'Scheduled', 'مجدول')),
+        ),
+        DropdownMenuItem(
+          value: 'open',
+          child: Text(abuText(context, 'Live', 'مباشر')),
+        ),
+        DropdownMenuItem(
+          value: 'disabled',
+          child: Text(abuText(context, 'Disabled', 'معطّل')),
+        ),
+        DropdownMenuItem(
+          value: 'ended',
+          child: Text(abuText(context, 'Ended', 'منتهٍ')),
+        ),
+        DropdownMenuItem(
+          value: 'archived',
+          child: Text(abuText(context, 'Archived', 'مؤرشف')),
+        ),
       ],
       onChanged: (status) async {
         if (status == null) return;
@@ -3526,31 +4779,11 @@ Future<void> showLaunchAnnouncement(
         title: announcement.imageUrl.isEmpty
             ? null
             : SizedBox(
-                height: 230,
                 width: 560,
-                child: _ProductionRemoteImage(
-                  url: announcement.imageUrl,
-                  fit: BoxFit.cover,
-                  fallback: const ColoredBox(
-                    color: _surface2,
-                    child: Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.broken_image_rounded, color: _muted),
-                            SizedBox(height: 8),
-                            Text(
-                              'Image unavailable — use a direct HTTPS image URL.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: _muted, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
+                child: _campaignImagePreview(
+                  context: context,
+                  imageUrl: announcement.imageUrl,
+                  height: 230,
                 ),
               ),
         content: ConstrainedBox(
@@ -3571,7 +4804,7 @@ Future<void> showLaunchAnnouncement(
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('LATER'),
+            child: Text(abuText(context, 'LATER', 'لاحقاً')),
           ),
           if (announcement.linkUrl.isNotEmpty)
             FilledButton(

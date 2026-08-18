@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'external_content_service.dart';
 import 'models.dart';
@@ -41,21 +43,48 @@ String _normalizedOptionalUrl(String raw, String field) {
   return uri.toString();
 }
 
+String? supportedAdminImageContentType({
+  required String fileName,
+  String? mimeType,
+}) {
+  const allowed = <String>{
+    'image/jpeg',
+    'image/png',
+    'image/webp',
+    'image/gif',
+  };
+  final normalizedMime = mimeType?.trim().toLowerCase();
+  if (normalizedMime != null && allowed.contains(normalizedMime)) {
+    return normalizedMime;
+  }
+  final extension = fileName.toLowerCase().split('.').last;
+  return switch (extension) {
+    'jpg' || 'jpeg' => 'image/jpeg',
+    'png' => 'image/png',
+    'webp' => 'image/webp',
+    'gif' => 'image/gif',
+    _ => null,
+  };
+}
+
 class ProductionRepository {
   ProductionRepository({
     FirebaseAuth? auth,
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
+    FirebaseStorage? storage,
     AbuExternalContentService? externalContent,
   }) : auth = auth ?? FirebaseAuth.instance,
        firestore = firestore ?? FirebaseFirestore.instance,
        functions =
            functions ?? FirebaseFunctions.instanceFor(region: 'europe-west1'),
+       storage = storage ?? FirebaseStorage.instance,
        externalContent = externalContent ?? AbuExternalContentService();
 
   final FirebaseAuth auth;
   final FirebaseFirestore firestore;
   final FirebaseFunctions functions;
+  final FirebaseStorage storage;
   final AbuExternalContentService externalContent;
   bool _googleInitialized = false;
 
@@ -684,6 +713,8 @@ class ProductionRepository {
     required String matchId,
     required int homeScore,
     required int awayScore,
+    required String firstScorer,
+    required bool bothTeamsScore,
   }) async {
     if (TemporaryMockData.instance.enabled && matchId.startsWith('mock_')) {
       await Future<void>.delayed(const Duration(milliseconds: 450));
@@ -693,6 +724,8 @@ class ProductionRepository {
       'matchId': matchId,
       'homeScore': homeScore,
       'awayScore': awayScore,
+      'firstScorer': firstScorer.trim(),
+      'bothTeamsScore': bothTeamsScore,
     });
   }
 
@@ -705,10 +738,21 @@ class ProductionRepository {
     required DateTime predictionClosesAt,
     String homeLogoUrl = '',
     String awayLogoUrl = '',
+    List<String> firstScorerOptions = const <String>[],
   }) async {
     if (!(predictionOpensAt.isBefore(predictionClosesAt) &&
         !predictionClosesAt.isAfter(kickoffAt))) {
       throw ArgumentError('Prediction times must be ordered before kickoff.');
+    }
+    final scorerOptions = firstScorerOptions
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .take(59)
+        .toList();
+    if (scorerOptions.isNotEmpty &&
+        !scorerOptions.any((value) => value.toLowerCase() == 'no scorer')) {
+      scorerOptions.add('No scorer');
     }
     await firestore.collection('matches').add({
       'homeTeam': homeTeam.trim(),
@@ -719,6 +763,7 @@ class ProductionRepository {
       'predictionClosesAt': Timestamp.fromDate(predictionClosesAt),
       'homeLogoUrl': _normalizedOptionalUrl(homeLogoUrl, 'Home logo URL'),
       'awayLogoUrl': _normalizedOptionalUrl(awayLogoUrl, 'Away logo URL'),
+      'firstScorerOptions': scorerOptions,
       'status': 'open',
       'createdBy': auth.currentUser!.uid,
       'createdAt': FieldValue.serverTimestamp(),
@@ -730,10 +775,12 @@ class ProductionRepository {
     required String matchId,
     required int homeScore,
     required int awayScore,
+    required String firstScorer,
   }) => _call('adminPublishMatchResult', {
     'matchId': matchId,
     'homeScore': homeScore,
     'awayScore': awayScore,
+    'firstScorer': firstScorer.trim(),
   });
 
   Future<void> setMatchStatus({
@@ -746,17 +793,59 @@ class ProductionRepository {
 
   Future<void> updatePointRules({
     required int exactPrediction,
+    required int firstScorer,
+    required int bothTeamsScore,
     required int videoQuestion,
     required int playerCard,
     required double memberMultiplier,
   }) => firestore.collection('platformSettings').doc('points').set({
     'exactPrediction': exactPrediction,
+    'firstScorer': firstScorer,
+    'bothTeamsScore': bothTeamsScore,
     'videoQuestion': videoQuestion,
     'playerCard': playerCard,
     'memberMultiplier': memberMultiplier,
     'updatedBy': auth.currentUser!.uid,
     'updatedAt': FieldValue.serverTimestamp(),
   });
+
+  Future<String> uploadAnnouncementImage(XFile file) async {
+    final user = auth.currentUser;
+    if (user == null) {
+      throw StateError('Sign in before uploading an announcement image.');
+    }
+    final length = await file.length();
+    if (length <= 0 || length > 8 * 1024 * 1024) {
+      throw ArgumentError('Choose an image smaller than 8 MB.');
+    }
+    final contentType = supportedAdminImageContentType(
+      fileName: file.name,
+      mimeType: file.mimeType,
+    );
+    if (contentType == null) {
+      throw ArgumentError('Use a JPG, PNG, WebP, or GIF image.');
+    }
+    final bytes = await file.readAsBytes();
+    final extension = switch (contentType) {
+      'image/jpeg' => 'jpg',
+      'image/png' => 'png',
+      'image/webp' => 'webp',
+      'image/gif' => 'gif',
+      _ => 'image',
+    };
+    final reference = storage.ref().child(
+      'admin/launch-announcements/${user.uid}_${DateTime.now().millisecondsSinceEpoch}.$extension',
+    );
+    final task = await reference.putData(
+      bytes,
+      SettableMetadata(
+        contentType: contentType,
+        cacheControl: 'public,max-age=31536000,immutable',
+        customMetadata: {'uploadedBy': user.uid, 'purpose': 'launchPopup'},
+      ),
+    );
+    return task.ref.getDownloadURL();
+  }
 
   Future<void> _call(String name, Map<String, Object?> data) async {
     await functions.httpsCallable(name).call<Map<String, dynamic>>(data);

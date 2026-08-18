@@ -10,9 +10,17 @@ class AbuAppPreferences extends ChangeNotifier {
 
   static const _themeKey = 'abu_theme_mode';
   static const _languageKey = 'abu_language';
+  static const _matchNotificationsKey = 'abu_notifications_matches';
+  static const _challengeNotificationsKey = 'abu_notifications_challenges';
+  static const _rewardNotificationsKey = 'abu_notifications_rewards';
+  static const _newsNotificationsKey = 'abu_notifications_news';
 
   ThemeMode themeMode = ThemeMode.dark;
   AbuLanguage language = AbuLanguage.english;
+  bool matchNotifications = true;
+  bool challengeNotifications = true;
+  bool rewardNotifications = true;
+  bool newsNotifications = false;
   bool _loaded = false;
 
   Locale get locale => Locale(language == AbuLanguage.arabic ? 'ar' : 'en');
@@ -27,6 +35,11 @@ class AbuAppPreferences extends ChangeNotifier {
     language = preferences.getString(_languageKey) == 'ar'
         ? AbuLanguage.arabic
         : AbuLanguage.english;
+    matchNotifications = preferences.getBool(_matchNotificationsKey) ?? true;
+    challengeNotifications =
+        preferences.getBool(_challengeNotificationsKey) ?? true;
+    rewardNotifications = preferences.getBool(_rewardNotificationsKey) ?? true;
+    newsNotifications = preferences.getBool(_newsNotificationsKey) ?? false;
     _loaded = true;
     notifyListeners();
   }
@@ -51,6 +64,42 @@ class AbuAppPreferences extends ChangeNotifier {
       _languageKey,
       value == AbuLanguage.arabic ? 'ar' : 'en',
     );
+  }
+
+  Future<void> setMatchNotifications(bool value) => _setNotificationPreference(
+    key: _matchNotificationsKey,
+    value: value,
+    apply: () => matchNotifications = value,
+  );
+
+  Future<void> setChallengeNotifications(bool value) =>
+      _setNotificationPreference(
+        key: _challengeNotificationsKey,
+        value: value,
+        apply: () => challengeNotifications = value,
+      );
+
+  Future<void> setRewardNotifications(bool value) => _setNotificationPreference(
+    key: _rewardNotificationsKey,
+    value: value,
+    apply: () => rewardNotifications = value,
+  );
+
+  Future<void> setNewsNotifications(bool value) => _setNotificationPreference(
+    key: _newsNotificationsKey,
+    value: value,
+    apply: () => newsNotifications = value,
+  );
+
+  Future<void> _setNotificationPreference({
+    required String key,
+    required bool value,
+    required VoidCallback apply,
+  }) async {
+    apply();
+    notifyListeners();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(key, value);
   }
 }
 

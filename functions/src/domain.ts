@@ -1,11 +1,15 @@
 export type PointSource =
   | "exactPrediction"
+  | "firstScorer"
+  | "bothTeamsScore"
   | "videoQuestion"
   | "playerCard"
   | "adminAdjustment";
 
 export const DEFAULT_POINTS = Object.freeze({
   exactPrediction: 100,
+  firstScorer: 250,
+  bothTeamsScore: 150,
   videoQuestion: 40,
   playerCard: 20,
   memberMultiplier: 2,
@@ -35,4 +39,11 @@ export function predictionIsOpen(
   closesAtMs: number,
 ): boolean {
   return serverNowMs >= opensAtMs && serverNowMs < closesAtMs;
+}
+
+export function didBothTeamsScore(homeScore: number, awayScore: number): boolean {
+  if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore) || homeScore < 0 || awayScore < 0) {
+    throw new Error("Scores must be non-negative integers.");
+  }
+  return homeScore > 0 && awayScore > 0;
 }

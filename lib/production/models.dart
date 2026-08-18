@@ -317,6 +317,8 @@ class MatchEvent {
     this.awayLogoUrl = '',
     this.homeScore,
     this.awayScore,
+    this.firstScorerOptions = const <String>[],
+    this.firstScorer = '',
   });
 
   final String id;
@@ -331,6 +333,8 @@ class MatchEvent {
   final String awayLogoUrl;
   final int? homeScore;
   final int? awayScore;
+  final List<String> firstScorerOptions;
+  final String firstScorer;
 
   factory MatchEvent.fromDocument(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? const <String, dynamic>{};
@@ -347,6 +351,13 @@ class MatchEvent {
       awayLogoUrl: data['awayLogoUrl'] as String? ?? '',
       homeScore: (data['homeScore'] as num?)?.toInt(),
       awayScore: (data['awayScore'] as num?)?.toInt(),
+      firstScorerOptions:
+          (data['firstScorerOptions'] as List<dynamic>? ?? const [])
+              .whereType<String>()
+              .map((value) => value.trim())
+              .where((value) => value.isNotEmpty)
+              .toList(growable: false),
+      firstScorer: data['firstScorer'] as String? ?? '',
     );
   }
 }

@@ -50,8 +50,11 @@ class _ProductionGateState extends State<_ProductionGate> {
           }
           if (profile.suspended) {
             return _ProductionFailure(
-              message:
-                  'This account is suspended. Contact ${AbuBrand.supportEmail}.',
+              message: abuText(
+                context,
+                'This account is suspended. Contact ${AbuBrand.supportEmail}.',
+                'هذا الحساب موقوف. تواصل عبر ${AbuBrand.supportEmail}.',
+              ),
               onRetry: () => setState(() {}),
               onSignOut: repository.signOut,
             );
@@ -160,13 +163,27 @@ class _ProductionAuthState extends State<_ProductionAuth> {
 
   Future<void> resetPassword() async {
     if (email.text.trim().isEmpty) {
-      setState(() => error = 'Enter your email first.');
+      setState(
+        () => error = abuText(
+          context,
+          'Enter your email first.',
+          'أدخل بريدك الإلكتروني أولاً.',
+        ),
+      );
       return;
     }
     await run(() => widget.repository.sendPasswordReset(email.text));
     if (mounted && error == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password reset email sent.')),
+        SnackBar(
+          content: Text(
+            abuText(
+              context,
+              'Password reset email sent.',
+              'تم إرسال رسالة إعادة تعيين كلمة المرور.',
+            ),
+          ),
+        ),
       );
     }
   }
@@ -183,14 +200,24 @@ class _ProductionAuthState extends State<_ProductionAuth> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              createAccount ? 'CREATE ACCOUNT' : 'WELCOME BACK',
+              createAccount
+                  ? abuText(context, 'CREATE ACCOUNT', 'إنشاء حساب')
+                  : abuText(context, 'WELCOME BACK', 'مرحباً بعودتك'),
               style: _display(28),
             ),
             const SizedBox(height: 6),
             Text(
               createAccount
-                  ? 'Join the Abu 3meer community.'
-                  : 'Sign in to predict, answer and find.',
+                  ? abuText(
+                      context,
+                      'Join the Abu 3meer community.',
+                      'انضم إلى مجتمع أبو عمير.',
+                    )
+                  : abuText(
+                      context,
+                      'Sign in to predict, answer and find.',
+                      'سجل الدخول لتتوقع وتجيب وتكتشف.',
+                    ),
               style: const TextStyle(color: _muted),
             ),
             const SizedBox(height: 22),
@@ -198,9 +225,9 @@ class _ProductionAuthState extends State<_ProductionAuth> {
               controller: email,
               keyboardType: TextInputType.emailAddress,
               autofillHints: const [AutofillHints.email],
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                prefixIcon: Icon(Icons.mail_outline_rounded),
+              decoration: InputDecoration(
+                labelText: abuText(context, 'Email', 'البريد الإلكتروني'),
+                prefixIcon: const Icon(Icons.mail_outline_rounded),
               ),
             ),
             const SizedBox(height: 13),
@@ -213,10 +240,12 @@ class _ProductionAuthState extends State<_ProductionAuth> {
                     : AutofillHints.password,
               ],
               decoration: InputDecoration(
-                labelText: 'Password',
+                labelText: abuText(context, 'Password', 'كلمة المرور'),
                 prefixIcon: const Icon(Icons.lock_outline_rounded),
                 suffixIcon: IconButton(
-                  tooltip: hidden ? 'Show password' : 'Hide password',
+                  tooltip: hidden
+                      ? abuText(context, 'Show password', 'إظهار كلمة المرور')
+                      : abuText(context, 'Hide password', 'إخفاء كلمة المرور'),
                   onPressed: () => setState(() => hidden = !hidden),
                   icon: Icon(
                     hidden
@@ -256,7 +285,9 @@ class _ProductionAuthState extends State<_ProductionAuth> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Text(
-                      createAccount ? 'CREATE ACCOUNT' : 'SIGN IN',
+                      createAccount
+                          ? abuText(context, 'CREATE ACCOUNT', 'إنشاء حساب')
+                          : abuText(context, 'SIGN IN', 'تسجيل الدخول'),
                       style: const TextStyle(fontWeight: FontWeight.w900),
                     ),
             ),
@@ -265,17 +296,22 @@ class _ProductionAuthState extends State<_ProductionAuth> {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: busy ? null : resetPassword,
-                  child: const Text('FORGOT PASSWORD?'),
+                  child: Text(
+                    abuText(context, 'FORGOT PASSWORD?', 'نسيت كلمة المرور؟'),
+                  ),
                 ),
               ),
-            const Row(
+            Row(
               children: [
-                Expanded(child: Divider(color: _line)),
+                const Expanded(child: Divider(color: _line)),
                 Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12),
-                  child: Text('OR', style: TextStyle(color: _muted)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    abuText(context, 'OR', 'أو'),
+                    style: const TextStyle(color: _muted),
+                  ),
                 ),
-                Expanded(child: Divider(color: _line)),
+                const Expanded(child: Divider(color: _line)),
               ],
             ),
             const SizedBox(height: 12),
@@ -284,7 +320,13 @@ class _ProductionAuthState extends State<_ProductionAuth> {
                   ? null
                   : () => run(widget.repository.signInWithGoogle),
               icon: const Icon(Icons.g_mobiledata_rounded, size: 28),
-              label: const Text('CONTINUE WITH GOOGLE'),
+              label: Text(
+                abuText(
+                  context,
+                  'CONTINUE WITH GOOGLE',
+                  'المتابعة باستخدام Google',
+                ),
+              ),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.all(15),
                 side: const BorderSide(color: _line),
@@ -300,8 +342,16 @@ class _ProductionAuthState extends State<_ProductionAuth> {
                     }),
               child: Text(
                 createAccount
-                    ? 'I ALREADY HAVE AN ACCOUNT'
-                    : 'CREATE AN ABU 3MEER ACCOUNT',
+                    ? abuText(
+                        context,
+                        'I ALREADY HAVE AN ACCOUNT',
+                        'لدي حساب بالفعل',
+                      )
+                    : abuText(
+                        context,
+                        'CREATE AN ABU 3MEER ACCOUNT',
+                        'إنشاء حساب أبو عمير',
+                      ),
               ),
             ),
           ],
@@ -354,9 +404,13 @@ class _AbuBrandIntro extends StatelessWidget {
         const SizedBox(height: 14),
         Text(AbuBrand.tagline, style: _display(14, color: _lime, spacing: 1.8)),
         const SizedBox(height: 8),
-        const Text(
-          'Your prediction. Your knowledge. Your place on the leaderboard.',
-          style: TextStyle(color: _muted, height: 1.55, fontSize: 14),
+        Text(
+          abuText(
+            context,
+            'Your prediction. Your knowledge. Your place on the leaderboard.',
+            'توقعك. معرفتك. مكانك في لوحة المتصدرين.',
+          ),
+          style: const TextStyle(color: _muted, height: 1.55, fontSize: 14),
         ),
       ],
     );
@@ -390,8 +444,12 @@ class _VerifyEmailState extends State<_VerifyEmail> {
   @override
   Widget build(BuildContext context) => _CenteredProductionCard(
     icon: Icons.mark_email_read_outlined,
-    title: 'VERIFY YOUR EMAIL',
-    body: 'We sent a verification link to ${widget.user.email}.',
+    title: abuText(context, 'VERIFY YOUR EMAIL', 'تحقق من بريدك الإلكتروني'),
+    body: abuText(
+      context,
+      'We sent a verification link to ${widget.user.email}.',
+      'أرسلنا رابط تحقق إلى ${widget.user.email}.',
+    ),
     message: message,
     actions: [
       FilledButton(
@@ -399,22 +457,32 @@ class _VerifyEmailState extends State<_VerifyEmail> {
             ? null
             : () => act(
                 widget.repository.refreshUser,
-                'Account status refreshed.',
+                abuText(
+                  context,
+                  'Account status refreshed.',
+                  'تم تحديث حالة الحساب.',
+                ),
               ),
-        child: const Text('I HAVE VERIFIED'),
+        child: Text(abuText(context, 'I HAVE VERIFIED', 'تم التحقق')),
       ),
       TextButton(
         onPressed: busy
             ? null
             : () => act(
                 widget.repository.resendVerification,
-                'Verification email sent again.',
+                abuText(
+                  context,
+                  'Verification email sent again.',
+                  'تم إرسال رسالة التحقق مرة أخرى.',
+                ),
               ),
-        child: const Text('RESEND EMAIL'),
+        child: Text(abuText(context, 'RESEND EMAIL', 'إعادة إرسال الرسالة')),
       ),
       TextButton(
         onPressed: busy ? null : widget.repository.signOut,
-        child: const Text('USE ANOTHER ACCOUNT'),
+        child: Text(
+          abuText(context, 'USE ANOTHER ACCOUNT', 'استخدام حساب آخر'),
+        ),
       ),
     ],
   );
@@ -473,33 +541,47 @@ class _ProductionOnboardingState extends State<_ProductionOnboarding> {
   @override
   Widget build(BuildContext context) => _CenteredProductionCard(
     icon: Icons.person_add_alt_1_rounded,
-    title: 'BUILD YOUR PROFILE',
-    body: 'Choose the identity you will use on Abu 3meer leaderboards.',
+    title: abuText(context, 'BUILD YOUR PROFILE', 'أنشئ ملفك الشخصي'),
+    body: abuText(
+      context,
+      'Choose the identity you will use on Abu 3meer leaderboards.',
+      'اختر الهوية التي ستظهر بها في لوحات متصدري أبو عمير.',
+    ),
     message: error,
     content: Column(
       children: [
         TextField(
           controller: username,
-          decoration: const InputDecoration(
-            labelText: 'Unique username',
+          decoration: InputDecoration(
+            labelText: abuText(context, 'Unique username', 'اسم مستخدم فريد'),
             prefixText: '@',
           ),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: displayName,
-          decoration: const InputDecoration(labelText: 'Display name'),
+          decoration: InputDecoration(
+            labelText: abuText(context, 'Display name', 'الاسم الظاهر'),
+          ),
         ),
         const SizedBox(height: 12),
         TextField(
           controller: country,
-          decoration: const InputDecoration(labelText: 'Country'),
+          decoration: InputDecoration(
+            labelText: abuText(context, 'Country', 'الدولة'),
+          ),
         ),
         const SizedBox(height: 16),
         SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'Barcelona', label: Text('Barcelona')),
-            ButtonSegment(value: 'Real Madrid', label: Text('Real Madrid')),
+          segments: [
+            ButtonSegment(
+              value: 'Barcelona',
+              label: Text(abuText(context, 'Barcelona', 'برشلونة')),
+            ),
+            ButtonSegment(
+              value: 'Real Madrid',
+              label: Text(abuText(context, 'Real Madrid', 'ريال مدريد')),
+            ),
           ],
           selected: {team},
           onSelectionChanged: busy
@@ -511,11 +593,15 @@ class _ProductionOnboardingState extends State<_ProductionOnboarding> {
     actions: [
       FilledButton(
         onPressed: busy ? null : submit,
-        child: Text(busy ? 'SAVING…' : 'ENTER ABU 3MEER'),
+        child: Text(
+          busy
+              ? abuText(context, 'SAVING…', 'جارٍ الحفظ…')
+              : abuText(context, 'ENTER ABU 3MEER', 'دخول أبو عمير'),
+        ),
       ),
       TextButton(
         onPressed: busy ? null : widget.repository.signOut,
-        child: const Text('SIGN OUT'),
+        child: Text(abuText(context, 'SIGN OUT', 'تسجيل الخروج')),
       ),
     ],
   );
@@ -609,11 +695,21 @@ class _ProductionFailure extends StatelessWidget {
   @override
   Widget build(BuildContext context) => _CenteredProductionCard(
     icon: Icons.cloud_off_rounded,
-    title: 'WE COULD NOT LOAD YOUR ACCOUNT',
+    title: abuText(
+      context,
+      'WE COULD NOT LOAD YOUR ACCOUNT',
+      'تعذر تحميل حسابك',
+    ),
     body: message,
     actions: [
-      FilledButton(onPressed: onRetry, child: const Text('TRY AGAIN')),
-      TextButton(onPressed: onSignOut, child: const Text('SIGN OUT')),
+      FilledButton(
+        onPressed: onRetry,
+        child: Text(abuText(context, 'TRY AGAIN', 'حاول مجدداً')),
+      ),
+      TextButton(
+        onPressed: onSignOut,
+        child: Text(abuText(context, 'SIGN OUT', 'تسجيل الخروج')),
+      ),
     ],
   );
 }
@@ -702,9 +798,12 @@ class _ProductionShellState extends State<_ProductionShell> {
         Icons.local_fire_department_rounded,
         abuText(context, 'Streak', 'سلسلة الأيام'),
       ),
-      (Icons.live_tv_rounded, 'OBS Overlay'),
+      (Icons.live_tv_rounded, abuText(context, 'OBS Overlay', 'واجهة البث')),
       if (profile.canManageContent)
-        (Icons.admin_panel_settings_rounded, 'Admin Studio'),
+        (
+          Icons.admin_panel_settings_rounded,
+          abuText(context, 'Admin Studio', 'استوديو المشرف'),
+        ),
     ];
     final desktop = MediaQuery.sizeOf(context).width >= 1100;
     const mobileIndexes = [0, 1, 6, 7, 4];
@@ -742,7 +841,7 @@ class _ProductionShellState extends State<_ProductionShell> {
                 ),
                 if (!desktop)
                   PopupMenuButton<int>(
-                    tooltip: 'More features',
+                    tooltip: abuText(context, 'More features', 'ميزات إضافية'),
                     onSelected: (value) => setState(() => index = value),
                     itemBuilder: (context) =>
                         List.generate(items.length, (itemIndex) {
@@ -766,7 +865,11 @@ class _ProductionShellState extends State<_ProductionShell> {
                   ),
                 if (profile.canManageContent)
                   IconButton(
-                    tooltip: 'Admin Dashboard',
+                    tooltip: abuText(
+                      context,
+                      'Admin Dashboard',
+                      'لوحة تحكم المشرف',
+                    ),
                     onPressed: () => setState(() => index = 14),
                     icon: const Icon(Icons.admin_panel_settings_rounded),
                   ),
@@ -845,9 +948,9 @@ class _ProductionDesktopScaffold extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 2),
-                      const Text(
-                        'FAN PLATFORM',
-                        style: TextStyle(
+                      Text(
+                        abuText(context, 'FAN PLATFORM', 'منصة الجماهير'),
+                        style: const TextStyle(
                           color: _muted,
                           fontSize: 9,
                           fontWeight: FontWeight.w800,
@@ -860,11 +963,11 @@ class _ProductionDesktopScaffold extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 28),
-            const Padding(
-              padding: EdgeInsetsDirectional.only(start: 10, bottom: 9),
+            Padding(
+              padding: const EdgeInsetsDirectional.only(start: 10, bottom: 9),
               child: Text(
-                'WORKSPACES',
-                style: TextStyle(
+                abuText(context, 'WORKSPACES', 'مساحات العمل'),
+                style: const TextStyle(
                   color: _muted,
                   fontSize: 9,
                   fontWeight: FontWeight.w900,
@@ -884,7 +987,9 @@ class _ProductionDesktopScaffold extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.fromLTRB(10, 18, 10, 8),
                         child: Text(
-                          itemIndex == 5 ? 'ENGAGE' : 'TOOLS',
+                          itemIndex == 5
+                              ? abuText(context, 'ENGAGE', 'التفاعل')
+                              : abuText(context, 'TOOLS', 'الأدوات'),
                           style: const TextStyle(
                             color: _muted,
                             fontSize: 9,
@@ -961,18 +1066,28 @@ class _ProductionDesktopScaffold extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 3),
-                      const Text(
-                        'Live production workspace',
-                        style: TextStyle(color: _muted, fontSize: 11),
+                      Text(
+                        abuText(
+                          context,
+                          'Live production workspace',
+                          'مساحة إنتاج مباشرة',
+                        ),
+                        style: const TextStyle(color: _muted, fontSize: 11),
                       ),
                     ],
                   ),
                   const Spacer(),
-                  const _LiveDot(text: 'LIVE DATA'),
+                  _LiveDot(
+                    text: abuText(context, 'LIVE DATA', 'بيانات مباشرة'),
+                  ),
                   const SizedBox(width: 10),
                   _Pill(
                     icon: Icons.local_fire_department_rounded,
-                    text: '${profile.currentStreak} DAY',
+                    text: abuText(
+                      context,
+                      '${profile.currentStreak} DAY',
+                      '${profile.currentStreak} يوم',
+                    ),
                     color: _red,
                     compact: true,
                   ),
@@ -1022,16 +1137,28 @@ class _ProductionHome extends StatelessWidget {
         if (snapshot.hasError) {
           return _ProductionEmpty(
             icon: Icons.cloud_off_rounded,
-            title: 'Matches unavailable',
+            title: abuText(
+              context,
+              'Matches unavailable',
+              'المباريات غير متاحة',
+            ),
             body: productionErrorMessage(snapshot.error!),
           );
         }
         final matches = snapshot.data ?? const [];
         if (matches.isEmpty) {
-          return const _ProductionEmpty(
+          return _ProductionEmpty(
             icon: Icons.event_busy_rounded,
-            title: 'No prediction is open',
-            body: 'The next Abu 3meer match event will appear here.',
+            title: abuText(
+              context,
+              'No prediction is open',
+              'لا توجد توقعات مفتوحة',
+            ),
+            body: abuText(
+              context,
+              'The next Abu 3meer match event will appear here.',
+              'ستظهر فعالية مباراة أبو عمير القادمة هنا.',
+            ),
           );
         }
         return _ProductionMatchCard(
@@ -1127,64 +1254,114 @@ class _ProductionHomeStreakCard extends StatelessWidget {
     final isToday =
         lastActivity != null &&
         DateUtils.isSameDay(lastActivity.toLocal(), DateTime.now());
+    final weekProgress = (active % 7) / 7;
+    final nextMilestone = active == 0 ? 1 : ((active ~/ 7) + 1) * 7;
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(22),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: 58,
-                height: 58,
-                decoration: BoxDecoration(
-                  color: _red.withValues(alpha: .13),
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: const Icon(
-                  Icons.local_fire_department_rounded,
-                  color: _red,
-                  size: 34,
+              Row(
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      color: _red.withValues(alpha: .13),
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    child: const Icon(
+                      Icons.local_fire_department_rounded,
+                      color: _red,
+                      size: 34,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          abuText(context, 'ACTIVITY STREAK', 'سلسلة النشاط'),
+                          style: const TextStyle(
+                            color: _muted,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '$active ${abuText(context, active == 1 ? 'day' : 'days', 'يوم')}',
+                          style: _display(29, color: _red),
+                        ),
+                        Text(
+                          isToday
+                              ? abuText(
+                                  context,
+                                  'Today is secured · Best ${profile.longestStreak}',
+                                  'تم تسجيل نشاط اليوم · الأفضل ${profile.longestStreak}',
+                                )
+                              : abuText(
+                                  context,
+                                  'Complete an eligible activity today',
+                                  'أكمل نشاطاً مؤهلاً اليوم',
+                                ),
+                          style: const TextStyle(color: _muted, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: const Icon(
+                      Icons.arrow_forward_rounded,
+                      color: _lime,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 17),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(
+                  value: active > 0 && active % 7 == 0 ? 1 : weekProgress,
+                  minHeight: 7,
+                  backgroundColor: _line,
+                  color: isToday ? _lime : _red,
                 ),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      abuText(context, 'ACTIVITY STREAK', 'سلسلة النشاط'),
-                      style: const TextStyle(
-                        color: _muted,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
-                      ),
+              const SizedBox(height: 9),
+              Row(
+                children: [
+                  Text(
+                    abuText(
+                      context,
+                      isToday ? 'DAILY CHECK-IN COMPLETE' : 'TODAY IS AT RISK',
+                      isToday ? 'اكتمل نشاط اليوم' : 'سلسلتك معرضة للخطر',
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$active ${abuText(context, active == 1 ? 'day' : 'days', 'يوم')}',
-                      style: _display(29, color: _red),
+                    style: TextStyle(
+                      color: isToday ? _lime : _red,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: .8,
                     ),
-                    Text(
-                      isToday
-                          ? abuText(
-                              context,
-                              'Today is secured · Best ${profile.longestStreak}',
-                              'تم تسجيل نشاط اليوم · الأفضل ${profile.longestStreak}',
-                            )
-                          : abuText(
-                              context,
-                              'Complete an eligible activity today',
-                              'أكمل نشاطاً مؤهلاً اليوم',
-                            ),
-                      style: const TextStyle(color: _muted, fontSize: 12),
+                  ),
+                  const Spacer(),
+                  Text(
+                    abuText(
+                      context,
+                      'Next milestone: $nextMilestone days',
+                      'المحطة التالية: $nextMilestone يوم',
                     ),
-                  ],
-                ),
+                    style: const TextStyle(color: _muted, fontSize: 10),
+                  ),
+                ],
               ),
-              const Icon(Icons.arrow_forward_rounded, color: _lime),
             ],
           ),
         ),
@@ -1363,16 +1540,17 @@ class _ProductionPointsHero extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Text(
-              'CURRENT POINTS',
-              style: TextStyle(
+            Text(
+              abuText(context, 'CURRENT POINTS', 'النقاط الحالية'),
+              style: const TextStyle(
                 color: _lime,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1.3,
               ),
             ),
             const Spacer(),
-            if (profile.isYouTubeMember) const _LiveDot(text: '2× MEMBER'),
+            if (profile.isYouTubeMember)
+              _LiveDot(text: abuText(context, '2× MEMBER', 'عضو ×٢')),
           ],
         ),
         const SizedBox(height: 8),
@@ -1386,21 +1564,21 @@ class _ProductionPointsHero extends StatelessWidget {
             Expanded(
               child: _Metric(
                 value: '${profile.monthlyPoints}',
-                label: 'THIS MONTH',
+                label: abuText(context, 'THIS MONTH', 'هذا الشهر'),
                 color: _lime,
               ),
             ),
             Expanded(
               child: _Metric(
                 value: '${profile.seasonPoints}',
-                label: 'THIS SEASON',
+                label: abuText(context, 'THIS SEASON', 'هذا الموسم'),
                 color: _gold,
               ),
             ),
             Expanded(
               child: _Metric(
                 value: profile.supportedTeam == 'Barcelona' ? 'FCB' : 'RMA',
-                label: 'YOUR TEAM',
+                label: abuText(context, 'YOUR TEAM', 'فريقك'),
                 color: Colors.white,
               ),
             ),
@@ -1431,16 +1609,24 @@ class _ProductionMatches extends StatelessWidget {
         if (snapshot.hasError) {
           return _ProductionEmpty(
             icon: Icons.cloud_off_rounded,
-            title: 'Could not load matches',
+            title: abuText(
+              context,
+              'Could not load matches',
+              'تعذر تحميل المباريات',
+            ),
             body: productionErrorMessage(snapshot.error!),
           );
         }
         final events = snapshot.data ?? const [];
         if (events.isEmpty) {
-          return const _ProductionEmpty(
+          return _ProductionEmpty(
             icon: Icons.sports_soccer_rounded,
-            title: 'No matches yet',
-            body: 'An administrator has not published a match event.',
+            title: abuText(context, 'No matches yet', 'لا توجد مباريات بعد'),
+            body: abuText(
+              context,
+              'An administrator has not published a match event.',
+              'لم ينشر المشرف فعالية مباراة بعد.',
+            ),
           );
         }
         return _ResponsiveGrid(
@@ -1465,59 +1651,185 @@ class _ProductionMatchCard extends StatelessWidget {
   Future<void> predict(BuildContext context) async {
     var home = 0;
     var away = 0;
-    final result = await showDialog<(int, int)>(
+    var bothTeamsScore = false;
+    final scorerOptions = <String>['No scorer', ...event.firstScorerOptions]
+        .map((option) => option.trim())
+        .where((option) => option.isNotEmpty)
+        .toSet()
+        .toList();
+    var firstScorer = scorerOptions.first;
+    final result = await showDialog<(int, int, String, bool)>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => Dialog(
-          insetPadding: const EdgeInsets.all(24),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+            constraints: const BoxConstraints(maxWidth: 620, maxHeight: 760),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 18),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    abuText(
-                      context,
-                      'Exact score prediction',
-                      'توقع النتيجة الدقيقة',
-                    ),
-                    style: _display(25),
-                  ),
-                  const SizedBox(height: 20),
                   Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _ScoreInput(
-                        label: event.homeTeam,
-                        value: home,
-                        onChanged: (value) =>
-                            setDialogState(() => home = value),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              abuText(
+                                context,
+                                'Build your prediction',
+                                'كوّن توقعك',
+                              ),
+                              style: _display(27),
+                            ),
+                            const SizedBox(height: 5),
+                            Text(
+                              abuText(
+                                context,
+                                'Each correct pick earns its own points.',
+                                'كل اختيار صحيح يمنح نقاطه الخاصة.',
+                              ),
+                              style: const TextStyle(color: _muted),
+                            ),
+                          ],
+                        ),
                       ),
-                      Text('–', style: _display(34)),
-                      _ScoreInput(
-                        label: event.awayTeam,
-                        value: away,
-                        onChanged: (value) =>
-                            setDialogState(() => away = value),
+                      IconButton(
+                        tooltip: abuText(context, 'Close', 'إغلاق'),
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close_rounded),
                       ),
                     ],
                   ),
                   const SizedBox(height: 20),
+                  _PredictionSection(
+                    title: abuText(context, 'EXACT SCORE', 'النتيجة الدقيقة'),
+                    points: 100,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        _ScoreInput(
+                          label: event.homeTeam,
+                          value: home,
+                          onChanged: (value) =>
+                              setDialogState(() => home = value),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Text('–', style: _display(34)),
+                        ),
+                        _ScoreInput(
+                          label: event.awayTeam,
+                          value: away,
+                          onChanged: (value) =>
+                              setDialogState(() => away = value),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _PredictionSection(
+                    title: abuText(context, 'FIRST SCORER', 'أول مسجل'),
+                    points: 250,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: firstScorer,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: abuText(
+                          context,
+                          'Choose the first scorer',
+                          'اختر أول مسجل',
+                        ),
+                      ),
+                      items: [
+                        for (final player in scorerOptions)
+                          DropdownMenuItem(
+                            value: player,
+                            child: Text(
+                              player == 'No scorer'
+                                  ? abuText(
+                                      context,
+                                      'No scorer (0–0)',
+                                      'لا يوجد مسجل (٠–٠)',
+                                    )
+                                  : player,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) => setDialogState(
+                        () => firstScorer = value ?? 'No scorer',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _PredictionSection(
+                    title: abuText(
+                      context,
+                      'BOTH TEAMS TO SCORE',
+                      'هل يسجل الفريقان؟',
+                    ),
+                    points: 150,
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: SegmentedButton<bool>(
+                        segments: [
+                          ButtonSegment(
+                            value: true,
+                            icon: const Icon(Icons.check_rounded),
+                            label: Text(abuText(context, 'YES', 'نعم')),
+                          ),
+                          ButtonSegment(
+                            value: false,
+                            icon: const Icon(Icons.close_rounded),
+                            label: Text(abuText(context, 'NO', 'لا')),
+                          ),
+                        ],
+                        selected: {bothTeamsScore},
+                        onSelectionChanged: (selection) => setDialogState(
+                          () => bothTeamsScore = selection.first,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      Expanded(
+                        child: Text(
+                          abuText(
+                            context,
+                            'Potential reward: up to 500 points',
+                            'المكافأة المحتملة: حتى ٥٠٠ نقطة',
+                          ),
+                          style: const TextStyle(
+                            color: _gold,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
                       TextButton(
                         onPressed: () => Navigator.pop(context),
                         child: Text(abuText(context, 'CANCEL', 'إلغاء')),
                       ),
                       const SizedBox(width: 8),
                       FilledButton(
-                        onPressed: () => Navigator.pop(context, (home, away)),
+                        onPressed: () => Navigator.pop(context, (
+                          home,
+                          away,
+                          firstScorer,
+                          bothTeamsScore,
+                        )),
                         child: Text(
-                          abuText(context, 'SAVE PREDICTION', 'حفظ التوقع'),
+                          abuText(context, 'LOCK PICKS', 'تثبيت التوقعات'),
                         ),
                       ),
                     ],
@@ -1535,10 +1847,20 @@ class _ProductionMatchCard extends StatelessWidget {
         matchId: event.id,
         homeScore: result.$1,
         awayScore: result.$2,
+        firstScorer: result.$3,
+        bothTeamsScore: result.$4,
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Prediction saved securely.')),
+          SnackBar(
+            content: Text(
+              abuText(
+                context,
+                'Prediction saved securely.',
+                'تم حفظ توقعك بأمان.',
+              ),
+            ),
+          ),
         );
         await _showPredictionFireworks(context);
       }
@@ -1578,7 +1900,12 @@ class _ProductionMatchCard extends StatelessWidget {
                       ),
                     ),
                     const Spacer(),
-                    _LiveDot(text: event.status.toUpperCase()),
+                    _LiveDot(
+                      text: _localizedMatchStatus(
+                        context,
+                        event.status,
+                      ).toUpperCase(),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -1636,12 +1963,20 @@ class _ProductionMatchCard extends StatelessWidget {
                   ),
                   child: Text(
                     open
-                        ? 'PREDICT EXACT SCORE'
+                        ? abuText(context, 'MAKE YOUR PICKS', 'سجّل توقعاتك')
                         : event.status == 'completed'
-                        ? 'RESULT PUBLISHED'
+                        ? abuText(context, 'RESULT PUBLISHED', 'تم نشر النتيجة')
                         : event.id.startsWith('external_')
-                        ? 'NEXT MATCH · EVENT OPENS SOON'
-                        : 'PREDICTIONS CLOSED',
+                        ? abuText(
+                            context,
+                            'NEXT MATCH · EVENT OPENS SOON',
+                            'المباراة القادمة · تفتح التوقعات قريباً',
+                          )
+                        : abuText(
+                            context,
+                            'PREDICTIONS CLOSED',
+                            'أغلقت التوقعات',
+                          ),
                   ),
                 ),
               ],
@@ -1651,6 +1986,63 @@ class _ProductionMatchCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PredictionSection extends StatelessWidget {
+  const _PredictionSection({
+    required this.title,
+    required this.points,
+    required this.child,
+  });
+
+  final String title;
+  final int points;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: _surface2,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: _line),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.1,
+                ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: _gold.withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Text(
+                '+$points ${abuText(context, 'PTS', 'نقطة')}',
+                style: const TextStyle(
+                  color: _gold,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        child,
+      ],
+    ),
+  );
 }
 
 class _ProductionTeamBadge extends StatelessWidget {
@@ -1666,6 +2058,7 @@ class _ProductionTeamBadge extends StatelessWidget {
         : team.toLowerCase().contains('real madrid')
         ? 'assets/images/rma.png'
         : '';
+    final stableFallback = _ProductionTeamBadgeFallback(team: team);
     Widget image;
     // Our featured clubs use transparent bundled art. Other API-provided team
     // badges use an HTML image fallback on web to avoid CDN CORS failures.
@@ -1676,13 +2069,13 @@ class _ProductionTeamBadge extends StatelessWidget {
         url: source,
         fit: BoxFit.contain,
         fallback: fallback.isEmpty
-            ? const Icon(Icons.shield_rounded)
+            ? stableFallback
             : Image.asset(fallback, fit: BoxFit.contain),
       );
     } else if (source.startsWith('assets/')) {
       image = Image.asset(source, fit: BoxFit.contain);
     } else {
-      image = const Icon(Icons.shield_rounded);
+      image = stableFallback;
     }
     return Container(
       width: size,
@@ -1695,6 +2088,46 @@ class _ProductionTeamBadge extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: image,
+    );
+  }
+}
+
+class _ProductionTeamBadgeFallback extends StatelessWidget {
+  const _ProductionTeamBadgeFallback({required this.team});
+
+  final String team;
+
+  @override
+  Widget build(BuildContext context) {
+    final words = team
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .toList();
+    final initials = words.isEmpty
+        ? 'FC'
+        : words.take(3).map((word) => word[0].toUpperCase()).join();
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_lime.withValues(alpha: .24), _blue.withValues(alpha: .18)],
+        ),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Center(
+        child: Text(
+          initials,
+          maxLines: 1,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: .4,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2041,7 +2474,11 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
         if (snapshot.hasError) {
           return _ProductionEmpty(
             icon: Icons.cloud_off_rounded,
-            title: 'Leaderboard unavailable',
+            title: abuText(
+              context,
+              'Leaderboard unavailable',
+              'لوحة المتصدرين غير متاحة',
+            ),
             body: productionErrorMessage(snapshot.error!),
           );
         }
@@ -2054,11 +2491,18 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
             children: [
               SizedBox(width: 300, child: _periodControl(context)),
               const SizedBox(height: 16),
-              const _ProductionEmpty(
+              _ProductionEmpty(
                 icon: Icons.leaderboard_rounded,
-                title: 'The race starts here',
-                body:
-                    'Rankings appear when users earn their first real points.',
+                title: abuText(
+                  context,
+                  'The race starts here',
+                  'يبدأ السباق هنا',
+                ),
+                body: abuText(
+                  context,
+                  'Rankings appear when users earn their first real points.',
+                  'يظهر الترتيب عندما يكسب المستخدمون أول نقاط حقيقية.',
+                ),
               ),
             ],
           );
@@ -2238,7 +2682,7 @@ class _ProductionLeaderboardDesktopRow extends StatelessWidget {
               ),
               if (mine) ...[
                 const SizedBox(width: 7),
-                const _LiveDot(text: 'YOU'),
+                _LiveDot(text: abuText(context, 'YOU', 'أنت')),
               ],
             ],
           ),
@@ -2263,7 +2707,7 @@ class _ProductionLeaderboardDesktopRow extends StatelessWidget {
         SizedBox(
           width: 92,
           child: entry.isMember
-              ? const _LiveDot(text: '2× MEMBER')
+              ? _LiveDot(text: abuText(context, '2× MEMBER', 'عضو ×٢'))
               : const Text('—', style: TextStyle(color: _muted)),
         ),
         SizedBox(
@@ -2284,18 +2728,23 @@ class _ProductionPoints extends StatelessWidget {
   final ProductionRepository repository;
   final AbuUserProfile profile;
 
-  Widget _mobileHistory(List<PointLedgerEntry> entries) => Card(
+  Widget _mobileHistory(
+    BuildContext context,
+    List<PointLedgerEntry> entries,
+  ) => Card(
     child: Column(
       children: entries
           .map(
             (entry) => ListTile(
               leading: CircleAvatar(
                 backgroundColor: _lime.withValues(alpha: .12),
-                child: const Icon(Icons.add_rounded, color: _lime),
+                child: Icon(_pointSourceIcon(entry.sourceType), color: _lime),
               ),
               title: Text(entry.reason),
               subtitle: Text(
-                '${entry.basePoints} × ${entry.multiplier.toStringAsFixed(entry.multiplier % 1 == 0 ? 0 : 1)} · ${_productionDate(entry.createdAt)}',
+                '${_pointSourceLabel(context, entry.sourceType)} · '
+                '${entry.basePoints} × ${entry.multiplier.toStringAsFixed(entry.multiplier % 1 == 0 ? 0 : 1)} · '
+                '${_productionDate(entry.createdAt)}',
               ),
               trailing: Text(
                 '+${entry.finalPoints}',
@@ -2471,7 +2920,7 @@ class _ProductionPoints extends StatelessWidget {
         if (snapshot.hasError) {
           return _ProductionEmpty(
             icon: Icons.cloud_off_rounded,
-            title: 'History unavailable',
+            title: abuText(context, 'History unavailable', 'السجل غير متاح'),
             body: productionErrorMessage(snapshot.error!),
           );
         }
@@ -2479,16 +2928,23 @@ class _ProductionPoints extends StatelessWidget {
         final desktop = MediaQuery.sizeOf(context).width >= 1100;
         if (entries.isEmpty) {
           if (desktop) return _desktopHistory(context, entries);
-          return const _ProductionEmpty(
+          return _ProductionEmpty(
             icon: Icons.receipt_long_rounded,
-            title: 'No point transactions yet',
-            body:
-                'Every point will appear here with its source and multiplier.',
+            title: abuText(
+              context,
+              'No point transactions yet',
+              'لا توجد عمليات نقاط بعد',
+            ),
+            body: abuText(
+              context,
+              'Every point will appear here with its source and multiplier.',
+              'ستظهر كل نقطة هنا مع مصدرها ومضاعفها.',
+            ),
           );
         }
         return desktop
             ? _desktopHistory(context, entries)
-            : _mobileHistory(entries);
+            : _mobileHistory(context, entries);
       },
     ),
   );
@@ -2765,6 +3221,12 @@ class _ProductionPointSourceBreakdown extends StatelessWidget {
 String _pointSourceLabel(BuildContext context, String source) =>
     switch (source) {
       'exactPrediction' => abuText(context, 'Prediction', 'توقع'),
+      'firstScorer' => abuText(context, 'First scorer', 'أول مسجل'),
+      'bothTeamsScore' => abuText(
+        context,
+        'Both teams to score',
+        'تسجيل الفريقين',
+      ),
       'videoQuestion' => abuText(context, 'Video challenge', 'تحدي الفيديو'),
       'playerCard' => abuText(context, 'Player Card', 'بطاقة اللاعب'),
       _ => source.isEmpty ? abuText(context, 'Other', 'أخرى') : source,
@@ -2772,6 +3234,8 @@ String _pointSourceLabel(BuildContext context, String source) =>
 
 IconData _pointSourceIcon(String source) => switch (source) {
   'exactPrediction' => Icons.sports_soccer_rounded,
+  'firstScorer' => Icons.person_pin_circle_rounded,
+  'bothTeamsScore' => Icons.compare_arrows_rounded,
   'videoQuestion' => Icons.play_circle_fill_rounded,
   'playerCard' => Icons.style_rounded,
   _ => Icons.add_circle_rounded,
@@ -2793,12 +3257,19 @@ class _ProductionProfileState extends State<_ProductionProfile> {
 
   Future<void> pickTemporaryImage() async {
     if (pickingImage) return;
+    final emptyImageMessage = abuText(
+      context,
+      'The selected image was empty.',
+      'الصورة المختارة فارغة.',
+    );
     setState(() => pickingImage = true);
     try {
       final image = await imagePicker.pickImage(source: ImageSource.gallery);
       if (image == null) return;
       final bytes = await image.readAsBytes();
-      if (bytes.isEmpty) throw StateError('The selected image was empty.');
+      if (bytes.isEmpty) {
+        throw StateError(emptyImageMessage);
+      }
       // Decode before placing the bytes in the widget tree so HEIC and other
       // unsupported browser formats produce a friendly error, not an uncaught
       // renderer exception.
@@ -2809,7 +3280,11 @@ class _ProductionProfileState extends State<_ProductionProfile> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Could not preview that photo: ${productionErrorMessage(error)}',
+              abuText(
+                context,
+                'Could not preview that photo: ${productionErrorMessage(error)}',
+                'تعذرت معاينة الصورة: ${productionErrorMessage(error)}',
+              ),
             ),
           ),
         );
@@ -2829,7 +3304,7 @@ class _ProductionProfileState extends State<_ProductionProfile> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Edit profile'),
+          title: Text(abuText(context, 'Edit profile', 'تعديل الملف الشخصي')),
           content: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
             child: SingleChildScrollView(
@@ -2838,31 +3313,37 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                 children: [
                   TextField(
                     controller: username,
-                    decoration: const InputDecoration(
-                      labelText: 'Username',
+                    decoration: InputDecoration(
+                      labelText: abuText(context, 'Username', 'اسم المستخدم'),
                       prefixText: '@',
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: name,
-                    decoration: const InputDecoration(labelText: 'Name'),
+                    decoration: InputDecoration(
+                      labelText: abuText(context, 'Name', 'الاسم'),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: country,
-                    decoration: const InputDecoration(labelText: 'Country'),
+                    decoration: InputDecoration(
+                      labelText: abuText(context, 'Country', 'الدولة'),
+                    ),
                   ),
                   const SizedBox(height: 14),
                   SegmentedButton<String>(
-                    segments: const [
+                    segments: [
                       ButtonSegment(
                         value: 'Barcelona',
-                        label: Text('Barcelona'),
+                        label: Text(abuText(context, 'Barcelona', 'برشلونة')),
                       ),
                       ButtonSegment(
                         value: 'Real Madrid',
-                        label: Text('Real Madrid'),
+                        label: Text(
+                          abuText(context, 'Real Madrid', 'ريال مدريد'),
+                        ),
                       ),
                     ],
                     selected: {team},
@@ -2876,11 +3357,11 @@ class _ProductionProfileState extends State<_ProductionProfile> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
-              child: const Text('CANCEL'),
+              child: Text(abuText(context, 'CANCEL', 'إلغاء')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, true),
-              child: const Text('SAVE'),
+              child: Text(abuText(context, 'SAVE', 'حفظ')),
             ),
           ],
         ),
@@ -2895,8 +3376,13 @@ class _ProductionProfileState extends State<_ProductionProfile> {
         supportedTeam: team,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Profile saved.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              abuText(context, 'Profile saved.', 'تم حفظ الملف الشخصي.'),
+            ),
+          ),
+        );
       }
     } catch (error) {
       if (mounted) {
@@ -2943,15 +3429,27 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                   ),
                   const SizedBox(height: 18),
                   if (profile.isYouTubeMember)
-                    const Align(
+                    Align(
                       alignment: AlignmentDirectional.centerStart,
-                      child: _LiveDot(text: 'YOUTUBE MEMBER · 2×'),
+                      child: _LiveDot(
+                        text: abuText(
+                          context,
+                          'YOUTUBE MEMBER · 2×',
+                          'عضو يوتيوب · 2×',
+                        ),
+                      ),
                     ),
                   const SizedBox(height: 18),
                   FilledButton.icon(
                     onPressed: editProfile,
                     icon: const Icon(Icons.edit_rounded),
-                    label: const Text('EDIT NAME & USERNAME'),
+                    label: Text(
+                      abuText(
+                        context,
+                        'EDIT NAME & USERNAME',
+                        'تعديل الاسم واسم المستخدم',
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
@@ -2964,26 +3462,44 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                         : const Icon(Icons.add_photo_alternate_rounded),
                     label: Text(
                       pickingImage
-                          ? 'OPENING PHOTO LIBRARY…'
-                          : 'TRY A PHOTO ON THE CARD',
+                          ? abuText(
+                              context,
+                              'OPENING PHOTO LIBRARY…',
+                              'جارٍ فتح مكتبة الصور…',
+                            )
+                          : abuText(
+                              context,
+                              'TRY A PHOTO ON THE CARD',
+                              'جرّب صورة على البطاقة',
+                            ),
                     ),
                   ),
                   const SizedBox(height: 7),
-                  const Text(
-                    'Preview only: this image stays in memory and is not uploaded or saved.',
+                  Text(
+                    abuText(
+                      context,
+                      'Preview only: this image stays in memory and is not uploaded or saved.',
+                      'للمعاينة فقط: تبقى الصورة في الذاكرة ولا يتم رفعها أو حفظها.',
+                    ),
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: _gold, fontSize: 10),
+                    style: const TextStyle(color: _gold, fontSize: 10),
                   ),
                   if (temporaryImage != null)
                     TextButton(
                       onPressed: () => setState(() => temporaryImage = null),
-                      child: const Text('REMOVE PREVIEW PHOTO'),
+                      child: Text(
+                        abuText(
+                          context,
+                          'REMOVE PREVIEW PHOTO',
+                          'إزالة صورة المعاينة',
+                        ),
+                      ),
                     ),
                   const Divider(height: 30),
                   OutlinedButton.icon(
                     onPressed: widget.repository.signOut,
                     icon: const Icon(Icons.logout_rounded),
-                    label: const Text('SIGN OUT'),
+                    label: Text(abuText(context, 'SIGN OUT', 'تسجيل الخروج')),
                   ),
                 ],
               ),
@@ -3026,14 +3542,27 @@ class _ProductionProfileSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final demo = TemporaryMockData.instance.enabled;
     final stats = <(String, String)>[
-      ('${profile.totalPoints}', 'TOTAL POINTS'),
-      ('${profile.monthlyPoints}', 'MONTHLY'),
-      ('${profile.seasonPoints}', 'SEASON'),
-      (demo ? '#342' : '—', 'MONTHLY RANK'),
-      (demo ? '68%' : '—', 'PREDICTION ACCURACY'),
-      ('${profile.currentStreak} DAYS', 'CURRENT STREAK'),
-      (demo ? '12 / 20' : '0', 'ACHIEVEMENTS'),
-      (demo ? '4' : '0', 'PLAYER CARDS'),
+      (
+        '${profile.totalPoints}',
+        abuText(context, 'TOTAL POINTS', 'إجمالي النقاط'),
+      ),
+      ('${profile.monthlyPoints}', abuText(context, 'MONTHLY', 'شهري')),
+      ('${profile.seasonPoints}', abuText(context, 'SEASON', 'الموسم')),
+      (demo ? '#342' : '—', abuText(context, 'MONTHLY RANK', 'الترتيب الشهري')),
+      (
+        demo ? '68%' : '—',
+        abuText(context, 'PREDICTION ACCURACY', 'دقة التوقعات'),
+      ),
+      (
+        abuText(
+          context,
+          '${profile.currentStreak} DAYS',
+          '${profile.currentStreak} يوماً',
+        ),
+        abuText(context, 'CURRENT STREAK', 'السلسلة الحالية'),
+      ),
+      (demo ? '12 / 20' : '0', abuText(context, 'ACHIEVEMENTS', 'الإنجازات')),
+      (demo ? '4' : '0', abuText(context, 'PLAYER CARDS', 'بطاقات اللاعبين')),
     ];
     return Card(
       child: Padding(
@@ -3041,7 +3570,10 @@ class _ProductionProfileSummary extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('PROFILE OVERVIEW', style: _display(21)),
+            Text(
+              abuText(context, 'PROFILE OVERVIEW', 'ملخص الملف الشخصي'),
+              style: _display(21),
+            ),
             const SizedBox(height: 16),
             Wrap(
               spacing: 12,
@@ -3095,17 +3627,40 @@ class _ProductionRecentActivity extends StatelessWidget {
   Widget build(BuildContext context) => StreamBuilder<List<PointLedgerEntry>>(
     stream: repository.watchPointHistory(profile.uid),
     builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const _ProductionSkeleton(height: 176);
+      }
+      if (snapshot.hasError) {
+        return _ProductionEmpty(
+          icon: Icons.cloud_off_rounded,
+          title: abuText(context, 'Activity unavailable', 'النشاط غير متاح'),
+          body: productionErrorMessage(snapshot.error!),
+        );
+      }
       final entries = (snapshot.data ?? const <PointLedgerEntry>[])
           .take(4)
           .toList();
-      if (entries.isEmpty) return const SizedBox.shrink();
+      if (entries.isEmpty) {
+        return _ProductionEmpty(
+          icon: Icons.history_rounded,
+          title: abuText(context, 'No recent activity', 'لا يوجد نشاط حديث'),
+          body: abuText(
+            context,
+            'Your verified point awards will appear here.',
+            'ستظهر مكافآت النقاط الموثقة هنا.',
+          ),
+        );
+      }
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('RECENT ACTIVITY', style: _display(21)),
+              Text(
+                abuText(context, 'RECENT ACTIVITY', 'النشاط الحديث'),
+                style: _display(21),
+              ),
               const SizedBox(height: 8),
               ...entries.map(
                 (entry) => ListTile(
@@ -3143,195 +3698,342 @@ class _ProductionSettings extends StatelessWidget {
       builder: (context, _) => _PageFrame(
         kicker: abuText(context, 'Personalize Abu 3meer', 'خصص تطبيق أبو عمير'),
         title: abuText(context, 'Settings', 'الإعدادات'),
-        child: Align(
-          alignment: AlignmentDirectional.centerStart,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 900),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final desktop = constraints.maxWidth >= 920;
+            final experience = _SettingsPanel(
+              icon: Icons.tune_rounded,
+              title: abuText(context, 'EXPERIENCE', 'تجربة الاستخدام'),
               children: [
-                Card(
+                ListTile(
+                  leading: const Icon(Icons.contrast_rounded, color: _lime),
+                  title: Text(abuText(context, 'Appearance', 'المظهر')),
+                  subtitle: Text(
+                    abuText(
+                      context,
+                      'Choose the theme used across the app.',
+                      'اختر المظهر المستخدم في التطبيق.',
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<ThemeMode>(
+                      segments: [
+                        ButtonSegment(
+                          value: ThemeMode.dark,
+                          icon: const Icon(Icons.dark_mode_rounded),
+                          label: Text(abuText(context, 'Dark', 'داكن')),
+                        ),
+                        ButtonSegment(
+                          value: ThemeMode.light,
+                          icon: const Icon(Icons.light_mode_rounded),
+                          label: Text(abuText(context, 'Light', 'فاتح')),
+                        ),
+                      ],
+                      selected: {preferences.themeMode},
+                      onSelectionChanged: (selection) =>
+                          preferences.setThemeMode(selection.first),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.language_rounded, color: _lime),
+                  title: Text(abuText(context, 'Language', 'اللغة')),
+                  subtitle: Text(
+                    abuText(
+                      context,
+                      'The layout and content language update immediately.',
+                      'يتغير اتجاه الواجهة ولغتها مباشرة.',
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: SegmentedButton<AbuLanguage>(
+                      segments: [
+                        ButtonSegment(
+                          value: AbuLanguage.english,
+                          label: Text(
+                            abuText(context, 'English', 'الإنجليزية'),
+                          ),
+                        ),
+                        const ButtonSegment(
+                          value: AbuLanguage.arabic,
+                          label: Text('العربية'),
+                        ),
+                      ],
+                      selected: {preferences.language},
+                      onSelectionChanged: (selection) =>
+                          preferences.setLanguage(selection.first),
+                    ),
+                  ),
+                ),
+              ],
+            );
+            final notifications = _SettingsPanel(
+              icon: Icons.notifications_active_rounded,
+              title: abuText(
+                context,
+                'NOTIFICATION PREFERENCES',
+                'تفضيلات الإشعارات',
+              ),
+              children: [
+                _SettingsNotificationTile(
+                  icon: Icons.sports_soccer_rounded,
+                  title: abuText(
+                    context,
+                    'Match reminders',
+                    'تذكيرات المباريات',
+                  ),
+                  subtitle: abuText(
+                    context,
+                    'Opening, closing and kickoff alerts.',
+                    'تنبيهات فتح وإغلاق التوقعات وبدء المباراة.',
+                  ),
+                  value: preferences.matchNotifications,
+                  onChanged: preferences.setMatchNotifications,
+                ),
+                const Divider(height: 1),
+                _SettingsNotificationTile(
+                  icon: Icons.bolt_rounded,
+                  title: abuText(context, 'New challenges', 'التحديات الجديدة'),
+                  subtitle: abuText(
+                    context,
+                    'Video phrases, quizzes and Player Cards.',
+                    'عبارات الفيديو والاختبارات وبطاقات اللاعبين.',
+                  ),
+                  value: preferences.challengeNotifications,
+                  onChanged: preferences.setChallengeNotifications,
+                ),
+                const Divider(height: 1),
+                _SettingsNotificationTile(
+                  icon: Icons.stars_rounded,
+                  title: abuText(
+                    context,
+                    'Points and rewards',
+                    'النقاط والمكافآت',
+                  ),
+                  subtitle: abuText(
+                    context,
+                    'Point awards, achievements and redemptions.',
+                    'النقاط والإنجازات وعمليات الاستبدال.',
+                  ),
+                  value: preferences.rewardNotifications,
+                  onChanged: preferences.setRewardNotifications,
+                ),
+                const Divider(height: 1),
+                _SettingsNotificationTile(
+                  icon: Icons.campaign_rounded,
+                  title: abuText(
+                    context,
+                    'News and posts',
+                    'الأخبار والمنشورات',
+                  ),
+                  subtitle: abuText(
+                    context,
+                    'Updates published by Abu 3meer.',
+                    'التحديثات التي ينشرها أبو عمير.',
+                  ),
+                  value: preferences.newsNotifications,
+                  onChanged: preferences.setNewsNotifications,
+                ),
+              ],
+            );
+            final membership = _SettingsPanel(
+              icon: Icons.workspace_premium_rounded,
+              title: abuText(context, 'YOUTUBE MEMBERSHIP', 'عضوية يوتيوب'),
+              trailing: _LiveDot(
+                text: profile.isYouTubeMember
+                    ? abuText(context, 'VERIFIED · 2×', 'موثق · 2×')
+                    : abuText(context, 'NOT VERIFIED', 'غير موثق'),
+              ),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 18),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      ListTile(
-                        leading: const Icon(
-                          Icons.contrast_rounded,
-                          color: _lime,
+                      Text(
+                        abuText(
+                          context,
+                          'Member points activate only after secure verification with the creator\'s YouTube account.',
+                          'تتفعل نقاط الأعضاء فقط بعد التحقق الآمن عبر حساب منشئ قناة يوتيوب.',
                         ),
-                        title: Text(abuText(context, 'Appearance', 'المظهر')),
-                        subtitle: Text(
+                        style: const TextStyle(color: _muted, height: 1.45),
+                      ),
+                      const SizedBox(height: 14),
+                      OutlinedButton.icon(
+                        onPressed: () => launchUrl(
+                          Uri.parse(
+                            'https://www.youtube.com/channel/${AbuExternalContentService.youtubeChannelId}/join',
+                          ),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                        icon: const Icon(Icons.open_in_new_rounded),
+                        label: Text(
                           abuText(
                             context,
-                            'Choose the theme used across the app.',
-                            'اختر المظهر المستخدم في التطبيق.',
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: SegmentedButton<ThemeMode>(
-                            segments: [
-                              ButtonSegment(
-                                value: ThemeMode.dark,
-                                icon: const Icon(Icons.dark_mode_rounded),
-                                label: Text(abuText(context, 'Dark', 'داكن')),
-                              ),
-                              ButtonSegment(
-                                value: ThemeMode.light,
-                                icon: const Icon(Icons.light_mode_rounded),
-                                label: Text(abuText(context, 'Light', 'فاتح')),
-                              ),
-                            ],
-                            selected: {preferences.themeMode},
-                            onSelectionChanged: (selection) =>
-                                preferences.setThemeMode(selection.first),
-                          ),
-                        ),
-                      ),
-                      const Divider(height: 1),
-                      ListTile(
-                        leading: const Icon(
-                          Icons.language_rounded,
-                          color: _lime,
-                        ),
-                        title: Text(abuText(context, 'Language', 'اللغة')),
-                        subtitle: Text(
-                          abuText(
-                            context,
-                            'The layout changes direction immediately.',
-                            'يتغير اتجاه واجهة التطبيق مباشرة.',
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: SegmentedButton<AbuLanguage>(
-                            segments: const [
-                              ButtonSegment(
-                                value: AbuLanguage.english,
-                                label: Text('English'),
-                              ),
-                              ButtonSegment(
-                                value: AbuLanguage.arabic,
-                                label: Text('العربية'),
-                              ),
-                            ],
-                            selected: {preferences.language},
-                            onSelectionChanged: (selection) =>
-                                preferences.setLanguage(selection.first),
+                            'OPEN CHANNEL MEMBERSHIP',
+                            'فتح عضوية القناة',
                           ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(18),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.workspace_premium_rounded,
-                              color: _red,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                abuText(
-                                  context,
-                                  'YOUTUBE MEMBERSHIP',
-                                  'عضوية يوتيوب',
-                                ),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                            ),
-                            _LiveDot(
-                              text: profile.isYouTubeMember
-                                  ? abuText(
-                                      context,
-                                      'VERIFIED · 2×',
-                                      'موثق · 2×',
-                                    )
-                                  : abuText(
-                                      context,
-                                      'NOT VERIFIED',
-                                      'غير موثق',
-                                    ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          abuText(
-                            context,
-                            'Member points will only be activated after secure verification with the creator\'s YouTube account. They are never granted from a user-entered claim.',
-                            'يتم تفعيل نقاط الأعضاء فقط بعد التحقق الآمن باستخدام حساب منشئ القناة، ولا تُمنح بناءً على اختيار يدوي.',
-                          ),
-                          style: const TextStyle(color: _muted, height: 1.45),
-                        ),
-                        const SizedBox(height: 14),
-                        OutlinedButton.icon(
-                          onPressed: () => launchUrl(
-                            Uri.parse(
-                              'https://www.youtube.com/channel/${AbuExternalContentService.youtubeChannelId}/join',
-                            ),
-                            mode: LaunchMode.externalApplication,
-                          ),
-                          icon: const Icon(Icons.open_in_new_rounded),
-                          label: Text(
-                            abuText(
-                              context,
-                              'OPEN CHANNEL MEMBERSHIP',
-                              'فتح عضوية القناة',
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+              ],
+            );
+            final testing = _SettingsPanel(
+              color: _gold.withValues(alpha: .07),
+              icon: Icons.science_rounded,
+              title: abuText(context, 'DEVELOPER PREVIEW', 'معاينة المطور'),
+              children: [
+                SwitchListTile.adaptive(
+                  value: mockData.enabled,
+                  onChanged: mockData.setEnabled,
+                  secondary: Icon(
+                    mockData.enabled
+                        ? Icons.visibility_rounded
+                        : Icons.visibility_off_rounded,
+                    color: _gold,
                   ),
-                ),
-                const SizedBox(height: 14),
-                Card(
-                  color: _gold.withValues(alpha: .09),
-                  child: SwitchListTile.adaptive(
-                    value: mockData.enabled,
-                    onChanged: mockData.setEnabled,
-                    secondary: const Icon(Icons.science_rounded, color: _gold),
-                    title: Text(
-                      abuText(
-                        context,
-                        'Temporary mock data',
-                        'بيانات تجريبية مؤقتة',
-                      ),
-                      style: const TextStyle(fontWeight: FontWeight.w800),
+                  title: Text(
+                    abuText(
+                      context,
+                      'Temporary mock data',
+                      'بيانات تجريبية مؤقتة',
                     ),
-                    subtitle: Text(
-                      abuText(
-                        context,
-                        'Testing only. Replaces the live match and video with predictable sample content. This isolated option can be removed before launch.',
-                        'للاختبار فقط. يستبدل المباراة والفيديو المباشرين ببيانات ثابتة، ويمكن حذف هذا الخيار قبل الإطلاق.',
-                      ),
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  subtitle: Text(
+                    abuText(
+                      context,
+                      'Testing only. Sample content is isolated from production data and can be removed before launch.',
+                      'للاختبار فقط. المحتوى التجريبي معزول عن بيانات الإنتاج ويمكن حذفه قبل الإطلاق.',
                     ),
                   ),
                 ),
               ],
-            ),
-          ),
+            );
+
+            return ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1240),
+              child: desktop
+                  ? Column(
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: experience),
+                            const SizedBox(width: 18),
+                            Expanded(child: notifications),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(child: membership),
+                            const SizedBox(width: 18),
+                            Expanded(child: testing),
+                          ],
+                        ),
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        experience,
+                        const SizedBox(height: 14),
+                        notifications,
+                        const SizedBox(height: 14),
+                        membership,
+                        const SizedBox(height: 14),
+                        testing,
+                      ],
+                    ),
+            );
+          },
         ),
       ),
     );
   }
+}
+
+class _SettingsPanel extends StatelessWidget {
+  const _SettingsPanel({
+    required this.icon,
+    required this.title,
+    required this.children,
+    this.trailing,
+    this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final List<Widget> children;
+  final Widget? trailing;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    color: color,
+    clipBehavior: Clip.antiAlias,
+    child: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 17, 18, 10),
+          child: Row(
+            children: [
+              Icon(icon, color: _lime),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .9,
+                  ),
+                ),
+              ),
+              trailing ?? const SizedBox.shrink(),
+            ],
+          ),
+        ),
+        ...children,
+      ],
+    ),
+  );
+}
+
+class _SettingsNotificationTile extends StatelessWidget {
+  const _SettingsNotificationTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) => SwitchListTile.adaptive(
+    value: value,
+    onChanged: onChanged,
+    secondary: Icon(icon, color: value ? _lime : _muted),
+    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+    subtitle: Text(subtitle),
+  );
 }
 
 class _ProductionAdmin extends StatelessWidget {
@@ -3341,8 +4043,12 @@ class _ProductionAdmin extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _PageFrame(
-    kicker: 'Role-protected operations',
-    title: 'Admin Dashboard',
+    kicker: abuText(
+      context,
+      'Role-protected operations',
+      'عمليات محمية حسب الصلاحيات',
+    ),
+    title: abuText(context, 'Admin Dashboard', 'لوحة تحكم المشرف'),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -3356,12 +4062,14 @@ class _ProductionAdmin extends StatelessWidget {
               FilledButton.icon(
                 onPressed: () => _showCreateMatch(context),
                 icon: const Icon(Icons.add_rounded),
-                label: const Text('CREATE MATCH EVENT'),
+                label: Text(
+                  abuText(context, 'CREATE MATCH EVENT', 'إنشاء فعالية مباراة'),
+                ),
               ),
               OutlinedButton.icon(
                 onPressed: () => _showPointRules(context),
                 icon: const Icon(Icons.tune_rounded),
-                label: const Text('POINT RULES'),
+                label: Text(abuText(context, 'POINT RULES', 'قواعد النقاط')),
               ),
             ],
           ],
@@ -3370,12 +4078,34 @@ class _ProductionAdmin extends StatelessWidget {
         StreamBuilder<List<MatchEvent>>(
           stream: repository.watchManagedMatches(),
           builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const _ProductionSkeleton(height: 260);
+            }
+            if (snapshot.hasError) {
+              return _ProductionEmpty(
+                icon: Icons.cloud_off_rounded,
+                title: abuText(
+                  context,
+                  'Could not load managed matches',
+                  'تعذر تحميل المباريات المُدارة',
+                ),
+                body: productionErrorMessage(snapshot.error!),
+              );
+            }
             final matches = snapshot.data ?? const [];
             if (matches.isEmpty) {
-              return const _ProductionEmpty(
+              return _ProductionEmpty(
                 icon: Icons.event_note_rounded,
-                title: 'No events published',
-                body: 'Create the first real prediction event.',
+                title: abuText(
+                  context,
+                  'No events published',
+                  'لا توجد فعاليات منشورة',
+                ),
+                body: abuText(
+                  context,
+                  'Create the first real prediction event.',
+                  'أنشئ أول فعالية توقعات حقيقية.',
+                ),
               );
             }
             return Card(
@@ -3383,9 +4113,25 @@ class _ProductionAdmin extends StatelessWidget {
                 children: matches
                     .map(
                       (match) => ListTile(
+                        leading: SizedBox(
+                          width: 96,
+                          child: Row(
+                            children: [
+                              _ProductionTeamBadge(
+                                team: match.homeTeam,
+                                source: match.homeLogoUrl,
+                              ),
+                              const SizedBox(width: 6),
+                              _ProductionTeamBadge(
+                                team: match.awayTeam,
+                                source: match.awayLogoUrl,
+                              ),
+                            ],
+                          ),
+                        ),
                         title: Text('${match.homeTeam} vs ${match.awayTeam}'),
                         subtitle: Text(
-                          '${match.competition} · ${match.status}',
+                          '${match.competition} · ${_localizedMatchStatus(context, match.status)} · ${_productionDate(match.kickoffAt)}',
                         ),
                         trailing: Wrap(
                           crossAxisAlignment: WrapCrossAlignment.center,
@@ -3402,30 +4148,42 @@ class _ProductionAdmin extends StatelessWidget {
                                   ].contains(match.status)
                                   ? match.status
                                   : 'draft',
-                              items: const [
+                              items: [
                                 DropdownMenuItem(
                                   value: 'draft',
-                                  child: Text('Draft'),
+                                  child: Text(
+                                    abuText(context, 'Draft', 'مسودة'),
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'open',
-                                  child: Text('Open'),
+                                  child: Text(
+                                    abuText(context, 'Open', 'مفتوحة'),
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'locked',
-                                  child: Text('Locked'),
+                                  child: Text(
+                                    abuText(context, 'Locked', 'مقفلة'),
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'disabled',
-                                  child: Text('Disabled'),
+                                  child: Text(
+                                    abuText(context, 'Disabled', 'معطلة'),
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'completed',
-                                  child: Text('Completed'),
+                                  child: Text(
+                                    abuText(context, 'Completed', 'مكتملة'),
+                                  ),
                                 ),
                                 DropdownMenuItem(
                                   value: 'archived',
-                                  child: Text('Archived'),
+                                  child: Text(
+                                    abuText(context, 'Archived', 'مؤرشفة'),
+                                  ),
                                 ),
                               ],
                               onChanged: (status) async {
@@ -3450,7 +4208,11 @@ class _ProductionAdmin extends StatelessWidget {
                             ),
                             if (match.status != 'completed')
                               IconButton(
-                                tooltip: 'Publish result',
+                                tooltip: abuText(
+                                  context,
+                                  'Publish result',
+                                  'نشر النتيجة',
+                                ),
                                 onPressed: () => _showResult(context, match),
                                 icon: const Icon(Icons.flag_rounded),
                               ),
@@ -3473,6 +4235,9 @@ class _ProductionAdmin extends StatelessWidget {
     final competition = TextEditingController();
     final homeLogo = TextEditingController();
     final awayLogo = TextEditingController();
+    final firstScorers = TextEditingController(
+      text: 'No scorer, Lamine Yamal, Raphinha, Kylian Mbappé, Vinícius Júnior',
+    );
     var kickoff = DateTime.now().add(const Duration(days: 2));
     var opens = DateTime.now();
     var closes = kickoff.subtract(const Duration(minutes: 5));
@@ -3480,146 +4245,226 @@ class _ProductionAdmin extends StatelessWidget {
     final submit = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Create match event'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: home,
-                  decoration: const InputDecoration(labelText: 'Home team'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: away,
-                  decoration: const InputDecoration(labelText: 'Away team'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: competition,
-                  decoration: const InputDecoration(labelText: 'Competition'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: homeLogo,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Home team logo URL (optional)',
+        builder: (context, setDialogState) {
+          final canCreate =
+              home.text.trim().isNotEmpty &&
+              away.text.trim().isNotEmpty &&
+              competition.text.trim().isNotEmpty &&
+              opens.isBefore(closes) &&
+              closes.isBefore(kickoff);
+          void refresh(String _) => setDialogState(() {});
+          return AlertDialog(
+            constraints: const BoxConstraints(maxWidth: 680),
+            title: Text(
+              abuText(context, 'Create match event', 'إنشاء فعالية مباراة'),
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _AdminMatchPreview(
+                    homeTeam: home.text,
+                    awayTeam: away.text,
+                    competition: competition.text,
+                    homeLogoUrl: homeLogo.text,
+                    awayLogoUrl: awayLogo.text,
+                    kickoffAt: kickoff,
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: awayLogo,
-                  keyboardType: TextInputType.url,
-                  decoration: const InputDecoration(
-                    labelText: 'Away team logo URL (optional)',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: fetchingLogos
-                        ? null
-                        : () async {
-                            setDialogState(() => fetchingLogos = true);
-                            try {
-                              final teams = await Future.wait([
-                                repository.lookupTeam(home.text),
-                                repository.lookupTeam(away.text),
-                              ]);
-                              if (teams[0] != null) {
-                                home.text = teams[0]!.name;
-                                homeLogo.text = teams[0]!.badgeUrl;
-                                if (competition.text.trim().isEmpty) {
-                                  competition.text = teams[0]!.league;
-                                }
-                              }
-                              if (teams[1] != null) {
-                                away.text = teams[1]!.name;
-                                awayLogo.text = teams[1]!.badgeUrl;
-                              }
-                              setDialogState(() {});
-                            } catch (error) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      productionErrorMessage(error),
-                                    ),
-                                  ),
-                                );
-                              }
-                            } finally {
-                              if (context.mounted) {
-                                setDialogState(() => fetchingLogos = false);
-                              }
-                            }
-                          },
-                    icon: fetchingLogos
-                        ? const SizedBox.square(
-                            dimension: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.travel_explore_rounded),
-                    label: Text(
-                      fetchingLogos
-                          ? 'LOOKING UP TEAMS…'
-                          : 'FIND TEAM NAMES & LOGOS',
-                    ),
-                  ),
-                ),
-                if (homeLogo.text.isNotEmpty || awayLogo.text.isNotEmpty) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _ProductionTeamBadge(
-                        team: home.text,
-                        source: homeLogo.text,
+                      Expanded(
+                        child: TextField(
+                          controller: home,
+                          onChanged: refresh,
+                          decoration: InputDecoration(
+                            labelText: abuText(
+                              context,
+                              'Home team',
+                              'الفريق المضيف',
+                            ),
+                          ),
+                        ),
                       ),
-                      const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 14),
-                        child: Text('VS', style: TextStyle(color: _muted)),
-                      ),
-                      _ProductionTeamBadge(
-                        team: away.text,
-                        source: awayLogo.text,
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: away,
+                          onChanged: refresh,
+                          decoration: InputDecoration(
+                            labelText: abuText(
+                              context,
+                              'Away team',
+                              'الفريق الضيف',
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: competition,
+                    onChanged: refresh,
+                    decoration: InputDecoration(
+                      labelText: abuText(context, 'Competition', 'البطولة'),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: homeLogo,
+                    onChanged: refresh,
+                    keyboardType: TextInputType.url,
+                    decoration: InputDecoration(
+                      labelText: abuText(
+                        context,
+                        'Home team logo URL (optional)',
+                        'رابط شعار المضيف (اختياري)',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: awayLogo,
+                    onChanged: refresh,
+                    keyboardType: TextInputType.url,
+                    decoration: InputDecoration(
+                      labelText: abuText(
+                        context,
+                        'Away team logo URL (optional)',
+                        'رابط شعار الضيف (اختياري)',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: fetchingLogos
+                          ? null
+                          : () async {
+                              setDialogState(() => fetchingLogos = true);
+                              try {
+                                final teams = await Future.wait([
+                                  repository.lookupTeam(home.text),
+                                  repository.lookupTeam(away.text),
+                                ]);
+                                if (teams[0] != null) {
+                                  home.text = teams[0]!.name;
+                                  homeLogo.text = teams[0]!.badgeUrl;
+                                  if (competition.text.trim().isEmpty) {
+                                    competition.text = teams[0]!.league;
+                                  }
+                                }
+                                if (teams[1] != null) {
+                                  away.text = teams[1]!.name;
+                                  awayLogo.text = teams[1]!.badgeUrl;
+                                }
+                                setDialogState(() {});
+                              } catch (error) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        productionErrorMessage(error),
+                                      ),
+                                    ),
+                                  );
+                                }
+                              } finally {
+                                if (context.mounted) {
+                                  setDialogState(() => fetchingLogos = false);
+                                }
+                              }
+                            },
+                      icon: fetchingLogos
+                          ? const SizedBox.square(
+                              dimension: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.travel_explore_rounded),
+                      label: Text(
+                        fetchingLogos
+                            ? abuText(
+                                context,
+                                'LOOKING UP TEAMS…',
+                                'جارٍ البحث عن الفرق…',
+                              )
+                            : abuText(
+                                context,
+                                'FIND TEAM NAMES & LOGOS',
+                                'البحث عن أسماء وشعارات الفرق',
+                              ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: firstScorers,
+                    minLines: 2,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: abuText(
+                        context,
+                        'First-scorer options (comma separated)',
+                        'خيارات أول مسجل (مفصولة بفواصل)',
+                      ),
+                      helperText: abuText(
+                        context,
+                        'These players appear in the fan prediction picker.',
+                        'يظهر هؤلاء اللاعبون في قائمة توقعات الجماهير.',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _AdminDateTile(
+                    label: abuText(context, 'Predictions open', 'فتح التوقعات'),
+                    value: opens,
+                    onChanged: (value) => setDialogState(() => opens = value),
+                  ),
+                  _AdminDateTile(
+                    label: abuText(
+                      context,
+                      'Predictions close',
+                      'إغلاق التوقعات',
+                    ),
+                    value: closes,
+                    onChanged: (value) => setDialogState(() => closes = value),
+                  ),
+                  _AdminDateTile(
+                    label: abuText(context, 'Kickoff', 'بدء المباراة'),
+                    value: kickoff,
+                    onChanged: (value) => setDialogState(() => kickoff = value),
+                  ),
+                  if (!canCreate) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      abuText(
+                        context,
+                        'Add both teams and a competition. Opening must be before closing, and closing before kickoff.',
+                        'أضف الفريقين والبطولة. يجب أن يكون الفتح قبل الإغلاق، والإغلاق قبل بدء المباراة.',
+                      ),
+                      style: const TextStyle(color: _gold, fontSize: 11),
+                    ),
+                  ],
                 ],
-                const SizedBox(height: 12),
-                _AdminDateTile(
-                  label: 'Predictions open',
-                  value: opens,
-                  onChanged: (value) => setDialogState(() => opens = value),
-                ),
-                _AdminDateTile(
-                  label: 'Predictions close',
-                  value: closes,
-                  onChanged: (value) => setDialogState(() => closes = value),
-                ),
-                _AdminDateTile(
-                  label: 'Kickoff',
-                  value: kickoff,
-                  onChanged: (value) => setDialogState(() => kickoff = value),
-                ),
-              ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('CANCEL'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('CREATE'),
-            ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(abuText(context, 'CANCEL', 'إلغاء')),
+              ),
+              FilledButton.icon(
+                onPressed: canCreate
+                    ? () => Navigator.pop(context, true)
+                    : null,
+                icon: const Icon(Icons.publish_rounded),
+                label: Text(abuText(context, 'CREATE', 'إنشاء')),
+              ),
+            ],
+          );
+        },
       ),
     );
     if (submit != true || !context.mounted) return;
@@ -3633,11 +4478,25 @@ class _ProductionAdmin extends StatelessWidget {
         predictionClosesAt: closes,
         homeLogoUrl: homeLogo.text,
         awayLogoUrl: awayLogo.text,
+        firstScorerOptions: firstScorers.text
+            .split(',')
+            .map((player) => player.trim())
+            .where((player) => player.isNotEmpty)
+            .toSet()
+            .toList(),
       );
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Match event published.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              abuText(
+                context,
+                'Match event published.',
+                'تم نشر فعالية المباراة.',
+              ),
+            ),
+          ),
+        );
       }
     } catch (error) {
       if (context.mounted) {
@@ -3651,39 +4510,190 @@ class _ProductionAdmin extends StatelessWidget {
   Future<void> _showResult(BuildContext context, MatchEvent match) async {
     final home = TextEditingController();
     final away = TextEditingController();
+    final scorerOptions =
+        <String>[
+              if (match.firstScorerOptions.isNotEmpty) 'No scorer',
+              ...match.firstScorerOptions,
+            ]
+            .map((player) => player.trim())
+            .where((player) => player.isNotEmpty)
+            .toSet()
+            .toList();
+    var firstScorer = scorerOptions.isEmpty ? '' : scorerOptions.first;
     final submit = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Publish official result'),
-        content: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: home,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(labelText: match.homeTeam),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final homeScore = int.tryParse(home.text);
+          final awayScore = int.tryParse(away.text);
+          final noGoals = (homeScore ?? -1) + (awayScore ?? -1) == 0;
+          final scorerIsValid = noGoals
+              ? firstScorer == 'No scorer'
+              : firstScorer.isNotEmpty && firstScorer != 'No scorer';
+          final valid =
+              homeScore != null &&
+              awayScore != null &&
+              homeScore >= 0 &&
+              awayScore >= 0 &&
+              scorerIsValid;
+          return AlertDialog(
+            constraints: const BoxConstraints(maxWidth: 620),
+            title: Text(
+              abuText(
+                context,
+                'Review and publish result',
+                'مراجعة النتيجة ونشرها',
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: TextField(
-                controller: away,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(labelText: match.awayTeam),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _AdminResultPreview(
+                    match: match,
+                    homeScore: homeScore,
+                    awayScore: awayScore,
+                    firstScorer: firstScorer,
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: home,
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => setDialogState(() {
+                            final nextHome = int.tryParse(home.text);
+                            final nextAway = int.tryParse(away.text);
+                            if (nextHome == 0 && nextAway == 0) {
+                              firstScorer = 'No scorer';
+                            } else if (scorerOptions.isEmpty &&
+                                firstScorer == 'No scorer') {
+                              firstScorer = '';
+                            }
+                          }),
+                          decoration: InputDecoration(
+                            labelText: match.homeTeam,
+                            helperText: abuText(
+                              context,
+                              'Official goals',
+                              'الأهداف الرسمية',
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: away,
+                          keyboardType: TextInputType.number,
+                          onChanged: (_) => setDialogState(() {
+                            final nextHome = int.tryParse(home.text);
+                            final nextAway = int.tryParse(away.text);
+                            if (nextHome == 0 && nextAway == 0) {
+                              firstScorer = 'No scorer';
+                            } else if (scorerOptions.isEmpty &&
+                                firstScorer == 'No scorer') {
+                              firstScorer = '';
+                            }
+                          }),
+                          decoration: InputDecoration(
+                            labelText: match.awayTeam,
+                            helperText: abuText(
+                              context,
+                              'Official goals',
+                              'الأهداف الرسمية',
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (scorerOptions.isNotEmpty)
+                    DropdownButtonFormField<String>(
+                      initialValue: firstScorer,
+                      isExpanded: true,
+                      decoration: InputDecoration(
+                        labelText: abuText(
+                          context,
+                          'Official first scorer',
+                          'أول مسجل رسمي',
+                        ),
+                      ),
+                      items: [
+                        DropdownMenuItem(
+                          value: '',
+                          child: Text(
+                            abuText(
+                              context,
+                              'No scorer (0–0 only)',
+                              'لا يوجد مسجل (٠–٠ فقط)',
+                            ),
+                          ),
+                        ),
+                        for (final player in scorerOptions)
+                          DropdownMenuItem(
+                            value: player,
+                            child: Text(
+                              player == 'No scorer'
+                                  ? abuText(
+                                      context,
+                                      'No scorer (0–0)',
+                                      'لا يوجد مسجل (٠–٠)',
+                                    )
+                                  : player,
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) =>
+                          setDialogState(() => firstScorer = value ?? ''),
+                    )
+                  else
+                    TextFormField(
+                      decoration: InputDecoration(
+                        labelText: abuText(
+                          context,
+                          'Official first scorer',
+                          'أول مسجل رسمي',
+                        ),
+                        helperText: abuText(
+                          context,
+                          'Required when at least one goal was scored.',
+                          'مطلوب عند تسجيل هدف واحد على الأقل.',
+                        ),
+                      ),
+                      onChanged: (value) =>
+                          setDialogState(() => firstScorer = value.trim()),
+                    ),
+                  const SizedBox(height: 12),
+                  Text(
+                    abuText(
+                      context,
+                      'Publishing is final and starts secure reward processing for exact score, first scorer and both teams to score.',
+                      'النشر نهائي ويبدأ احتساب مكافآت النتيجة الدقيقة وأول مسجل وتسجيل الفريقين بأمان.',
+                    ),
+                    style: const TextStyle(color: _gold, fontSize: 11),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCEL'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('PROCESS REWARDS'),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(abuText(context, 'CANCEL', 'إلغاء')),
+              ),
+              FilledButton.icon(
+                onPressed: valid ? () => Navigator.pop(context, true) : null,
+                icon: const Icon(Icons.verified_rounded),
+                label: Text(
+                  abuText(context, 'PROCESS REWARDS', 'احتساب المكافآت'),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
     if (submit != true || !context.mounted) return;
@@ -3692,11 +4702,18 @@ class _ProductionAdmin extends StatelessWidget {
         matchId: match.id,
         homeScore: int.parse(home.text),
         awayScore: int.parse(away.text),
+        firstScorer: firstScorer,
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Result published and rewards processed.'),
+          SnackBar(
+            content: Text(
+              abuText(
+                context,
+                'Result published and rewards processed.',
+                'تم نشر النتيجة واحتساب المكافآت.',
+              ),
+            ),
           ),
         );
       }
@@ -3711,13 +4728,15 @@ class _ProductionAdmin extends StatelessWidget {
 
   Future<void> _showPointRules(BuildContext context) async {
     final prediction = TextEditingController(text: '100');
+    final firstScorer = TextEditingController(text: '250');
+    final bothTeamsScore = TextEditingController(text: '150');
     final question = TextEditingController(text: '40');
     final card = TextEditingController(text: '20');
     final multiplier = TextEditingController(text: '2');
     final submit = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Point rules'),
+        title: Text(abuText(context, 'Point rules', 'قواعد النقاط')),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -3725,21 +4744,53 @@ class _ProductionAdmin extends StatelessWidget {
               TextField(
                 controller: prediction,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Exact prediction',
+                decoration: InputDecoration(
+                  labelText: abuText(
+                    context,
+                    'Exact-score prediction',
+                    'توقع النتيجة الدقيقة',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: firstScorer,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: abuText(
+                    context,
+                    'First-scorer prediction',
+                    'توقع أول مسجل',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: bothTeamsScore,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: abuText(
+                    context,
+                    'Both teams to score',
+                    'تسجيل الفريقين',
+                  ),
                 ),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: question,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Video question'),
+                decoration: InputDecoration(
+                  labelText: abuText(context, 'Video question', 'سؤال الفيديو'),
+                ),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: card,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Player Card'),
+                decoration: InputDecoration(
+                  labelText: abuText(context, 'Player Card', 'بطاقة اللاعب'),
+                ),
               ),
               const SizedBox(height: 10),
               TextField(
@@ -3747,8 +4798,12 @@ class _ProductionAdmin extends StatelessWidget {
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'Member multiplier',
+                decoration: InputDecoration(
+                  labelText: abuText(
+                    context,
+                    'Member multiplier',
+                    'مضاعف نقاط الأعضاء',
+                  ),
                 ),
               ),
             ],
@@ -3757,11 +4812,11 @@ class _ProductionAdmin extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('CANCEL'),
+            child: Text(abuText(context, 'CANCEL', 'إلغاء')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('SAVE'),
+            child: Text(abuText(context, 'SAVE', 'حفظ')),
           ),
         ],
       ),
@@ -3770,14 +4825,24 @@ class _ProductionAdmin extends StatelessWidget {
     try {
       await repository.updatePointRules(
         exactPrediction: int.parse(prediction.text),
+        firstScorer: int.parse(firstScorer.text),
+        bothTeamsScore: int.parse(bothTeamsScore.text),
         videoQuestion: int.parse(question.text),
         playerCard: int.parse(card.text),
         memberMultiplier: double.parse(multiplier.text),
       );
       if (context.mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Point rules updated.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              abuText(
+                context,
+                'Point rules updated.',
+                'تم تحديث قواعد النقاط.',
+              ),
+            ),
+          ),
+        );
       }
     } catch (error) {
       if (context.mounted) {
@@ -3787,6 +4852,194 @@ class _ProductionAdmin extends StatelessWidget {
       }
     }
   }
+}
+
+String _localizedMatchStatus(BuildContext context, String status) =>
+    switch (status) {
+      'draft' => abuText(context, 'Draft', 'مسودة'),
+      'open' => abuText(context, 'Open', 'مفتوحة'),
+      'locked' => abuText(context, 'Locked', 'مقفلة'),
+      'disabled' => abuText(context, 'Disabled', 'معطلة'),
+      'completed' => abuText(context, 'Completed', 'مكتملة'),
+      'archived' => abuText(context, 'Archived', 'مؤرشفة'),
+      _ => status,
+    };
+
+class _AdminMatchPreview extends StatelessWidget {
+  const _AdminMatchPreview({
+    required this.homeTeam,
+    required this.awayTeam,
+    required this.competition,
+    required this.homeLogoUrl,
+    required this.awayLogoUrl,
+    required this.kickoffAt,
+  });
+
+  final String homeTeam;
+  final String awayTeam;
+  final String competition;
+  final String homeLogoUrl;
+  final String awayLogoUrl;
+  final DateTime kickoffAt;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: _surface2,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: _lime.withValues(alpha: .24)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Text(
+              abuText(context, 'LIVE PREVIEW', 'معاينة مباشرة'),
+              style: const TextStyle(
+                color: _lime,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1.1,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              competition.trim().isEmpty
+                  ? abuText(context, 'Competition', 'البطولة')
+                  : competition.trim(),
+              style: const TextStyle(color: _muted, fontSize: 11),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            _ProductionTeamBadge(team: homeTeam, source: homeLogoUrl.trim()),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                homeTeam.trim().isEmpty
+                    ? abuText(context, 'Home team', 'الفريق المضيف')
+                    : homeTeam.trim(),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: Text('VS', style: _display(18, color: _muted)),
+            ),
+            Expanded(
+              child: Text(
+                awayTeam.trim().isEmpty
+                    ? abuText(context, 'Away team', 'الفريق الضيف')
+                    : awayTeam.trim(),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(width: 10),
+            _ProductionTeamBadge(team: awayTeam, source: awayLogoUrl.trim()),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          '${abuText(context, 'Kickoff', 'بدء المباراة')}: ${_productionDate(kickoffAt)}',
+          textAlign: TextAlign.center,
+          style: const TextStyle(color: _muted, fontSize: 11),
+        ),
+      ],
+    ),
+  );
+}
+
+class _AdminResultPreview extends StatelessWidget {
+  const _AdminResultPreview({
+    required this.match,
+    required this.homeScore,
+    required this.awayScore,
+    required this.firstScorer,
+  });
+
+  final MatchEvent match;
+  final int? homeScore;
+  final int? awayScore;
+  final String firstScorer;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      color: _surface2,
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: _line),
+    ),
+    child: Column(
+      children: [
+        Text(
+          match.competition.toUpperCase(),
+          style: const TextStyle(
+            color: _gold,
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.1,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            _ProductionTeamBadge(
+              team: match.homeTeam,
+              source: match.homeLogoUrl,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                match.homeTeam,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            Text(
+              '${homeScore ?? '–'}  :  ${awayScore ?? '–'}',
+              style: _display(30, color: _lime),
+            ),
+            Expanded(
+              child: Text(
+                match.awayTeam,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+            const SizedBox(width: 9),
+            _ProductionTeamBadge(
+              team: match.awayTeam,
+              source: match.awayLogoUrl,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          firstScorer.isEmpty
+              ? abuText(
+                  context,
+                  'Select the official first scorer',
+                  'اختر أول مسجل رسمي',
+                )
+              : '${abuText(context, 'First scorer', 'أول مسجل')}: $firstScorer',
+          style: const TextStyle(color: _muted, fontSize: 11),
+        ),
+      ],
+    ),
+  );
 }
 
 class _AdminDateTile extends StatelessWidget {

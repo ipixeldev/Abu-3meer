@@ -39,4 +39,59 @@ void main() {
     expect(match.homeTeam, 'Barcelona');
     expect(match.awayTeam, 'Al Ahly');
   });
+
+  test('normalizes and selects the closest football team result', () async {
+    final service = AbuExternalContentService(
+      client: MockClient(
+        (_) async => http.Response(
+          '''{"teams":[{"idTeam":"other","strTeam":"Real Madrid Women","strSport":"Soccer","strBadge":"http://img.test/women.png"},{"idTeam":"133738","strTeam":"Real Madrid","strTeamAlternate":"Real Madrid CF, Los Blancos","strSport":"Soccer","strLeague":"La Liga","strCountry":"Spain","strBadge":"//img.test/real.png"},{"idTeam":"wrong-sport","strTeam":"Real Madrid","strSport":"Basketball","strBadge":"https://img.test/basketball.png"}]}''',
+          200,
+        ),
+      ),
+    );
+
+    final team = await service.lookupTeam('  Real   Madrid  ');
+
+    expect(team, isNotNull);
+    expect(team!.teamId, '133738');
+    expect(team.name, 'Real Madrid');
+    expect(team.league, 'La Liga');
+    expect(team.country, 'Spain');
+    expect(team.badgeUrl, 'https://img.test/real.png');
+    expect(team.hasBadge, isTrue);
+  });
+
+  test('rejects unsafe team badge URLs and malformed team responses', () async {
+    var malformed = false;
+    final service = AbuExternalContentService(
+      client: MockClient((_) async {
+        if (malformed) return http.Response('{broken', 200);
+        return http.Response(
+          '''{"teams":[{"strTeam":"Safe FC","strSport":"Soccer","strBadge":"data:image/png;base64,unsafe"}]}''',
+          200,
+        );
+      }),
+    );
+
+    final team = await service.lookupTeam('Safe FC');
+    expect(team, isNotNull);
+    expect(team!.badgeUrl, isEmpty);
+    expect(team.hasBadge, isFalse);
+
+    malformed = true;
+    expect(await service.lookupTeam('Malformed FC'), isNull);
+  });
+
+  test('normalizes external image URLs for secure web rendering', () {
+    expect(
+      normalizeExternalImageUrl(' http://img.test/team badge.png '),
+      'https://img.test/team%20badge.png',
+    );
+    expect(
+      normalizeExternalImageUrl('//cdn.test/team.png'),
+      'https://cdn.test/team.png',
+    );
+    expect(normalizeExternalImageUrl('javascript:alert(1)'), isEmpty);
+    expect(normalizeExternalImageUrl('not a url'), isEmpty);
+  });
 }

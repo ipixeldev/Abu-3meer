@@ -1,7 +1,16 @@
-enum PointSource { exactPrediction, videoQuestion, playerCard, adminAdjustment }
+enum PointSource {
+  exactPrediction,
+  firstScorer,
+  bothTeamsScore,
+  videoQuestion,
+  playerCard,
+  adminAdjustment,
+}
 
 abstract final class PointRuleDefaults {
   static const exactPrediction = 100;
+  static const firstScorer = 250;
+  static const bothTeamsScore = 150;
   static const videoQuestion = 40;
   static const playerCard = 20;
   static const normalMultiplier = 1.0;
@@ -9,6 +18,8 @@ abstract final class PointRuleDefaults {
 
   static int baseFor(PointSource source) => switch (source) {
     PointSource.exactPrediction => exactPrediction,
+    PointSource.firstScorer => firstScorer,
+    PointSource.bothTeamsScore => bothTeamsScore,
     PointSource.videoQuestion => videoQuestion,
     PointSource.playerCard => playerCard,
     PointSource.adminAdjustment => 0,

@@ -19,7 +19,10 @@ service firebase.storage {
     match /admin/{allPaths=**} {
       allow read: if signedIn();
       allow write: if admin()
-        && request.resource.size < 15 * 1024 * 1024;
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches(
+          'image/(jpeg|png|webp|gif)'
+        );
     }
   }
 }

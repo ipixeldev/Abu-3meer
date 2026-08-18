@@ -53,6 +53,15 @@ class TemporaryMockData extends ChangeNotifier {
         status: 'open',
         homeLogoUrl: 'assets/images/fcb.png',
         awayLogoUrl: 'assets/images/rma.png',
+        firstScorerOptions: const [
+          'Lamine Yamal',
+          'Robert Lewandowski',
+          'Raphinha',
+          'Kylian Mbappé',
+          'Vinícius Júnior',
+          'Jude Bellingham',
+          'No scorer',
+        ],
       ),
       MatchEvent(
         id: 'mock_previous_match',
@@ -67,6 +76,14 @@ class TemporaryMockData extends ChangeNotifier {
         awayLogoUrl: 'assets/images/fcb.png',
         homeScore: 2,
         awayScore: 3,
+        firstScorerOptions: const [
+          'Kylian Mbappé',
+          'Vinícius Júnior',
+          'Lamine Yamal',
+          'Robert Lewandowski',
+          'No scorer',
+        ],
+        firstScorer: 'Kylian Mbappé',
       ),
     ];
   }

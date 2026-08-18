@@ -24,6 +24,22 @@
         {"fieldPath": "homeScore", "order": "ASCENDING"},
         {"fieldPath": "awayScore", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "predictions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "matchId", "order": "ASCENDING"},
+        {"fieldPath": "firstScorerKey", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "predictions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "matchId", "order": "ASCENDING"},
+        {"fieldPath": "bothTeamsScore", "order": "ASCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

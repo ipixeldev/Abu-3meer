@@ -2,7 +2,7 @@ name: abu_3meer
 description: "Abu 3meer — predict exact scores, answer video questions, find Player Cards, and climb the leaderboard."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 1.1.0+2
 
 environment:
   sdk: ^3.13.0

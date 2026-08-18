@@ -53,3 +53,7 @@ app.*.map.json
 .npm-cache/
 functions/node_modules/
 functions/lib/
+
+# Local browser-verification artifacts
+.playwright-cli/
+/output/

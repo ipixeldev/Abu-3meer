@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <base href="$FLUTTER_BASE_HREF">
   <meta charset="UTF-8">
@@ -47,6 +47,27 @@
       padding: 11px 22px; color: #080b10; background: #c8ff38; cursor: pointer; font: 900 12px/1 system-ui;
       letter-spacing: 1.2px; }
     #retry-button:disabled { opacity: .65; cursor: wait; }
+    #pwa-promotion { position: fixed; right: max(18px, env(safe-area-inset-right));
+      bottom: max(18px, env(safe-area-inset-bottom)); z-index: 2147483000; display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; width: min(420px, calc(100vw - 36px));
+      box-sizing: border-box; padding: 12px 12px 12px 16px; color: #f8fafc; background: rgba(17,22,30,.97);
+      border: 1px solid rgba(200,255,56,.26); border-radius: 16px; box-shadow: 0 20px 54px rgba(0,0,0,.4);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif; backdrop-filter: blur(18px); }
+    #pwa-promotion[hidden], body.obs-active #pwa-promotion, body.pwa-standalone #pwa-promotion { display: none !important; }
+    .pwa-promotion-copy { min-width: 0; }
+    #pwa-promotion-title { color: #c8ff38; font-size: 11px; font-weight: 950; letter-spacing: 1.2px; }
+    #pwa-promotion-message { margin-top: 3px; color: #a4adba; font-size: 11px; font-weight: 650; line-height: 1.35; }
+    #pwa-promotion-action, #pwa-promotion-dismiss { appearance: none; cursor: pointer; font-family: inherit; font-weight: 900; }
+    #pwa-promotion-action { min-height: 38px; padding: 0 16px; color: #080b10; background: #c8ff38;
+      border: 0; border-radius: 999px; font-size: 11px; letter-spacing: .7px; }
+    #pwa-promotion-action:disabled { opacity: .6; cursor: wait; }
+    #pwa-promotion-dismiss { width: 34px; height: 34px; padding: 0; color: #a4adba; background: transparent;
+      border: 0; border-radius: 50%; font-size: 20px; line-height: 1; }
+    #pwa-promotion-dismiss:hover { color: #fff; background: rgba(255,255,255,.07); }
+    @media (max-width: 700px) {
+      #pwa-promotion { right: 12px; bottom: calc(92px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); }
+      #pwa-promotion-message { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -63,6 +84,15 @@
       </div>
     </div>
   </div>
+
+  <aside id="pwa-promotion" aria-live="polite" aria-label="App installation and updates" hidden>
+    <div class="pwa-promotion-copy">
+      <div id="pwa-promotion-title">INSTALL ABU 3MEER</div>
+      <div id="pwa-promotion-message">Add the fan experience to this device.</div>
+    </div>
+    <button id="pwa-promotion-action" type="button">INSTALL</button>
+    <button id="pwa-promotion-dismiss" type="button" aria-label="Dismiss">&times;</button>
+  </aside>
 
   <script src="lottie.min.js"></script>
   <script>
@@ -150,31 +180,7 @@
       }
     }());
   </script>
-  <script>
-    (function () {
-      if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
-        let reloadingForUpdate = false;
-        navigator.serviceWorker.addEventListener('controllerchange', function () {
-          if (reloadingForUpdate || sessionStorage.getItem('abu3meer-sw-reloaded') === '1') return;
-          reloadingForUpdate = true;
-          sessionStorage.setItem('abu3meer-sw-reloaded', '1');
-          window.location.reload();
-        });
-        window.addEventListener('load', function () {
-          navigator.serviceWorker.register('/pwa_service_worker.js')
-            .then(function (registration) {
-              registration.update();
-              window.setTimeout(function () {
-                sessionStorage.removeItem('abu3meer-sw-reloaded');
-              }, 4000);
-            })
-            .catch(function (error) {
-              console.warn('PWA service worker registration failed:', error);
-            });
-        });
-      }
-    }());
-  </script>
+  <script src="pwa_lifecycle.js"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

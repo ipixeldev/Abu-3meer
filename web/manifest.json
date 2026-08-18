@@ -5,12 +5,15 @@
     "start_url": "/?source=pwa",
     "scope": "/",
     "display": "standalone",
+    "display_override": ["window-controls-overlay", "standalone"],
     "background_color": "#080B10",
-    "theme_color": "#C8FF38",
+    "theme_color": "#080B10",
     "description": "Watch. Predict. Compete. Become a legend.",
     "orientation": "any",
     "categories": ["sports", "games", "social"],
     "lang": "en",
+    "dir": "auto",
+    "launch_handler": { "client_mode": "navigate-existing" },
     "prefer_related_applications": false,
     "icons": [
         {

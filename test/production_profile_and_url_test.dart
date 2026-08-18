@@ -31,6 +31,43 @@ void main() {
     });
   });
 
+  group('admin image validation', () {
+    test('accepts supported browser and mobile image formats', () {
+      expect(
+        supportedAdminImageContentType(fileName: 'banner.JPG'),
+        'image/jpeg',
+      );
+      expect(
+        supportedAdminImageContentType(
+          fileName: 'upload.bin',
+          mimeType: 'image/webp',
+        ),
+        'image/webp',
+      );
+      expect(
+        supportedAdminImageContentType(fileName: 'animation.gif'),
+        'image/gif',
+      );
+    });
+
+    test('rejects files that are not supported images', () {
+      expect(
+        supportedAdminImageContentType(
+          fileName: 'payload.svg',
+          mimeType: 'image/svg+xml',
+        ),
+        isNull,
+      );
+      expect(
+        supportedAdminImageContentType(
+          fileName: 'notes.txt',
+          mimeType: 'text/plain',
+        ),
+        isNull,
+      );
+    });
+  });
+
   group('AbuUserProfile streak data', () {
     test('constructor safely defaults streak fields for legacy callers', () {
       const profile = AbuUserProfile(
