@@ -6,8 +6,12 @@ class _ProductionChallenges extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _PageFrame(
-    kicker: 'Watch · answer · collect points',
-    title: 'Challenges',
+    kicker: abuText(
+      context,
+      'Watch · answer · collect points',
+      'شاهد · أجب · اجمع النقاط',
+    ),
+    title: abuText(context, 'Challenges', 'التحديات'),
     child: StreamBuilder<List<AbuChallenge>>(
       stream: repository.watchChallenges(),
       builder: (context, snapshot) {
@@ -217,8 +221,12 @@ class _ProductionCommunity extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _PageFrame(
-    kicker: 'Stories · updates · community',
-    title: 'Abu 3meer Feed',
+    kicker: abuText(
+      context,
+      'Stories · updates · community',
+      'قصص · أخبار · مجتمع',
+    ),
+    title: abuText(context, 'Abu 3meer Feed', 'منشورات أبو عمير'),
     child: StreamBuilder<List<AbuPost>>(
       stream: repository.watchPosts(),
       builder: (context, snapshot) {
@@ -495,8 +503,10 @@ class _ProductionGamesState extends State<_ProductionGames> {
 
   @override
   Widget build(BuildContext context) => _PageFrame(
-    kicker: 'Play inside Abu 3meer',
-    title: showEhzerha ? 'Ehzerha' : 'Game Center',
+    kicker: abuText(context, 'Play inside Abu 3meer', 'العب داخل أبو عمير'),
+    title: showEhzerha
+        ? 'Ehzerha'
+        : abuText(context, 'Game Center', 'مركز الألعاب'),
     child: showEhzerha
         ? Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -903,8 +913,12 @@ class _ProductionFanWar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _PageFrame(
-    kicker: 'Barcelona vs Real Madrid · live community totals',
-    title: 'Fan War',
+    kicker: abuText(
+      context,
+      'Barcelona vs Real Madrid · live community totals',
+      'برشلونة ضد ريال مدريد · مجموع المجتمع المباشر',
+    ),
+    title: abuText(context, 'Fan War', 'حرب الجماهير'),
     child: StreamBuilder<List<LeaderboardEntry>>(
       stream: repository.watchLeaderboard(monthly: false),
       builder: (context, snapshot) {
@@ -1033,8 +1047,12 @@ class _ProductionAchievements extends StatelessWidget {
       (10000, 'Abu 3meer Legend', Icons.emoji_events_rounded),
     ];
     return _PageFrame(
-      kicker: '${profile.totalPoints} verified points',
-      title: 'Achievements',
+      kicker: abuText(
+        context,
+        '${profile.totalPoints} verified points',
+        '${profile.totalPoints} نقطة موثقة',
+      ),
+      title: abuText(context, 'Achievements', 'الإنجازات'),
       child: _ResponsiveGrid(
         children: milestones.map((milestone) {
           final unlocked = profile.totalPoints >= milestone.$1;
@@ -1085,8 +1103,12 @@ class _ProductionRewards extends StatelessWidget {
   Widget build(BuildContext context) {
     final mock = TemporaryMockData.instance.enabled;
     return _PageFrame(
-      kicker: '${profile.seasonPoints} loyalty points available',
-      title: 'Rewards',
+      kicker: abuText(
+        context,
+        '${profile.seasonPoints} loyalty points available',
+        '${profile.seasonPoints} نقطة ولاء متاحة',
+      ),
+      title: abuText(context, 'Rewards', 'المكافآت'),
       child: !mock
           ? const _ProductionEmpty(
               icon: Icons.card_giftcard_rounded,
@@ -1154,16 +1176,46 @@ class _ProductionRewards extends StatelessWidget {
   }
 }
 
-class _InteractiveFanCardState extends State<_InteractiveFanCard> {
-  Offset tilt = Offset.zero;
+class _InteractiveFanCardState extends State<_InteractiveFanCard>
+    with SingleTickerProviderStateMixin {
+  static const _cardSize = Size(320, 448);
+  late final AnimationController _ticker;
+  Offset _targetTilt = Offset.zero;
+  Offset _currentTilt = Offset.zero;
+  Offset _velocity = Offset.zero;
 
-  void update(Offset local, Size size) {
-    setState(() {
-      tilt = Offset(
-        ((local.dx / size.width) - .5).clamp(-.5, .5),
-        ((local.dy / size.height) - .5).clamp(-.5, .5),
-      );
-    });
+  @override
+  void initState() {
+    super.initState();
+    _ticker = AnimationController.unbounded(vsync: this)
+      ..addListener(_springTick)
+      ..repeat(min: 0, max: 1, period: const Duration(seconds: 1));
+  }
+
+  void _springTick() {
+    const stiffness = 110.0;
+    const damping = 18.0;
+    const dt = 1 / 60;
+    final displacement = _targetTilt - _currentTilt;
+    final acceleration = displacement * stiffness - _velocity * damping;
+    _velocity += acceleration * dt;
+    _currentTilt += _velocity * dt;
+    if (mounted) setState(() {});
+  }
+
+  void _updateTarget(Offset local) {
+    _targetTilt = Offset(
+      ((local.dx / _cardSize.width) - .5).clamp(-.5, .5),
+      ((local.dy / _cardSize.height) - .5).clamp(-.5, .5),
+    );
+  }
+
+  void _release() => _targetTilt = Offset.zero;
+
+  @override
+  void dispose() {
+    _ticker.dispose();
+    super.dispose();
   }
 
   @override
@@ -1179,156 +1231,191 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard> {
         .join();
     final transform = Matrix4.identity()
       ..setEntry(3, 2, .0012)
-      ..rotateX(-tilt.dy * .24)
-      ..rotateY(tilt.dx * .3);
-    return LayoutBuilder(
-      builder: (context, box) => MouseRegion(
-        onHover: (event) => update(event.localPosition, box.biggest),
-        onExit: (_) => setState(() => tilt = Offset.zero),
+      ..rotateX(-_currentTilt.dy * .32)
+      ..rotateY(_currentTilt.dx * .38);
+    return Center(
+      child: MouseRegion(
+        onHover: (event) => _updateTarget(event.localPosition),
+        onExit: (_) => _release(),
         child: GestureDetector(
-          onPanUpdate: (event) => update(event.localPosition, box.biggest),
-          onPanEnd: (_) => setState(() => tilt = Offset.zero),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 130),
+          onPanStart: (event) => _updateTarget(event.localPosition),
+          onPanUpdate: (event) => _updateTarget(event.localPosition),
+          onPanEnd: (_) => _release(),
+          onPanCancel: _release,
+          child: Transform(
             transform: transform,
-            transformAlignment: Alignment.center,
-            child: ClipPath(
-              clipper: _FanCardClipper(),
-              child: Container(
-                width: 320,
-                height: 444,
-                padding: const EdgeInsets.fromLTRB(24, 25, 24, 22),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: const [
-                      Color(0xFF242529),
-                      Color(0xFF111216),
-                      Color(0xFF07080A),
-                    ],
-                  ),
-                  border: Border.all(
-                    color: const Color(0xFFE8E8E8),
-                    width: 1.4,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: .5),
-                      blurRadius: 34,
-                      offset: Offset(tilt.dx * -18, 20 + tilt.dy * 12),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Column(
+            alignment: Alignment.center,
+            child: SizedBox.fromSize(
+              size: _cardSize,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ClipPath(
+                    clipper: _FanCardClipper(),
+                    child: DecoratedBox(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFF2B3038),
+                            Color(0xFF1A1E25),
+                            Color(0xFF14171C),
+                          ],
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(29, 45, 29, 31),
+                        child: Column(
                           children: [
-                            Text(
-                              '$rating',
-                              style: _display(
-                                42,
-                                color: const Color(0xFFE8E8E8),
+                            Expanded(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Column(
+                                    children: [
+                                      Text(
+                                        '$rating',
+                                        style: _display(
+                                          43,
+                                          color: const Color(0xFFE8E8E8),
+                                        ),
+                                      ),
+                                      const Text(
+                                        'RKE',
+                                        style: TextStyle(
+                                          color: Color(0xFFE8E8E8),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                      Container(
+                                        width: 28,
+                                        height: 1,
+                                        margin: const EdgeInsets.symmetric(
+                                          vertical: 10,
+                                        ),
+                                        color: const Color(0x47303030),
+                                      ),
+                                      Text(
+                                        teamCode,
+                                        style: const TextStyle(
+                                          color: Color(0xFFE8E8E8),
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: widget.temporaryImage != null
+                                          ? Image.memory(
+                                              widget.temporaryImage!,
+                                              fit: BoxFit.cover,
+                                              alignment: Alignment.topCenter,
+                                              errorBuilder: (_, _, _) =>
+                                                  _CardMonogram(
+                                                    initials: initials,
+                                                  ),
+                                            )
+                                          : profile.avatarUrl.isNotEmpty
+                                          ? Image.network(
+                                              profile.avatarUrl,
+                                              fit: BoxFit.cover,
+                                              alignment: Alignment.topCenter,
+                                              errorBuilder: (_, _, _) =>
+                                                  _CardMonogram(
+                                                    initials: initials,
+                                                  ),
+                                            )
+                                          : _CardMonogram(initials: initials),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            const Text(
-                              'RKE',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.4,
+                            Container(
+                              height: 1,
+                              color: const Color(0x47303030),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 9),
+                              child: Text(
+                                profile.displayName.toUpperCase(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: _display(
+                                  18,
+                                  color: const Color(0xFFE8E8E8),
+                                  spacing: .8,
+                                ),
                               ),
                             ),
-                            const SizedBox(height: 12),
-                            Text(
-                              teamCode,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                              ),
+                            Container(
+                              height: 1,
+                              color: const Color(0x47303030),
                             ),
                             const SizedBox(height: 9),
-                            _ProductionTeamBadge(
-                              team: profile.supportedTeam,
-                              source: '',
-                              size: 32,
+                            _FanCardPair(
+                              left: _FanCardStat(
+                                value: '${profile.totalPoints}',
+                                label: 'XP',
+                              ),
+                              right: _FanCardStat(
+                                value: profile.monthlyPoints == 0
+                                    ? '—'
+                                    : '#342',
+                                label: 'RNK',
+                              ),
+                            ),
+                            const SizedBox(height: 5),
+                            const _FanCardPair(
+                              left: _FanCardStat(value: '12', label: 'STK'),
+                              right: _FanCardStat(value: '68', label: 'ACC'),
+                              reverse: true,
+                            ),
+                            const SizedBox(height: 5),
+                            _FanCardPair(
+                              left: _FanCardStat(
+                                value: '${profile.seasonPoints}',
+                                label: 'LTY',
+                              ),
+                              right: const _FanCardStat(
+                                value: '10',
+                                label: 'BST',
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: SizedBox(
-                            height: 202,
-                            child: widget.temporaryImage != null
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Image.memory(
-                                      widget.temporaryImage!,
-                                      fit: BoxFit.cover,
-                                      alignment: Alignment.topCenter,
-                                    ),
-                                  )
-                                : profile.avatarUrl.isNotEmpty
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: Image.network(
-                                      profile.avatarUrl,
-                                      fit: BoxFit.cover,
-                                      alignment: Alignment.topCenter,
-                                      errorBuilder: (_, _, _) =>
-                                          _CardMonogram(initials: initials),
-                                    ),
-                                  )
-                                : _CardMonogram(initials: initials),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    const Divider(color: Color(0x47303030), height: 1),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      child: Text(
-                        profile.displayName.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _display(20, color: Colors.white, spacing: .8),
                       ),
                     ),
-                    const Divider(color: Color(0x47303030), height: 1),
-                    const SizedBox(height: 14),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _FanCardStat(
-                          value: '${profile.totalPoints}',
-                          label: 'XP',
+                  ),
+                  IgnorePointer(
+                    child: ClipPath(
+                      clipper: _FanCardClipper(),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            center: Alignment(
+                              _currentTilt.dx * 2,
+                              _currentTilt.dy * 2,
+                            ),
+                            radius: .85,
+                            colors: [
+                              Colors.white.withValues(alpha: .12),
+                              Colors.transparent,
+                            ],
+                          ),
                         ),
-                        _FanCardStat(
-                          value: profile.monthlyPoints == 0 ? '—' : '#342',
-                          label: 'RNK',
-                        ),
-                        const _FanCardStat(value: '12', label: 'STK'),
-                      ],
+                      ),
                     ),
-                    const SizedBox(height: 9),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        const _FanCardStat(value: '68', label: 'ACC'),
-                        _FanCardStat(
-                          value: '${profile.seasonPoints}',
-                          label: 'LTY',
-                        ),
-                        _FanCardStat(value: '10', label: 'BST'),
-                      ],
-                    ),
-                  ],
-                ),
+                  ),
+                  CustomPaint(painter: _FanCardBorderPainter()),
+                ],
               ),
             ),
           ),
@@ -1336,6 +1423,23 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard> {
       ),
     );
   }
+}
+
+class _FanCardPair extends StatelessWidget {
+  const _FanCardPair({
+    required this.left,
+    required this.right,
+    this.reverse = false,
+  });
+  final Widget left;
+  final Widget right;
+  final bool reverse;
+  @override
+  Widget build(BuildContext context) => Row(
+    children: reverse
+        ? [Expanded(child: right), Expanded(child: left)]
+        : [Expanded(child: left), Expanded(child: right)],
+  );
 }
 
 class _CardMonogram extends StatelessWidget {
@@ -1383,18 +1487,217 @@ class _FanCardStat extends StatelessWidget {
 class _FanCardClipper extends CustomClipper<Path> {
   @override
   Path getClip(Size size) => Path()
-    ..moveTo(18, 0)
-    ..lineTo(size.width - 18, 0)
-    ..lineTo(size.width, 28)
-    ..lineTo(size.width, size.height - 56)
-    ..lineTo(size.width - 42, size.height)
-    ..lineTo(42, size.height)
-    ..lineTo(0, size.height - 56)
-    ..lineTo(0, 28)
+    ..moveTo(size.width * .03, 0)
+    ..lineTo(size.width * .97, 0)
+    ..lineTo(size.width, size.height * .035)
+    ..lineTo(size.width, size.height * .88)
+    ..lineTo(size.width * .88, size.height)
+    ..lineTo(size.width * .12, size.height)
+    ..lineTo(0, size.height * .88)
+    ..lineTo(0, size.height * .035)
     ..close();
 
   @override
   bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
+}
+
+class _FanCardBorderPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final path = _FanCardClipper().getClip(size);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6
+      ..shader = const LinearGradient(
+        colors: [
+          Color(0xFF6B7280),
+          Color(0xFF9CA3AF),
+          Color(0xFF4B5563),
+          Color(0xFF9CA3AF),
+          Color(0xFF6B7280),
+        ],
+      ).createShader(Offset.zero & size);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _ProductionStreak extends StatelessWidget {
+  const _ProductionStreak({required this.profile});
+  final AbuUserProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeDays = TemporaryMockData.instance.enabled ? 12 : 0;
+    final now = DateTime.now();
+    final monthDays = DateUtils.getDaysInMonth(now.year, now.month);
+    return _PageFrame(
+      kicker: abuText(
+        context,
+        'Build momentum every day',
+        'حافظ على نشاطك كل يوم',
+      ),
+      title: abuText(context, 'Activity Streak', 'سلسلة النشاط'),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final calendar = Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.local_fire_department_rounded,
+                        color: _red,
+                        size: 38,
+                      ),
+                      const SizedBox(width: 12),
+                      Text('$activeDays', style: _display(44, color: _red)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          abuText(context, 'DAY STREAK', 'يوم متواصل'),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    '${now.year} · ${now.month.toString().padLeft(2, '0')}',
+                    style: _display(20),
+                  ),
+                  const SizedBox(height: 16),
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 7,
+                          mainAxisSpacing: 8,
+                          crossAxisSpacing: 8,
+                        ),
+                    itemCount: monthDays,
+                    itemBuilder: (context, i) {
+                      final day = i + 1;
+                      final completed =
+                          activeDays > 0 &&
+                          day <= now.day &&
+                          day > now.day - activeDays;
+                      final today = day == now.day;
+                      return DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: completed
+                              ? _lime.withValues(alpha: .18)
+                              : Theme.of(context).scaffoldBackgroundColor,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: today ? _lime : _line,
+                            width: today ? 2 : 1,
+                          ),
+                        ),
+                        child: Center(
+                          child: completed
+                              ? const Icon(
+                                  Icons.check_rounded,
+                                  color: _lime,
+                                  size: 18,
+                                )
+                              : Text(
+                                  '$day',
+                                  style: const TextStyle(
+                                    color: _muted,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+          final milestones = Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    abuText(context, 'STREAK MILESTONES', 'مراحل السلسلة'),
+                    style: _display(22),
+                  ),
+                  const SizedBox(height: 16),
+                  for (final milestone in const [
+                    (3, 'Warm up'),
+                    (7, 'On fire'),
+                    (14, 'Unstoppable'),
+                    (30, 'Club legend'),
+                  ])
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        backgroundColor: activeDays >= milestone.$1
+                            ? _lime
+                            : _line,
+                        foregroundColor: _ink,
+                        child: Text('${milestone.$1}'),
+                      ),
+                      title: Text(
+                        milestone.$2,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      trailing: Icon(
+                        activeDays >= milestone.$1
+                            ? Icons.check_circle_rounded
+                            : Icons.lock_outline_rounded,
+                        color: activeDays >= milestone.$1 ? _lime : _muted,
+                      ),
+                    ),
+                  const Divider(),
+                  Text(
+                    activeDays == 0
+                        ? abuText(
+                            context,
+                            'Complete an eligible activity today to start your streak.',
+                            'أكمل نشاطاً مؤهلاً اليوم لبدء سلسلتك.',
+                          )
+                        : abuText(
+                            context,
+                            'Come back tomorrow so your streak stays alive.',
+                            'عد غداً للحفاظ على سلسلتك.',
+                          ),
+                    style: const TextStyle(color: _muted, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
+          );
+          if (constraints.maxWidth >= 820) {
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(flex: 3, child: calendar),
+                const SizedBox(width: 18),
+                Expanded(flex: 2, child: milestones),
+              ],
+            );
+          }
+          return Column(
+            children: [calendar, const SizedBox(height: 16), milestones],
+          );
+        },
+      ),
+    );
+  }
 }
 
 class _ProductionObsOverlay extends StatefulWidget {

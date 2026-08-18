@@ -1,17 +1,11 @@
 'use strict';
 
-const CACHE_NAME = 'abu3meer-pwa-v1';
+const CACHE_NAME = 'abu3meer-pwa-v4';
 const APP_SHELL = [
-  '/',
-  '/index.html',
   '/manifest.json',
-  '/flutter_bootstrap.js',
-  '/main.dart.js',
   '/icons/Abu3meer-64.png',
   '/icons/Abu3meer-192.png',
   '/icons/Abu3meer-512.png',
-  '/assets/AssetManifest.bin.json',
-  '/assets/FontManifest.json',
 ];
 
 self.addEventListener('install', (event) => {
@@ -37,29 +31,39 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
 
-  if (request.mode === 'navigate') {
+  const mustStayFresh = request.mode === 'navigate' ||
+    url.pathname === '/index.html' ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.wasm') ||
+    url.pathname.endsWith('.json') ||
+    url.pathname.includes('AssetManifest') ||
+    url.pathname.includes('FontManifest');
+
+  if (mustStayFresh) {
     event.respondWith(
-      fetch(request)
+      fetch(request, { cache: 'no-store' })
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
           return response;
         })
-        .catch(() => caches.match('/index.html')),
+        .catch(() => caches.match(request).then((cached) => cached || caches.match('/index.html'))),
     );
     return;
   }
 
   event.respondWith(
     caches.match(request).then((cached) => {
-      if (cached) return cached;
-      return fetch(request).then((response) => {
+      const refresh = fetch(request).then((response) => {
         if (response.ok) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
         }
         return response;
       });
+      return cached || refresh;
     }),
   );
 });

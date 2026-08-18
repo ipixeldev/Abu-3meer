@@ -641,6 +641,7 @@ class _ProductionShellState extends State<_ProductionShell> {
       _ProductionAchievements(profile: profile),
       _ProductionRewards(profile: profile),
       _ProductionSettings(profile: profile),
+      _ProductionStreak(profile: profile),
       _ProductionObsOverlay(
         repository: widget.repository,
         profile: profile,
@@ -666,6 +667,10 @@ class _ProductionShellState extends State<_ProductionShell> {
       ),
       (Icons.card_giftcard_rounded, abuText(context, 'Rewards', 'المكافآت')),
       (Icons.settings_rounded, abuText(context, 'Settings', 'الإعدادات')),
+      (
+        Icons.local_fire_department_rounded,
+        abuText(context, 'Streak', 'سلسلة الأيام'),
+      ),
       (Icons.live_tv_rounded, 'OBS Overlay'),
       if (profile.canManageContent)
         (Icons.admin_panel_settings_rounded, 'Admin Studio'),
@@ -673,7 +678,7 @@ class _ProductionShellState extends State<_ProductionShell> {
     final desktop = MediaQuery.sizeOf(context).width >= 900;
     const mobileIndexes = [0, 1, 6, 7, 4];
     final mobileSelected = mobileIndexes.indexOf(index);
-    if (index == 12) return pages[index];
+    if (index == 13) return pages[index];
     return Scaffold(
       appBar: desktop
           ? null
@@ -731,7 +736,7 @@ class _ProductionShellState extends State<_ProductionShell> {
                 if (profile.canManageContent)
                   IconButton(
                     tooltip: 'Admin Dashboard',
-                    onPressed: () => setState(() => index = 13),
+                    onPressed: () => setState(() => index = 14),
                     icon: const Icon(Icons.admin_panel_settings_rounded),
                   ),
                 const SizedBox(width: 8),
@@ -871,9 +876,17 @@ class _ProductionHome extends StatelessWidget {
     );
     return _PageFrame(
       kicker: profile.isYouTubeMember
-          ? 'YouTube Member · 2× points'
-          : 'Abu 3meer Community',
-      title: 'Welcome, ${profile.displayName}',
+          ? abuText(
+              context,
+              'YouTube Member · 2× points',
+              'عضو يوتيوب · نقاط مضاعفة',
+            )
+          : abuText(context, 'Abu 3meer Community', 'مجتمع أبو عمير'),
+      title: abuText(
+        context,
+        'Welcome, ${profile.displayName}',
+        'مرحباً، ${profile.displayName}',
+      ),
       child: LayoutBuilder(
         builder: (context, box) {
           if (box.maxWidth < 850) {
@@ -1002,8 +1015,8 @@ class _ProductionLatestVideoCardState
                           border: Border.all(color: Colors.white24),
                         ),
                         child: Lottie.asset(
-                          'assets/animations/toggle.json',
-                          repeat: false,
+                          'assets/animations/youtube.json',
+                          repeat: true,
                           fit: BoxFit.contain,
                         ),
                       ),
@@ -1140,8 +1153,12 @@ class _ProductionMatches extends StatelessWidget {
   final ProductionRepository repository;
   @override
   Widget build(BuildContext context) => _PageFrame(
-    kicker: '100 base points · exact score',
-    title: 'Predictions',
+    kicker: abuText(
+      context,
+      '100 base points · exact score',
+      '١٠٠ نقطة أساسية · النتيجة الدقيقة',
+    ),
+    title: abuText(context, 'Predictions', 'التوقعات'),
     child: StreamBuilder<List<MatchEvent>>(
       stream: repository.watchMatches(),
       builder: (context, snapshot) {
@@ -1163,22 +1180,12 @@ class _ProductionMatches extends StatelessWidget {
             body: 'An administrator has not published a match event.',
           );
         }
-        return Column(
+        return _ResponsiveGrid(
+          minWidth: 420,
           children: events
               .map(
-                (event) => Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 900),
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: _ProductionMatchCard(
-                        event: event,
-                        repository: repository,
-                      ),
-                    ),
-                  ),
-                ),
+                (event) =>
+                    _ProductionMatchCard(event: event, repository: repository),
               )
               .toList(),
         );
@@ -1198,38 +1205,64 @@ class _ProductionMatchCard extends StatelessWidget {
     final result = await showDialog<(int, int)>(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Exact score prediction'),
-          content: SizedBox(
-            width: 360,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _ScoreInput(
-                  label: event.homeTeam,
-                  value: home,
-                  onChanged: (value) => setDialogState(() => home = value),
-                ),
-                Text('–', style: _display(34)),
-                _ScoreInput(
-                  label: event.awayTeam,
-                  value: away,
-                  onChanged: (value) => setDialogState(() => away = value),
-                ),
-              ],
+        builder: (context, setDialogState) => Dialog(
+          insetPadding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    abuText(
+                      context,
+                      'Exact score prediction',
+                      'توقع النتيجة الدقيقة',
+                    ),
+                    style: _display(25),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _ScoreInput(
+                        label: event.homeTeam,
+                        value: home,
+                        onChanged: (value) =>
+                            setDialogState(() => home = value),
+                      ),
+                      Text('–', style: _display(34)),
+                      _ScoreInput(
+                        label: event.awayTeam,
+                        value: away,
+                        onChanged: (value) =>
+                            setDialogState(() => away = value),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text(abuText(context, 'CANCEL', 'إلغاء')),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, (home, away)),
+                        child: Text(
+                          abuText(context, 'SAVE PREDICTION', 'حفظ التوقع'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('CANCEL'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, (home, away)),
-              child: const Text('SAVE PREDICTION'),
-            ),
-          ],
         ),
       ),
     );
@@ -1358,24 +1391,24 @@ class _ProductionMatchCard extends StatelessWidget {
 }
 
 class _ProductionTeamBadge extends StatelessWidget {
-  const _ProductionTeamBadge({
-    required this.team,
-    required this.source,
-    this.size = 44,
-  });
+  const _ProductionTeamBadge({required this.team, required this.source});
   final String team;
   final String source;
-  final double size;
 
   @override
   Widget build(BuildContext context) {
+    const size = 44.0;
     final fallback = team.toLowerCase().contains('barcelona')
         ? 'assets/images/fcb.png'
         : team.toLowerCase().contains('real madrid')
         ? 'assets/images/rma.png'
         : '';
     Widget image;
-    if (source.startsWith('http')) {
+    // The public SportsDB CDN does not allow CanvasKit's cross-origin image
+    // request. Our two supported clubs always use the bundled transparent art.
+    if (fallback.isNotEmpty) {
+      image = Image.asset(fallback, fit: BoxFit.contain);
+    } else if (source.startsWith('http') && !kIsWeb) {
       image = Image.network(
         source,
         fit: BoxFit.contain,
@@ -1385,8 +1418,6 @@ class _ProductionTeamBadge extends StatelessWidget {
       );
     } else if (source.startsWith('assets/')) {
       image = Image.asset(source, fit: BoxFit.contain);
-    } else if (fallback.isNotEmpty) {
-      image = Image.asset(fallback, fit: BoxFit.contain);
     } else {
       image = const Icon(Icons.shield_rounded);
     }
@@ -1486,14 +1517,24 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
   bool monthly = true;
   @override
   Widget build(BuildContext context) => _PageFrame(
-    kicker: 'Top 5 qualify for prizes',
-    title: 'Leaderboard',
+    kicker: abuText(
+      context,
+      'Top 5 qualify for prizes',
+      'أفضل ٥ يتأهلون للجوائز',
+    ),
+    title: abuText(context, 'Leaderboard', 'لوحة المتصدرين'),
     child: Column(
       children: [
         SegmentedButton<bool>(
-          segments: const [
-            ButtonSegment(value: true, label: Text('MONTHLY')),
-            ButtonSegment(value: false, label: Text('SEASON')),
+          segments: [
+            ButtonSegment(
+              value: true,
+              label: Text(abuText(context, 'MONTHLY', 'شهري')),
+            ),
+            ButtonSegment(
+              value: false,
+              label: Text(abuText(context, 'SEASON', 'الموسم')),
+            ),
           ],
           selected: {monthly},
           onSelectionChanged: (value) => setState(() => monthly = value.first),
@@ -1569,8 +1610,12 @@ class _ProductionPoints extends StatelessWidget {
   final AbuUserProfile profile;
   @override
   Widget build(BuildContext context) => _PageFrame(
-    kicker: '${profile.totalPoints} verified points',
-    title: 'Point history',
+    kicker: abuText(
+      context,
+      '${profile.totalPoints} verified points',
+      '${profile.totalPoints} نقطة موثقة',
+    ),
+    title: abuText(context, 'Point history', 'سجل النقاط'),
     child: StreamBuilder<List<PointLedgerEntry>>(
       stream: repository.watchPointHistory(profile.uid),
       builder: (context, snapshot) {
@@ -1638,14 +1683,14 @@ class _ProductionProfileState extends State<_ProductionProfile> {
     if (pickingImage) return;
     setState(() => pickingImage = true);
     try {
-      final image = await imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1400,
-        imageQuality: 88,
-      );
+      final image = await imagePicker.pickImage(source: ImageSource.gallery);
       if (image == null) return;
       final bytes = await image.readAsBytes();
       if (bytes.isEmpty) throw StateError('The selected image was empty.');
+      // Decode before placing the bytes in the widget tree so HEIC and other
+      // unsupported browser formats produce a friendly error, not an uncaught
+      // renderer exception.
+      await decodeImageFromList(bytes);
       if (mounted) setState(() => temporaryImage = bytes);
     } catch (error) {
       if (mounted) {
@@ -1754,7 +1799,11 @@ class _ProductionProfileState extends State<_ProductionProfile> {
   Widget build(BuildContext context) {
     final profile = widget.profile;
     return _PageFrame(
-      kicker: '${profile.role.toUpperCase()} · INTERACTIVE FAN CARD',
+      kicker: abuText(
+        context,
+        '${profile.role.toUpperCase()} · INTERACTIVE FAN CARD',
+        '${profile.role.toUpperCase()} · بطاقة مشجع تفاعلية',
+      ),
       title: '@${profile.username}',
       child: LayoutBuilder(
         builder: (context, box) {

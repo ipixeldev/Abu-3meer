@@ -47,13 +47,6 @@
       padding: 11px 22px; color: #080b10; background: #c8ff38; cursor: pointer; font: 900 12px/1 system-ui;
       letter-spacing: 1.2px; }
     #retry-button:disabled { opacity: .65; cursor: wait; }
-    #pwa-install { position: fixed; right: 18px; bottom: 18px; z-index: 9998; display: none;
-      align-items: center; gap: 9px; border: 1px solid rgba(200,255,56,.5); border-radius: 999px;
-      padding: 12px 18px; color: #080b10; background: #c8ff38; box-shadow: 0 14px 45px rgba(0,0,0,.38);
-      cursor: pointer; font: 900 11px/1 system-ui; letter-spacing: 1px; }
-    #pwa-install.visible { display: inline-flex; }
-    body.obs-active #pwa-install { display: none !important; }
-    @media (max-width: 520px) { #pwa-install { right: 12px; bottom: 82px; } }
   </style>
 </head>
 <body>
@@ -70,7 +63,6 @@
       </div>
     </div>
   </div>
-  <button id="pwa-install" type="button" aria-label="Install Abu 3meer app">⬇ INSTALL APP</button>
 
   <script src="lottie.min.js"></script>
   <script>
@@ -160,43 +152,6 @@
   </script>
   <script>
     (function () {
-      const installButton = document.getElementById('pwa-install');
-      let installPrompt = null;
-      let promptTimer = null;
-      const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-      const isiOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-
-      window.addEventListener('beforeinstallprompt', function (event) {
-        event.preventDefault();
-        installPrompt = event;
-        if (!standalone) {
-          installButton.classList.add('visible');
-          clearTimeout(promptTimer);
-          promptTimer = setTimeout(function () { installButton.classList.remove('visible'); }, 12000);
-        }
-      });
-      window.addEventListener('appinstalled', function () {
-        installPrompt = null;
-        installButton.classList.remove('visible');
-      });
-      if (isiOS && !standalone) {
-        installButton.classList.add('visible');
-        promptTimer = setTimeout(function () { installButton.classList.remove('visible'); }, 12000);
-      }
-
-      installButton.addEventListener('click', async function () {
-        if (installPrompt) {
-          installPrompt.prompt();
-          await installPrompt.userChoice;
-          installPrompt = null;
-          installButton.classList.remove('visible');
-          return;
-        }
-        if (isiOS) {
-          window.alert('To install Abu 3meer: tap Share, then choose “Add to Home Screen”.');
-        }
-      });
-
       if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
         window.addEventListener('load', function () {
           navigator.serviceWorker.register('/pwa_service_worker.js').catch(function (error) {
