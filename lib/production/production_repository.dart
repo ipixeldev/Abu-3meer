@@ -36,6 +36,13 @@ class ProductionRepository {
 
   Stream<List<MatchEvent>> watchManagedMatches() => firestore
       .collection('matches')
+      .orderBy('kickoffAt')
+      .limit(100)
+      .snapshots()
+      .map((snapshot) => snapshot.docs.map(MatchEvent.fromDocument).toList());
+
+  Stream<List<MatchEvent>> _watchPublishedMatches() => firestore
+      .collection('matches')
       .where('status', whereIn: const ['open', 'locked', 'completed'])
       .orderBy('kickoffAt')
       .limit(30)
@@ -44,10 +51,10 @@ class ProductionRepository {
 
   Stream<List<MatchEvent>> watchMatches() async* {
     if (TemporaryMockData.instance.enabled) {
-      yield [TemporaryMockData.instance.match];
+      yield TemporaryMockData.instance.matches;
       return;
     }
-    await for (final managed in watchManagedMatches()) {
+    await for (final managed in _watchPublishedMatches()) {
       if (managed.isNotEmpty) {
         yield managed;
         continue;
@@ -64,28 +71,58 @@ class ProductionRepository {
     return externalContent.latestVideo(refresh: refresh);
   }
 
-  Stream<List<PointLedgerEntry>> watchPointHistory(String uid) => firestore
-      .collection('pointTransactions')
-      .where('userId', isEqualTo: uid)
-      .orderBy('createdAt', descending: true)
-      .limit(50)
-      .snapshots()
-      .map(
-        (snapshot) => snapshot.docs.map(PointLedgerEntry.fromDocument).toList(),
+  Stream<List<PointLedgerEntry>> watchPointHistory(String uid) {
+    if (TemporaryMockData.instance.enabled) {
+      return Stream.value(TemporaryMockData.instance.pointHistory);
+    }
+    return firestore
+        .collection('pointTransactions')
+        .where('userId', isEqualTo: uid)
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs.map(PointLedgerEntry.fromDocument).toList(),
+        );
+  }
+
+  Stream<List<LeaderboardEntry>> watchLeaderboard({required bool monthly}) {
+    if (TemporaryMockData.instance.enabled) {
+      return Stream.value(
+        TemporaryMockData.instance.leaderboard(
+          auth.currentUser?.uid ?? 'mock_current',
+        ),
       );
+    }
+    return firestore
+        .collection('leaderboardEntries')
+        .orderBy(monthly ? 'monthlyPoints' : 'seasonPoints', descending: true)
+        .limit(100)
+        .snapshots()
+        .map(
+          (snapshot) =>
+              snapshot.docs.map(LeaderboardEntry.fromDocument).toList(),
+        );
+  }
 
-  Stream<List<LeaderboardEntry>> watchLeaderboard({required bool monthly}) =>
-      firestore
-          .collection('leaderboardEntries')
-          .orderBy(monthly ? 'monthlyPoints' : 'seasonPoints', descending: true)
-          .limit(100)
-          .snapshots()
-          .map(
-            (snapshot) =>
-                snapshot.docs.map(LeaderboardEntry.fromDocument).toList(),
-          );
+  Stream<List<AbuChallenge>> watchChallenges() {
+    if (TemporaryMockData.instance.enabled) {
+      return Stream.value(TemporaryMockData.instance.challenges);
+    }
+    return _watchChallengeDocuments().map(
+      (events) => events.where((event) => event.isOpen).toList(),
+    );
+  }
 
-  Stream<List<AbuChallenge>> watchChallenges() => firestore
+  Stream<List<AbuChallenge>> watchManagedChallenges() {
+    if (TemporaryMockData.instance.enabled) {
+      return Stream.value(TemporaryMockData.instance.challenges);
+    }
+    return _watchChallengeDocuments();
+  }
+
+  Stream<List<AbuChallenge>> _watchChallengeDocuments() => firestore
       .collection('videoQuestions')
       .orderBy('availableFrom', descending: true)
       .limit(30)
@@ -98,7 +135,10 @@ class ProductionRepository {
             .get();
         final result = <AbuChallenge>[
           ...questions.docs.map(
-            (doc) => AbuChallenge.fromDocument(doc, 'videoQuestion'),
+            (doc) => AbuChallenge.fromDocument(
+              doc,
+              doc.data()['kind'] as String? ?? 'videoQuestion',
+            ),
           ),
           ...cards.docs.map(
             (doc) => AbuChallenge.fromDocument(doc, 'playerCard'),
@@ -107,12 +147,17 @@ class ProductionRepository {
         return result;
       });
 
-  Stream<List<AbuPost>> watchPosts() => firestore
-      .collection('posts')
-      .orderBy('publishedAt', descending: true)
-      .limit(40)
-      .snapshots()
-      .map((snapshot) => snapshot.docs.map(AbuPost.fromDocument).toList());
+  Stream<List<AbuPost>> watchPosts() {
+    if (TemporaryMockData.instance.enabled) {
+      return Stream.value(TemporaryMockData.instance.posts);
+    }
+    return firestore
+        .collection('posts')
+        .orderBy('publishedAt', descending: true)
+        .limit(40)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map(AbuPost.fromDocument).toList());
+  }
 
   Stream<List<AbuComment>> watchPostComments(String postId) => firestore
       .collection('posts')
@@ -386,7 +431,20 @@ class ProductionRepository {
     required int rewardPoints,
     required DateTime availableFrom,
     required DateTime availableUntil,
+    required String status,
+    required int maximumAttempts,
+    required bool memberOnly,
+    required bool notifyOnLive,
   }) async {
+    if (!availableFrom.isBefore(availableUntil)) {
+      throw ArgumentError('The event end time must be after its start time.');
+    }
+    if (!const ['draft', 'scheduled', 'open', 'disabled'].contains(status)) {
+      throw ArgumentError('Choose a supported event status.');
+    }
+    if (rewardPoints < 0 || maximumAttempts < 1) {
+      throw ArgumentError('Points and attempts must be valid positive values.');
+    }
     final collection = kind == 'playerCard' ? 'playerCards' : 'videoQuestions';
     final ref = firestore.collection(collection).doc();
     final batch = firestore.batch();
@@ -395,7 +453,11 @@ class ProductionRepository {
       'description': description.trim(),
       'videoUrl': videoUrl.trim(),
       'rewardPoints': rewardPoints,
-      'status': 'open',
+      'kind': kind,
+      'status': status,
+      'maximumAttempts': maximumAttempts,
+      'memberOnly': memberOnly,
+      'notifyOnLive': notifyOnLive,
       'availableFrom': Timestamp.fromDate(availableFrom),
       'availableUntil': Timestamp.fromDate(availableUntil),
       'createdBy': auth.currentUser!.uid,
@@ -407,6 +469,20 @@ class ProductionRepository {
     });
     await batch.commit();
   }
+
+  Future<void> setChallengeStatus({
+    required AbuChallenge challenge,
+    required String status,
+  }) => firestore
+      .collection(
+        challenge.kind == 'playerCard' ? 'playerCards' : 'videoQuestions',
+      )
+      .doc(challenge.id)
+      .update({
+        'status': status,
+        'updatedBy': auth.currentUser!.uid,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
 
   Future<void> createPost({
     required String title,
@@ -453,17 +529,34 @@ class ProductionRepository {
     required String imageUrl,
     required String linkUrl,
     required String buttonLabel,
-  }) => firestore.collection('platformSettings').doc('launchAnnouncement').set({
-    'enabled': enabled,
-    'title': title.trim(),
-    'body': body.trim(),
-    'imageUrl': imageUrl.trim(),
-    'linkUrl': linkUrl.trim(),
-    'buttonLabel': buttonLabel.trim(),
-    'revision': DateTime.now().millisecondsSinceEpoch,
-    'updatedBy': auth.currentUser!.uid,
-    'updatedAt': FieldValue.serverTimestamp(),
-  });
+    required String frequency,
+    required DateTime startsAt,
+    required DateTime endsAt,
+  }) async {
+    if (!startsAt.isBefore(endsAt)) {
+      throw ArgumentError('The popup end time must be after its start time.');
+    }
+    if (!const ['once', 'daily', 'session', 'always'].contains(frequency)) {
+      throw ArgumentError('Choose a supported popup frequency.');
+    }
+    await firestore
+        .collection('platformSettings')
+        .doc('launchAnnouncement')
+        .set({
+          'enabled': enabled,
+          'title': title.trim(),
+          'body': body.trim(),
+          'imageUrl': imageUrl.trim(),
+          'linkUrl': linkUrl.trim(),
+          'buttonLabel': buttonLabel.trim(),
+          'frequency': frequency,
+          'startsAt': Timestamp.fromDate(startsAt),
+          'endsAt': Timestamp.fromDate(endsAt),
+          'revision': DateTime.now().millisecondsSinceEpoch,
+          'updatedBy': auth.currentUser!.uid,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+  }
 
   Future<void> setUserRole({required String uid, required String role}) async {
     if (!const ['user', 'moderator', 'editor', 'admin'].contains(role)) {
@@ -596,6 +689,14 @@ class ProductionRepository {
     'matchId': matchId,
     'homeScore': homeScore,
     'awayScore': awayScore,
+  });
+
+  Future<void> setMatchStatus({
+    required String matchId,
+    required String status,
+  }) => firestore.collection('matches').doc(matchId).update({
+    'status': status,
+    'updatedAt': FieldValue.serverTimestamp(),
   });
 
   Future<void> updatePointRules({

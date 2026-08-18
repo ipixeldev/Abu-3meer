@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lottie/lottie.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../production/brand.dart';
 import '../production/app_preferences.dart';
@@ -15,6 +16,7 @@ import '../production/external_content_service.dart';
 import '../production/ehzerha_embed.dart';
 import '../production/models.dart';
 import '../production/production_repository.dart';
+import '../production/pwa_install_visibility.dart';
 import '../production/temporary_mock_data.dart';
 
 part 'fan_league_extended.dart';

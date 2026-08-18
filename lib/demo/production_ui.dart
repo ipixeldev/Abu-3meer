@@ -625,38 +625,29 @@ class _ProductionShellState extends State<_ProductionShell> {
 
   @override
   Widget build(BuildContext context) {
+    final profile = TemporaryMockData.instance.enabled
+        ? TemporaryMockData.instance.profile(widget.profile)
+        : widget.profile;
     final pages = <Widget>[
-      _ProductionHome(repository: widget.repository, profile: widget.profile),
+      _ProductionHome(repository: widget.repository, profile: profile),
       _ProductionMatches(repository: widget.repository),
-      _ProductionLeaderboard(
-        repository: widget.repository,
-        profile: widget.profile,
-      ),
-      _ProductionPoints(repository: widget.repository, profile: widget.profile),
-      _ProductionProfile(
-        repository: widget.repository,
-        profile: widget.profile,
-      ),
+      _ProductionLeaderboard(repository: widget.repository, profile: profile),
+      _ProductionPoints(repository: widget.repository, profile: profile),
+      _ProductionProfile(repository: widget.repository, profile: profile),
       _ProductionChallenges(repository: widget.repository),
-      _ProductionGames(repository: widget.repository, profile: widget.profile),
-      _ProductionCommunity(
-        repository: widget.repository,
-        profile: widget.profile,
-      ),
+      _ProductionGames(repository: widget.repository, profile: profile),
+      _ProductionCommunity(repository: widget.repository, profile: profile),
       _ProductionFanWar(repository: widget.repository),
-      _ProductionAchievements(profile: widget.profile),
-      _ProductionRewards(profile: widget.profile),
-      _ProductionSettings(profile: widget.profile),
+      _ProductionAchievements(profile: profile),
+      _ProductionRewards(profile: profile),
+      _ProductionSettings(profile: profile),
       _ProductionObsOverlay(
         repository: widget.repository,
-        profile: widget.profile,
+        profile: profile,
         onExit: () => setState(() => index = 0),
       ),
-      if (widget.profile.canManageContent)
-        _ProductionAdmin(
-          repository: widget.repository,
-          profile: widget.profile,
-        ),
+      if (profile.canManageContent)
+        _ProductionAdmin(repository: widget.repository, profile: profile),
     ];
     if (index >= pages.length) index = 0;
     final items = <(IconData, String)>[
@@ -676,7 +667,7 @@ class _ProductionShellState extends State<_ProductionShell> {
       (Icons.card_giftcard_rounded, abuText(context, 'Rewards', 'المكافآت')),
       (Icons.settings_rounded, abuText(context, 'Settings', 'الإعدادات')),
       (Icons.live_tv_rounded, 'OBS Overlay'),
-      if (widget.profile.canManageContent)
+      if (profile.canManageContent)
         (Icons.admin_panel_settings_rounded, 'Admin Studio'),
     ];
     final desktop = MediaQuery.sizeOf(context).width >= 900;
@@ -704,7 +695,7 @@ class _ProductionShellState extends State<_ProductionShell> {
               actions: [
                 _Pill(
                   icon: Icons.stars_rounded,
-                  text: '${widget.profile.totalPoints}',
+                  text: '${profile.totalPoints}',
                   color: _gold,
                   compact: true,
                 ),
@@ -737,7 +728,7 @@ class _ProductionShellState extends State<_ProductionShell> {
                         }).whereType<PopupMenuEntry<int>>().toList(),
                     icon: const Icon(Icons.apps_rounded),
                   ),
-                if (widget.profile.canManageContent)
+                if (profile.canManageContent)
                   IconButton(
                     tooltip: 'Admin Dashboard',
                     onPressed: () => setState(() => index = 13),
@@ -797,19 +788,19 @@ class _ProductionShellState extends State<_ProductionShell> {
                           backgroundColor: _lime,
                           foregroundColor: _ink,
                           child: Text(
-                            widget.profile.displayName.isEmpty
+                            profile.displayName.isEmpty
                                 ? '?'
-                                : widget.profile.displayName[0].toUpperCase(),
+                                : profile.displayName[0].toUpperCase(),
                             style: const TextStyle(fontWeight: FontWeight.w900),
                           ),
                         ),
                         title: Text(
-                          widget.profile.displayName,
+                          profile.displayName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
                         subtitle: Text(
-                          '@${widget.profile.username}',
+                          '@${profile.username}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -893,6 +884,8 @@ class _ProductionHome extends StatelessWidget {
                 match,
                 const SizedBox(height: 16),
                 _ProductionLatestVideoCard(repository: repository),
+                const SizedBox(height: 16),
+                _ProductionHomeActivityFeed(repository: repository),
               ],
             );
           }
@@ -906,6 +899,8 @@ class _ProductionHome extends StatelessWidget {
                     _ProductionPointsHero(profile: profile),
                     const SizedBox(height: 16),
                     match,
+                    const SizedBox(height: 16),
+                    _ProductionHomeActivityFeed(repository: repository),
                   ],
                 ),
               ),
@@ -981,16 +976,40 @@ class _ProductionLatestVideoCardState
               final compact = constraints.maxWidth < 680;
               final image = AspectRatio(
                 aspectRatio: 16 / 9,
-                child: video.thumbnailUrl.startsWith('assets/')
-                    ? Image.asset(video.thumbnailUrl, fit: BoxFit.cover)
-                    : Image.network(
-                        video.thumbnailUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => Image.asset(
-                          'assets/images/latest_abu3meer.jpg',
-                          fit: BoxFit.cover,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    video.thumbnailUrl.startsWith('assets/')
+                        ? Image.asset(video.thumbnailUrl, fit: BoxFit.cover)
+                        : Image.network(
+                            video.thumbnailUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) => Image.asset(
+                              'assets/images/latest_abu3meer.jpg',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                    PositionedDirectional(
+                      top: 12,
+                      end: 12,
+                      child: Container(
+                        width: 52,
+                        height: 34,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        decoration: BoxDecoration(
+                          color: _ink.withValues(alpha: .82),
+                          borderRadius: BorderRadius.circular(99),
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: Lottie.asset(
+                          'assets/animations/toggle.json',
+                          repeat: false,
+                          fit: BoxFit.contain,
                         ),
                       ),
+                    ),
+                  ],
+                ),
               );
               final details = Padding(
                 padding: const EdgeInsets.all(20),
@@ -1181,8 +1200,8 @@ class _ProductionMatchCard extends StatelessWidget {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text('Exact score prediction'),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 430),
+          content: SizedBox(
+            width: 360,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -1269,24 +1288,29 @@ class _ProductionMatchCard extends StatelessWidget {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    SizedBox(
-                      width: 72,
-                      height: 48,
-                      child: Stack(
-                        children: [
-                          _ProductionTeamBadge(
-                            team: event.homeTeam,
-                            source: event.homeLogoUrl,
-                          ),
-                          Positioned(
-                            left: 27,
-                            child: _ProductionTeamBadge(
-                              team: event.awayTeam,
-                              source: event.awayLogoUrl,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _ProductionTeamBadge(
+                          team: event.homeTeam,
+                          source: event.homeLogoUrl,
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 5),
+                          child: Text(
+                            'VS',
+                            style: TextStyle(
+                              color: _muted,
+                              fontSize: 8,
+                              fontWeight: FontWeight.w900,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        _ProductionTeamBadge(
+                          team: event.awayTeam,
+                          source: event.awayLogoUrl,
+                        ),
+                      ],
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1334,9 +1358,14 @@ class _ProductionMatchCard extends StatelessWidget {
 }
 
 class _ProductionTeamBadge extends StatelessWidget {
-  const _ProductionTeamBadge({required this.team, required this.source});
+  const _ProductionTeamBadge({
+    required this.team,
+    required this.source,
+    this.size = 44,
+  });
   final String team;
   final String source;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
@@ -1362,12 +1391,12 @@ class _ProductionTeamBadge extends StatelessWidget {
       image = const Icon(Icons.shield_rounded);
     }
     return Container(
-      width: 48,
-      height: 48,
-      padding: const EdgeInsets.all(5),
+      width: size,
+      height: size,
+      padding: EdgeInsets.all(size * .1),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(13),
+        color: Theme.of(context).cardColor.withValues(alpha: .72),
+        borderRadius: BorderRadius.circular(size * .25),
         border: Border.all(color: _line),
       ),
       clipBehavior: Clip.antiAlias,
@@ -1418,6 +1447,7 @@ class _ScoreInput extends StatelessWidget {
   final ValueChanged<int> onChanged;
   @override
   Widget build(BuildContext context) => Column(
+    mainAxisSize: MainAxisSize.min,
     children: [
       SizedBox(
         width: 96,
@@ -1601,16 +1631,35 @@ class _ProductionProfile extends StatefulWidget {
 
 class _ProductionProfileState extends State<_ProductionProfile> {
   Uint8List? temporaryImage;
+  bool pickingImage = false;
+  final ImagePicker imagePicker = ImagePicker();
 
   Future<void> pickTemporaryImage() async {
-    final image = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1400,
-      imageQuality: 88,
-    );
-    if (image == null) return;
-    final bytes = await image.readAsBytes();
-    if (mounted) setState(() => temporaryImage = bytes);
+    if (pickingImage) return;
+    setState(() => pickingImage = true);
+    try {
+      final image = await imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1400,
+        imageQuality: 88,
+      );
+      if (image == null) return;
+      final bytes = await image.readAsBytes();
+      if (bytes.isEmpty) throw StateError('The selected image was empty.');
+      if (mounted) setState(() => temporaryImage = bytes);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Could not preview that photo: ${productionErrorMessage(error)}',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => pickingImage = false);
+    }
   }
 
   Future<void> editProfile() async {
@@ -1711,7 +1760,7 @@ class _ProductionProfileState extends State<_ProductionProfile> {
         builder: (context, box) {
           final card = Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 360),
+              constraints: const BoxConstraints(maxWidth: 320),
               child: AspectRatio(
                 aspectRatio: .72,
                 child: _InteractiveFanCard(
@@ -1747,9 +1796,18 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                   ),
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
-                    onPressed: pickTemporaryImage,
-                    icon: const Icon(Icons.add_photo_alternate_rounded),
-                    label: const Text('TRY A PHOTO ON THE CARD'),
+                    onPressed: pickingImage ? null : pickTemporaryImage,
+                    icon: pickingImage
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.add_photo_alternate_rounded),
+                    label: Text(
+                      pickingImage
+                          ? 'OPENING PHOTO LIBRARY…'
+                          : 'TRY A PHOTO ON THE CARD',
+                    ),
                   ),
                   const SizedBox(height: 7),
                   const Text(
@@ -1772,7 +1830,7 @@ class _ProductionProfileState extends State<_ProductionProfile> {
               ),
             ),
           );
-          return box.maxWidth >= 820
+          final primary = box.maxWidth >= 820
               ? Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1782,10 +1840,135 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                   ],
                 )
               : Column(children: [card, const SizedBox(height: 20), controls]);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              primary,
+              const SizedBox(height: 20),
+              _ProductionProfileSummary(profile: profile),
+              const SizedBox(height: 20),
+              _ProductionRecentActivity(
+                repository: widget.repository,
+                profile: profile,
+              ),
+            ],
+          );
         },
       ),
     );
   }
+}
+
+class _ProductionProfileSummary extends StatelessWidget {
+  const _ProductionProfileSummary({required this.profile});
+  final AbuUserProfile profile;
+
+  @override
+  Widget build(BuildContext context) {
+    final demo = TemporaryMockData.instance.enabled;
+    final stats = <(String, String)>[
+      ('${profile.totalPoints}', 'TOTAL POINTS'),
+      ('${profile.monthlyPoints}', 'MONTHLY'),
+      ('${profile.seasonPoints}', 'SEASON'),
+      (demo ? '#342' : '—', 'MONTHLY RANK'),
+      (demo ? '68%' : '—', 'PREDICTION ACCURACY'),
+      (demo ? '12 DAYS' : '—', 'CURRENT STREAK'),
+      (demo ? '12 / 20' : '0', 'ACHIEVEMENTS'),
+      (demo ? '4' : '0', 'PLAYER CARDS'),
+    ];
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('PROFILE OVERVIEW', style: _display(21)),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: stats
+                  .map(
+                    (stat) => Container(
+                      width: 180,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: _surface2,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: _line),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(stat.$1, style: _display(22, color: _lime)),
+                          const SizedBox(height: 3),
+                          Text(
+                            stat.$2,
+                            style: const TextStyle(
+                              color: _muted,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: .8,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductionRecentActivity extends StatelessWidget {
+  const _ProductionRecentActivity({
+    required this.repository,
+    required this.profile,
+  });
+  final ProductionRepository repository;
+  final AbuUserProfile profile;
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<List<PointLedgerEntry>>(
+    stream: repository.watchPointHistory(profile.uid),
+    builder: (context, snapshot) {
+      final entries = (snapshot.data ?? const <PointLedgerEntry>[])
+          .take(4)
+          .toList();
+      if (entries.isEmpty) return const SizedBox.shrink();
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('RECENT ACTIVITY', style: _display(21)),
+              const SizedBox(height: 8),
+              ...entries.map(
+                (entry) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const CircleAvatar(
+                    backgroundColor: Color(0x1FC8FF38),
+                    child: Icon(Icons.add_rounded, color: _lime),
+                  ),
+                  title: Text(entry.reason),
+                  subtitle: Text(_productionDate(entry.createdAt)),
+                  trailing: Text(
+                    '+${entry.finalPoints}',
+                    style: _display(18, color: _lime),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
 }
 
 class _ProductionSettings extends StatelessWidget {
@@ -2045,13 +2228,75 @@ class _ProductionAdmin extends StatelessWidget {
                         subtitle: Text(
                           '${match.competition} · ${match.status}',
                         ),
-                        trailing: match.status == 'completed'
-                            ? null
-                            : IconButton(
+                        trailing: Wrap(
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            DropdownButton<String>(
+                              value:
+                                  const [
+                                    'draft',
+                                    'open',
+                                    'locked',
+                                    'disabled',
+                                    'completed',
+                                    'archived',
+                                  ].contains(match.status)
+                                  ? match.status
+                                  : 'draft',
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'draft',
+                                  child: Text('Draft'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'open',
+                                  child: Text('Open'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'locked',
+                                  child: Text('Locked'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'disabled',
+                                  child: Text('Disabled'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'completed',
+                                  child: Text('Completed'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'archived',
+                                  child: Text('Archived'),
+                                ),
+                              ],
+                              onChanged: (status) async {
+                                if (status == null) return;
+                                try {
+                                  await repository.setMatchStatus(
+                                    matchId: match.id,
+                                    status: status,
+                                  );
+                                } catch (error) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          productionErrorMessage(error),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                }
+                              },
+                            ),
+                            if (match.status != 'completed')
+                              IconButton(
                                 tooltip: 'Publish result',
                                 onPressed: () => _showResult(context, match),
                                 icon: const Icon(Icons.flag_rounded),
                               ),
+                          ],
+                        ),
                       ),
                     )
                     .toList(),

@@ -160,6 +160,56 @@ class _ProductionChallengeCard extends StatelessWidget {
   );
 }
 
+class _ProductionHomeActivityFeed extends StatelessWidget {
+  const _ProductionHomeActivityFeed({required this.repository});
+  final ProductionRepository repository;
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<List<AbuChallenge>>(
+    stream: repository.watchChallenges(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) {
+        return const _ProductionSkeleton(height: 210);
+      }
+      final active = (snapshot.data ?? const <AbuChallenge>[])
+          .where((event) => event.isOpen)
+          .take(3)
+          .toList();
+      if (active.isEmpty) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('YOUR NEXT MOVES', style: _display(22)),
+              const Spacer(),
+              Text(
+                '${active.length} LIVE',
+                style: const TextStyle(
+                  color: _lime,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 11,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _ResponsiveGrid(
+            children: active
+                .map(
+                  (event) => _ProductionChallengeCard(
+                    challenge: event,
+                    repository: repository,
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 class _ProductionCommunity extends StatelessWidget {
   const _ProductionCommunity({required this.repository, required this.profile});
   final ProductionRepository repository;
@@ -227,6 +277,8 @@ class _ProductionPostCard extends StatelessWidget {
         final wide = box.maxWidth > 720 && post.imageUrl.isNotEmpty;
         final image = post.imageUrl.isEmpty
             ? null
+            : post.imageUrl.startsWith('assets/')
+            ? Image.asset(post.imageUrl, fit: BoxFit.cover)
             : Image.network(
                 post.imageUrl,
                 fit: BoxFit.cover,
@@ -1030,15 +1082,76 @@ class _ProductionRewards extends StatelessWidget {
   final AbuUserProfile profile;
 
   @override
-  Widget build(BuildContext context) => _PageFrame(
-    kicker: '${profile.seasonPoints} loyalty points available',
-    title: 'Rewards',
-    child: const _ProductionEmpty(
-      icon: Icons.card_giftcard_rounded,
-      title: 'Reward catalogue coming soon',
-      body: 'The owner will publish real rewards here. No redemption is simulated and no points are removed until the catalogue is connected.',
-    ),
-  );
+  Widget build(BuildContext context) {
+    final mock = TemporaryMockData.instance.enabled;
+    return _PageFrame(
+      kicker: '${profile.seasonPoints} loyalty points available',
+      title: 'Rewards',
+      child: !mock
+          ? const _ProductionEmpty(
+              icon: Icons.card_giftcard_rounded,
+              title: 'Reward catalogue coming soon',
+              body: 'The owner will publish real rewards here. No redemption is simulated and no points are removed until the catalogue is connected.',
+            )
+          : _ResponsiveGrid(
+              children:
+                  const [
+                        (
+                          'SIGNED HOME SHIRT',
+                          '5,000 PTS',
+                          Icons.checkroom_rounded,
+                        ),
+                        (
+                          'ABU 3MEER VIDEO SHOUTOUT',
+                          '2,500 PTS',
+                          Icons.record_voice_over_rounded,
+                        ),
+                        (
+                          '€25 STORE CREDIT',
+                          '1,800 PTS',
+                          Icons.wallet_giftcard_rounded,
+                        ),
+                        (
+                          'MONTHLY GIVEAWAY ENTRY',
+                          '500 PTS',
+                          Icons.confirmation_number_rounded,
+                        ),
+                      ]
+                      .map(
+                        (reward) => Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(reward.$3, color: _gold, size: 36),
+                                const Spacer(),
+                                Text(reward.$1, style: _display(20)),
+                                const SizedBox(height: 7),
+                                Text(
+                                  reward.$2,
+                                  style: const TextStyle(
+                                    color: _lime,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                const SizedBox(
+                                  width: double.infinity,
+                                  child: OutlinedButton(
+                                    onPressed: null,
+                                    child: Text('PREVIEW REWARD'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+            ),
+    );
+  }
 }
 
 class _InteractiveFanCardState extends State<_InteractiveFanCard> {
@@ -1082,25 +1195,26 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard> {
             child: ClipPath(
               clipper: _FanCardClipper(),
               child: Container(
-                width: 360,
-                height: 500,
-                padding: const EdgeInsets.fromLTRB(28, 30, 28, 26),
+                width: 320,
+                height: 444,
+                padding: const EdgeInsets.fromLTRB(24, 25, 24, 22),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: profile.supportedTeam == 'Barcelona'
-                        ? const [Color(0xFF172E63), Color(0xFF671D3D), _surface]
-                        : const [
-                            Color(0xFFF0F0F4),
-                            Color(0xFF8B82C4),
-                            _surface,
-                          ],
+                    colors: const [
+                      Color(0xFF242529),
+                      Color(0xFF111216),
+                      Color(0xFF07080A),
+                    ],
                   ),
-                  border: Border.all(color: _gold, width: 2),
+                  border: Border.all(
+                    color: const Color(0xFFE8E8E8),
+                    width: 1.4,
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: _gold.withValues(alpha: .16),
+                      color: Colors.black.withValues(alpha: .5),
                       blurRadius: 34,
                       offset: Offset(tilt.dx * -18, 20 + tilt.dy * 12),
                     ),
@@ -1115,7 +1229,10 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard> {
                           children: [
                             Text(
                               '$rating',
-                              style: _display(47, color: Colors.white),
+                              style: _display(
+                                42,
+                                color: const Color(0xFFE8E8E8),
+                              ),
                             ),
                             const Text(
                               'RKE',
@@ -1134,25 +1251,37 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard> {
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
+                            const SizedBox(height: 9),
+                            _ProductionTeamBadge(
+                              team: profile.supportedTeam,
+                              source: '',
+                              size: 32,
+                            ),
                           ],
                         ),
-                        const SizedBox(width: 18),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: SizedBox(
-                            height: 235,
+                            height: 202,
                             child: widget.temporaryImage != null
-                                ? Image.memory(
-                                    widget.temporaryImage!,
-                                    fit: BoxFit.cover,
-                                    alignment: Alignment.topCenter,
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.memory(
+                                      widget.temporaryImage!,
+                                      fit: BoxFit.cover,
+                                      alignment: Alignment.topCenter,
+                                    ),
                                   )
                                 : profile.avatarUrl.isNotEmpty
-                                ? Image.network(
-                                    profile.avatarUrl,
-                                    fit: BoxFit.cover,
-                                    alignment: Alignment.topCenter,
-                                    errorBuilder: (_, _, _) =>
-                                        _CardMonogram(initials: initials),
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.network(
+                                      profile.avatarUrl,
+                                      fit: BoxFit.cover,
+                                      alignment: Alignment.topCenter,
+                                      errorBuilder: (_, _, _) =>
+                                          _CardMonogram(initials: initials),
+                                    ),
                                   )
                                 : _CardMonogram(initials: initials),
                           ),
@@ -1160,7 +1289,7 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard> {
                       ],
                     ),
                     const Spacer(),
-                    const Divider(color: Colors.white38, height: 1),
+                    const Divider(color: Color(0x47303030), height: 1),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       child: Text(
@@ -1170,7 +1299,7 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard> {
                         style: _display(20, color: Colors.white, spacing: .8),
                       ),
                     ),
-                    const Divider(color: Colors.white38, height: 1),
+                    const Divider(color: Color(0x47303030), height: 1),
                     const SizedBox(height: 14),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -1179,23 +1308,23 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard> {
                           value: '${profile.totalPoints}',
                           label: 'XP',
                         ),
-                        const _FanCardStat(value: '—', label: 'RNK'),
-                        const _FanCardStat(value: '0', label: 'STK'),
+                        _FanCardStat(
+                          value: profile.monthlyPoints == 0 ? '—' : '#342',
+                          label: 'RNK',
+                        ),
+                        const _FanCardStat(value: '12', label: 'STK'),
                       ],
                     ),
                     const SizedBox(height: 9),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        const _FanCardStat(value: '0', label: 'ACC'),
+                        const _FanCardStat(value: '68', label: 'ACC'),
                         _FanCardStat(
                           value: '${profile.seasonPoints}',
                           label: 'LTY',
                         ),
-                        _FanCardStat(
-                          value: profile.role.toUpperCase(),
-                          label: 'ROLE',
-                        ),
+                        _FanCardStat(value: '10', label: 'BST'),
                       ],
                     ),
                   ],
@@ -1268,7 +1397,7 @@ class _FanCardClipper extends CustomClipper<Path> {
   bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }
 
-class _ProductionObsOverlay extends StatelessWidget {
+class _ProductionObsOverlay extends StatefulWidget {
   const _ProductionObsOverlay({
     required this.repository,
     required this.profile,
@@ -1277,6 +1406,23 @@ class _ProductionObsOverlay extends StatelessWidget {
   final ProductionRepository repository;
   final AbuUserProfile profile;
   final VoidCallback onExit;
+
+  @override
+  State<_ProductionObsOverlay> createState() => _ProductionObsOverlayState();
+}
+
+class _ProductionObsOverlayState extends State<_ProductionObsOverlay> {
+  @override
+  void initState() {
+    super.initState();
+    setObsOverlayActive(true);
+  }
+
+  @override
+  void dispose() {
+    setObsOverlayActive(false);
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -1309,7 +1455,7 @@ class _ProductionObsOverlay extends StatelessWidget {
                 ),
                 const SizedBox(height: 16),
                 StreamBuilder<List<LeaderboardEntry>>(
-                  stream: repository.watchLeaderboard(monthly: false),
+                  stream: widget.repository.watchLeaderboard(monthly: false),
                   builder: (context, snapshot) {
                     final entries = snapshot.data ?? const [];
                     return Expanded(
@@ -1357,7 +1503,7 @@ class _ProductionObsOverlay extends StatelessWidget {
             children: [
               _Pill(
                 icon: Icons.stars_rounded,
-                text: '${profile.totalPoints}',
+                text: '${widget.profile.totalPoints}',
                 color: _gold,
               ),
               const SizedBox(width: 10),
@@ -1369,7 +1515,7 @@ class _ProductionObsOverlay extends StatelessWidget {
           right: 30,
           bottom: 30,
           child: FilledButton.icon(
-            onPressed: onExit,
+            onPressed: widget.onExit,
             icon: const Icon(Icons.close_fullscreen_rounded),
             label: const Text('EXIT OVERLAY'),
           ),
@@ -1428,6 +1574,8 @@ class _ProductionAdminTools extends StatelessWidget {
                 ),
             ],
           ),
+          const SizedBox(height: 18),
+          _AdminEventManager(repository: repository),
         ],
       ),
     ),
@@ -1440,6 +1588,12 @@ class _ProductionAdminTools extends StatelessWidget {
     final answer = TextEditingController();
     final points = TextEditingController(text: '40');
     var kind = 'videoQuestion';
+    var status = 'open';
+    var maximumAttempts = 3;
+    var memberOnly = false;
+    var notifyOnLive = true;
+    var startsAt = DateTime.now();
+    var endsAt = DateTime.now().add(const Duration(days: 7));
     final submit = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -1463,8 +1617,40 @@ class _ProductionAdminTools extends StatelessWidget {
                       ),
                     ],
                     selected: {kind},
-                    onSelectionChanged: (value) =>
-                        setDialogState(() => kind = value.first),
+                    onSelectionChanged: (value) => setDialogState(() {
+                      kind = value.first;
+                      points.text = kind == 'playerCard' ? '20' : '40';
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    initialValue: status,
+                    decoration: const InputDecoration(labelText: 'Status'),
+                    items: const [
+                      DropdownMenuItem(value: 'draft', child: Text('Draft')),
+                      DropdownMenuItem(
+                        value: 'scheduled',
+                        child: Text('Scheduled'),
+                      ),
+                      DropdownMenuItem(value: 'open', child: Text('Live')),
+                      DropdownMenuItem(
+                        value: 'disabled',
+                        child: Text('Disabled'),
+                      ),
+                    ],
+                    onChanged: (value) =>
+                        setDialogState(() => status = value ?? 'draft'),
+                  ),
+                  _AdminDateTile(
+                    label: 'Starts',
+                    value: startsAt,
+                    onChanged: (value) =>
+                        setDialogState(() => startsAt = value),
+                  ),
+                  _AdminDateTile(
+                    label: 'Ends',
+                    value: endsAt,
+                    onChanged: (value) => setDialogState(() => endsAt = value),
                   ),
                   const SizedBox(height: 14),
                   TextField(
@@ -1499,6 +1685,37 @@ class _ProductionAdminTools extends StatelessWidget {
                       labelText: 'Reward points',
                     ),
                   ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<int>(
+                    initialValue: maximumAttempts,
+                    decoration: const InputDecoration(
+                      labelText: 'Maximum attempts',
+                    ),
+                    items: const [1, 2, 3, 5, 10]
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text('$value'),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) =>
+                        setDialogState(() => maximumAttempts = value ?? 3),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: memberOnly,
+                    onChanged: (value) =>
+                        setDialogState(() => memberOnly = value),
+                    title: const Text('YouTube members only'),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: notifyOnLive,
+                    onChanged: (value) =>
+                        setDialogState(() => notifyOnLive = value),
+                    title: const Text('Notify users when live'),
+                  ),
                 ],
               ),
             ),
@@ -1525,8 +1742,12 @@ class _ProductionAdminTools extends StatelessWidget {
         videoUrl: video.text,
         answer: answer.text,
         rewardPoints: int.parse(points.text),
-        availableFrom: DateTime.now(),
-        availableUntil: DateTime.now().add(const Duration(days: 7)),
+        availableFrom: startsAt,
+        availableUntil: endsAt,
+        status: status,
+        maximumAttempts: maximumAttempts,
+        memberOnly: memberOnly,
+        notifyOnLive: notifyOnLive,
       );
     }, 'Challenge published.');
   }
@@ -1607,6 +1828,9 @@ class _ProductionAdminTools extends StatelessWidget {
     final link = TextEditingController();
     final label = TextEditingController(text: 'OPEN NOW');
     var enabled = true;
+    var frequency = 'once';
+    var startsAt = DateTime.now();
+    var endsAt = DateTime.now().add(const Duration(days: 7));
     final submit = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -1622,6 +1846,44 @@ class _ProductionAdminTools extends StatelessWidget {
                     value: enabled,
                     onChanged: (value) => setDialogState(() => enabled = value),
                     title: const Text('Show on app launch'),
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: frequency,
+                    decoration: const InputDecoration(
+                      labelText: 'Display frequency',
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'once',
+                        child: Text('Once per campaign revision'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'daily',
+                        child: Text('Once per day'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'session',
+                        child: Text('Once per app session'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'always',
+                        child: Text('Every app launch'),
+                      ),
+                    ],
+                    onChanged: (value) =>
+                        setDialogState(() => frequency = value ?? 'once'),
+                  ),
+                  const SizedBox(height: 6),
+                  _AdminDateTile(
+                    label: 'Starts',
+                    value: startsAt,
+                    onChanged: (value) =>
+                        setDialogState(() => startsAt = value),
+                  ),
+                  _AdminDateTile(
+                    label: 'Ends',
+                    value: endsAt,
+                    onChanged: (value) => setDialogState(() => endsAt = value),
                   ),
                   TextField(
                     controller: title,
@@ -1679,6 +1941,9 @@ class _ProductionAdminTools extends StatelessWidget {
         imageUrl: image.text,
         linkUrl: link.text,
         buttonLabel: label.text,
+        frequency: frequency,
+        startsAt: startsAt,
+        endsAt: endsAt,
       ),
       'Launch popup saved.',
     );
@@ -1794,18 +2059,111 @@ class _ProductionAdminTools extends StatelessWidget {
   }
 }
 
+class _AdminEventManager extends StatelessWidget {
+  const _AdminEventManager({required this.repository});
+  final ProductionRepository repository;
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<List<AbuChallenge>>(
+    stream: repository.watchManagedChallenges(),
+    builder: (context, snapshot) {
+      final events = snapshot.data ?? const <AbuChallenge>[];
+      if (events.isEmpty) {
+        return const _ProductionEmpty(
+          icon: Icons.event_note_rounded,
+          title: 'No engagement events yet',
+          body: 'Create a Video Question or Player Card event above.',
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('EVENT CONTROL', style: _display(18)),
+          const SizedBox(height: 8),
+          ...events.map(
+            (event) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                event.kind == 'playerCard'
+                    ? Icons.style_rounded
+                    : Icons.quiz_rounded,
+              ),
+              title: Text(event.title),
+              subtitle: Text(
+                '${event.rewardPoints} points · ${_productionDate(event.availableUntil)}',
+              ),
+              trailing: DropdownButton<String>(
+                value:
+                    const [
+                      'draft',
+                      'scheduled',
+                      'open',
+                      'disabled',
+                      'ended',
+                      'archived',
+                    ].contains(event.status)
+                    ? event.status
+                    : 'draft',
+                items: const [
+                  DropdownMenuItem(value: 'draft', child: Text('Draft')),
+                  DropdownMenuItem(
+                    value: 'scheduled',
+                    child: Text('Scheduled'),
+                  ),
+                  DropdownMenuItem(value: 'open', child: Text('Live')),
+                  DropdownMenuItem(value: 'disabled', child: Text('Disabled')),
+                  DropdownMenuItem(value: 'ended', child: Text('Ended')),
+                  DropdownMenuItem(value: 'archived', child: Text('Archived')),
+                ],
+                onChanged: (status) async {
+                  if (status == null) return;
+                  try {
+                    await repository.setChallengeStatus(
+                      challenge: event,
+                      status: status,
+                    );
+                  } catch (error) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(productionErrorMessage(error))),
+                      );
+                    }
+                  }
+                },
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 final Set<int> _shownAnnouncementRevisions = <int>{};
 
 Future<void> showLaunchAnnouncement(
   BuildContext context,
   LaunchAnnouncement announcement,
 ) async {
-  if (!announcement.enabled ||
+  if (!announcement.isActive ||
       announcement.title.isEmpty ||
       _shownAnnouncementRevisions.contains(announcement.revision)) {
     return;
   }
+  final preferences = await SharedPreferences.getInstance();
+  final key = 'launch_popup_${announcement.revision}';
+  final previous = preferences.getString(key);
+  final today = DateTime.now();
+  final todayKey = '${today.year}-${today.month}-${today.day}';
+  if (announcement.frequency == 'once' && previous != null) return;
+  if (announcement.frequency == 'daily' && previous == todayKey) return;
   _shownAnnouncementRevisions.add(announcement.revision);
+  if (announcement.frequency == 'once') {
+    await preferences.setString(key, DateTime.now().toIso8601String());
+  } else if (announcement.frequency == 'daily') {
+    await preferences.setString(key, todayKey);
+  }
+  if (!context.mounted) return;
   await showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(

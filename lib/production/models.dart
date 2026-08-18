@@ -47,6 +47,27 @@ class AbuUserProfile {
   bool get canManageRoles => isAdmin;
   bool get isYouTubeMember => membershipMultiplier > 1;
 
+  AbuUserProfile copyWith({
+    int? totalPoints,
+    int? monthlyPoints,
+    int? seasonPoints,
+    double? membershipMultiplier,
+  }) => AbuUserProfile(
+    uid: uid,
+    email: email,
+    username: username,
+    displayName: displayName,
+    country: country,
+    supportedTeam: supportedTeam,
+    avatarUrl: avatarUrl,
+    role: role,
+    membershipMultiplier: membershipMultiplier ?? this.membershipMultiplier,
+    totalPoints: totalPoints ?? this.totalPoints,
+    monthlyPoints: monthlyPoints ?? this.monthlyPoints,
+    seasonPoints: seasonPoints ?? this.seasonPoints,
+    suspended: suspended,
+  );
+
   factory AbuUserProfile.fromDocument(
     DocumentSnapshot<Map<String, dynamic>> doc,
   ) {
@@ -95,7 +116,7 @@ class AbuChallenge {
 
   bool get isOpen {
     final now = DateTime.now();
-    return status == 'open' &&
+    return const ['open', 'live', 'scheduled'].contains(status) &&
         !now.isBefore(availableFrom) &&
         now.isBefore(availableUntil);
   }
@@ -187,6 +208,9 @@ class LaunchAnnouncement {
     required this.linkUrl,
     required this.buttonLabel,
     required this.revision,
+    required this.frequency,
+    required this.startsAt,
+    required this.endsAt,
   });
 
   final bool enabled;
@@ -196,6 +220,14 @@ class LaunchAnnouncement {
   final String linkUrl;
   final String buttonLabel;
   final int revision;
+  final String frequency;
+  final DateTime startsAt;
+  final DateTime endsAt;
+
+  bool get isActive {
+    final now = DateTime.now();
+    return enabled && !now.isBefore(startsAt) && now.isBefore(endsAt);
+  }
 
   factory LaunchAnnouncement.fromDocument(
     DocumentSnapshot<Map<String, dynamic>> doc,
@@ -209,6 +241,13 @@ class LaunchAnnouncement {
       linkUrl: data['linkUrl'] as String? ?? '',
       buttonLabel: data['buttonLabel'] as String? ?? 'OPEN',
       revision: (data['revision'] as num? ?? 0).toInt(),
+      frequency: data['frequency'] as String? ?? 'once',
+      startsAt: data['startsAt'] == null
+          ? DateTime.fromMillisecondsSinceEpoch(0)
+          : _date(data['startsAt']),
+      endsAt: data['endsAt'] == null
+          ? DateTime.now().add(const Duration(days: 3650))
+          : _date(data['endsAt']),
     );
   }
 }

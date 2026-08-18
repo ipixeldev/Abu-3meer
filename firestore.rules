@@ -114,7 +114,15 @@ service cloud.firestore {
         && request.resource.data.status == 'open'
         && request.resource.data.predictionOpensAt < request.resource.data.predictionClosesAt
         && request.resource.data.predictionClosesAt <= request.resource.data.kickoffAt;
-      allow update, delete: if false;
+      allow update: if admin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'updatedAt'
+        ])
+        && request.resource.data.status in [
+          'draft', 'open', 'locked', 'disabled', 'completed', 'archived'
+        ]
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
     }
 
     match /predictions/{predictionId} {
