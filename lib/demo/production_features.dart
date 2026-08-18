@@ -16,7 +16,7 @@ class _ProductionChallenges extends StatelessWidget {
       stream: repository.watchChallenges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const _ProductionSkeleton(height: 320);
+          return const _ProductionSkeleton(height: 220);
         }
         if (snapshot.hasError) {
           return _ProductionEmpty(
@@ -27,13 +27,10 @@ class _ProductionChallenges extends StatelessWidget {
         }
         final challenges = snapshot.data ?? const [];
         if (challenges.isEmpty) {
-          return const _ProductionEmpty(
-            icon: Icons.bolt_rounded,
-            title: 'The next challenge is being prepared',
-            body: 'Secret phrases and hidden Player Cards published by Abu 3meer will appear here.',
-          );
+          return const _ProductionChallengeEmptyState();
         }
         return _ResponsiveGrid(
+          minWidth: 330,
           children: challenges
               .map(
                 (challenge) => _ProductionChallengeCard(
@@ -45,6 +42,140 @@ class _ProductionChallenges extends StatelessWidget {
         );
       },
     ),
+  );
+}
+
+class _ProductionChallengeEmptyState extends StatelessWidget {
+  const _ProductionChallengeEmptyState();
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      if (constraints.maxWidth < 900) {
+        return const _ProductionEmpty(
+          icon: Icons.bolt_rounded,
+          title: 'The next challenge is being prepared',
+          body: 'Secret phrases and hidden Player Cards published by Abu 3meer will appear here.',
+        );
+      }
+      final types = const [
+        (
+          Icons.subtitles_rounded,
+          'SECRET PHRASE',
+          'Listen closely to the latest video',
+        ),
+        (
+          Icons.style_rounded,
+          'PLAYER CARD',
+          'Find the hidden player and claim it',
+        ),
+        (Icons.quiz_rounded, 'MATCH QUIZ', 'Timed football knowledge rounds'),
+      ];
+      return SizedBox(
+        height: 280,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              flex: 7,
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(34),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 92,
+                        height: 92,
+                        decoration: BoxDecoration(
+                          color: _lime.withValues(alpha: .1),
+                          borderRadius: BorderRadius.circular(28),
+                          border: Border.all(
+                            color: _lime.withValues(alpha: .24),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.bolt_rounded,
+                          color: _lime,
+                          size: 46,
+                        ),
+                      ),
+                      const SizedBox(width: 26),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const _LiveDot(text: 'NEXT DROP'),
+                            const SizedBox(height: 13),
+                            Text(
+                              'The next challenge is being prepared',
+                              style: _display(29),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'New playable events appear here as soon as Abu 3meer publishes them from Admin Studio.',
+                              style: TextStyle(color: _muted, height: 1.5),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 18),
+            Expanded(
+              flex: 5,
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('CHALLENGE FORMATS', style: _display(19)),
+                      const SizedBox(height: 12),
+                      for (final type in types)
+                        Expanded(
+                          child: Row(
+                            children: [
+                              Icon(type.$1, color: _lime, size: 22),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      type.$2,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: .8,
+                                      ),
+                                    ),
+                                    Text(
+                                      type.$3,
+                                      style: const TextStyle(
+                                        color: _muted,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
   );
 }
 
@@ -242,12 +373,128 @@ class _ProductionCommunity extends StatelessWidget {
         }
         final posts = snapshot.data ?? const [];
         if (posts.isEmpty) {
-          return const _ProductionEmpty(
-            icon: Icons.article_rounded,
-            title: 'No posts yet',
-            body: 'New articles, match reactions and community updates will appear here.',
-          );
+          return const _ProductionCommunityEmptyState();
         }
+        return _ProductionCommunityContent(
+          posts: posts,
+          repository: repository,
+          profile: profile,
+        );
+      },
+    ),
+  );
+}
+
+class _ProductionCommunityEmptyState extends StatelessWidget {
+  const _ProductionCommunityEmptyState();
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      if (constraints.maxWidth < 980) {
+        return const _ProductionEmpty(
+          icon: Icons.article_rounded,
+          title: 'No posts yet',
+          body: 'New articles, match reactions and community updates will appear here.',
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 7,
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(34),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 88,
+                      height: 88,
+                      decoration: BoxDecoration(
+                        color: _lime.withValues(alpha: .1),
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                      child: const Icon(
+                        Icons.newspaper_rounded,
+                        color: _lime,
+                        size: 42,
+                      ),
+                    ),
+                    const SizedBox(width: 24),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _LiveDot(text: 'EDITORIAL DESK'),
+                          const SizedBox(height: 12),
+                          Text(
+                            'The first story is being prepared',
+                            style: _display(29),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'Match reactions, creator updates and community stories will be published here from Admin Studio.',
+                            style: TextStyle(color: _muted, height: 1.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 18),
+          Expanded(
+            flex: 3,
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('COMMUNITY DESK', style: _display(20)),
+                    const Spacer(),
+                    const _CommunityDeskMetric(
+                      icon: Icons.article_outlined,
+                      value: '0',
+                      label: 'PUBLISHED STORIES',
+                    ),
+                    const SizedBox(height: 18),
+                    const _CommunityDeskMetric(
+                      icon: Icons.forum_outlined,
+                      value: 'LIVE',
+                      label: 'COMMENTS & REACTIONS',
+                    ),
+                    const Spacer(),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+class _ProductionCommunityContent extends StatelessWidget {
+  const _ProductionCommunityContent({
+    required this.posts,
+    required this.repository,
+    required this.profile,
+  });
+
+  final List<AbuPost> posts;
+  final ProductionRepository repository;
+  final AbuUserProfile profile;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      if (constraints.maxWidth < 980) {
         return Column(
           children: posts
               .map(
@@ -262,8 +509,166 @@ class _ProductionCommunity extends StatelessWidget {
               )
               .toList(),
         );
-      },
-    ),
+      }
+
+      final latest = posts.first;
+      final recent = posts.skip(1).take(4).toList();
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 7,
+            child: _ProductionPostCard(
+              post: latest,
+              repository: repository,
+              profile: profile,
+            ),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(22),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('COMMUNITY DESK', style: _display(20)),
+                        const SizedBox(height: 18),
+                        _CommunityDeskMetric(
+                          icon: Icons.article_outlined,
+                          value: '${posts.length}',
+                          label: 'PUBLISHED STORIES',
+                        ),
+                        const SizedBox(height: 16),
+                        _CommunityDeskMetric(
+                          icon: Icons.schedule_rounded,
+                          value: _productionDate(latest.publishedAt),
+                          label: 'LATEST UPDATE',
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (recent.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('MORE STORIES', style: _display(18)),
+                          const SizedBox(height: 8),
+                          for (final post in recent)
+                            InkWell(
+                              borderRadius: BorderRadius.circular(14),
+                              onTap: () => showDialog<void>(
+                                context: context,
+                                builder: (_) => _PostCommentsDialog(
+                                  post: post,
+                                  repository: repository,
+                                  profile: profile,
+                                ),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            post.title,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            _productionDate(post.publishedAt),
+                                            style: const TextStyle(
+                                              color: _muted,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Icon(
+                                      Icons.arrow_forward_rounded,
+                                      color: _lime,
+                                      size: 18,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      );
+    },
+  );
+}
+
+class _CommunityDeskMetric extends StatelessWidget {
+  const _CommunityDeskMetric({
+    required this.icon,
+    required this.value,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Container(
+        width: 42,
+        height: 42,
+        decoration: BoxDecoration(
+          color: _surface2,
+          borderRadius: BorderRadius.circular(13),
+        ),
+        child: Icon(icon, color: _lime, size: 21),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(value, style: _display(17)),
+            Text(
+              label,
+              style: const TextStyle(
+                color: _muted,
+                fontSize: 9,
+                fontWeight: FontWeight.w900,
+                letterSpacing: .7,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
   );
 }
 
@@ -287,10 +692,10 @@ class _ProductionPostCard extends StatelessWidget {
             ? null
             : post.imageUrl.startsWith('assets/')
             ? Image.asset(post.imageUrl, fit: BoxFit.cover)
-            : Image.network(
-                post.imageUrl,
+            : _ProductionRemoteImage(
+                url: post.imageUrl,
                 fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => const ColoredBox(
+                fallback: const ColoredBox(
                   color: _surface2,
                   child: Center(child: Icon(Icons.image_not_supported_rounded)),
                 ),
@@ -339,7 +744,15 @@ class _ProductionPostCard extends StatelessWidget {
                   ),
                   if (post.linkUrl.isNotEmpty)
                     TextButton.icon(
-                      onPressed: () => launchUrl(Uri.parse(post.linkUrl)),
+                      onPressed: () async {
+                        final uri = externalHttpUri(post.linkUrl);
+                        if (uri != null) {
+                          await launchUrl(
+                            uri,
+                            mode: LaunchMode.externalApplication,
+                          );
+                        }
+                      },
                       icon: const Icon(Icons.open_in_new_rounded),
                       label: const Text('OPEN LINK'),
                     ),
@@ -932,103 +1345,385 @@ class _ProductionFanWar extends StatelessWidget {
         final madrid = entries
             .where((entry) => entry.supportedTeam == 'Real Madrid')
             .fold<int>(0, (sum, entry) => sum + entry.seasonPoints);
-        final total = math.max(1, barca + madrid);
-        final barcaShare = barca / total;
-        return Column(
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        const _ProductionTeamBadge(
-                          team: 'Barcelona',
-                          source: '',
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(child: Text('BARCELONA', style: _display(24))),
-                        Text(
-                          '${(barcaShare * 100).toStringAsFixed(1)}%',
-                          style: _display(30, color: _blue),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(99),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: math.max(1, (barcaShare * 1000).round()),
-                            child: const ColoredBox(
-                              color: _blue,
-                              child: SizedBox(height: 18),
-                            ),
-                          ),
-                          Expanded(
-                            flex: math.max(
-                              1,
-                              ((1 - barcaShare) * 1000).round(),
-                            ),
-                            child: const ColoredBox(
-                              color: _gold,
-                              child: SizedBox(height: 18),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Text(
-                          '$barca PTS',
-                          style: const TextStyle(
-                            color: _blue,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const Spacer(),
-                        Text(
-                          '$madrid PTS',
-                          style: const TextStyle(
-                            color: _gold,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const _ProductionTeamBadge(
-                          team: 'Real Madrid',
-                          source: '',
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Column(
-                children: entries.take(12).toList().asMap().entries.map((row) {
-                  final entry = row.value;
-                  return ListTile(
-                    leading: Text('${row.key + 1}', style: _display(18)),
-                    title: Text('@${entry.username}'),
-                    subtitle: Text(entry.supportedTeam),
-                    trailing: Text(
-                      '${entry.seasonPoints}',
-                      style: _display(19, color: _lime),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ],
+        final total = barca + madrid;
+        final barcaShare = total == 0 ? .5 : barca / total;
+        return _ProductionFanWarContent(
+          entries: entries,
+          barcaPoints: barca,
+          madridPoints: madrid,
+          barcaShare: barcaShare,
         );
       },
+    ),
+  );
+}
+
+class _ProductionFanWarContent extends StatelessWidget {
+  const _ProductionFanWarContent({
+    required this.entries,
+    required this.barcaPoints,
+    required this.madridPoints,
+    required this.barcaShare,
+  });
+
+  final List<LeaderboardEntry> entries;
+  final int barcaPoints;
+  final int madridPoints;
+  final double barcaShare;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final battle = _FanWarBattleCard(
+        barcaPoints: barcaPoints,
+        madridPoints: madridPoints,
+        barcaShare: barcaShare,
+      );
+      final contributors = _FanWarContributorCard(
+        entries: entries.take(12).toList(),
+        desktop: constraints.maxWidth >= 1040,
+      );
+      if (constraints.maxWidth < 1040) {
+        return Column(
+          children: [battle, const SizedBox(height: 16), contributors],
+        );
+      }
+
+      final barcaFans = entries
+          .where((entry) => entry.supportedTeam == 'Barcelona')
+          .length;
+      final madridFans = entries
+          .where((entry) => entry.supportedTeam == 'Real Madrid')
+          .length;
+      final leader = barcaPoints == madridPoints
+          ? 'LEVEL'
+          : barcaPoints > madridPoints
+          ? 'BARCELONA'
+          : 'REAL MADRID';
+      final margin = (barcaPoints - madridPoints).abs();
+      return Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _FanWarKpi(
+                  icon: Icons.groups_rounded,
+                  value: '${entries.length}',
+                  label: 'ACTIVE SUPPORTERS',
+                  color: _lime,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _FanWarKpi(
+                  icon: Icons.stars_rounded,
+                  value: '${barcaPoints + madridPoints}',
+                  label: 'VERIFIED POINTS',
+                  color: _gold,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _FanWarKpi(
+                  icon: Icons.flag_rounded,
+                  value: leader,
+                  label: margin == 0 ? 'CURRENTLY TIED' : '$margin POINT LEAD',
+                  color: leader == 'BARCELONA' ? _blue : _gold,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: _FanWarKpi(
+                  icon: Icons.sports_soccer_rounded,
+                  value: '$barcaFans / $madridFans',
+                  label: 'BARÇA / MADRID FANS',
+                  color: _red,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 5, child: battle),
+              const SizedBox(width: 18),
+              Expanded(flex: 7, child: contributors),
+            ],
+          ),
+        ],
+      );
+    },
+  );
+}
+
+class _FanWarKpi extends StatelessWidget {
+  const _FanWarKpi({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(18),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: color, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _display(21),
+                ),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _muted,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: .6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _FanWarBattleCard extends StatelessWidget {
+  const _FanWarBattleCard({
+    required this.barcaPoints,
+    required this.madridPoints,
+    required this.barcaShare,
+  });
+
+  final int barcaPoints;
+  final int madridPoints;
+  final double barcaShare;
+
+  @override
+  Widget build(BuildContext context) {
+    final madridShare = 1 - barcaShare;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const _LiveDot(text: 'LIVE BATTLE'),
+                Text('ALL TIME', style: _display(13, color: _muted)),
+              ],
+            ),
+            const SizedBox(height: 28),
+            Row(
+              children: [
+                const _ProductionTeamBadge(team: 'Barcelona', source: ''),
+                const SizedBox(width: 12),
+                Expanded(child: Text('BARCELONA', style: _display(22))),
+                Text(
+                  '${(barcaShare * 100).toStringAsFixed(1)}%',
+                  style: _display(30, color: _blue),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: math.max(1, (barcaShare * 1000).round()),
+                    child: const ColoredBox(
+                      color: _blue,
+                      child: SizedBox(height: 18),
+                    ),
+                  ),
+                  Expanded(
+                    flex: math.max(1, (madridShare * 1000).round()),
+                    child: const ColoredBox(
+                      color: _gold,
+                      child: SizedBox(height: 18),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Text(
+                  '$barcaPoints PTS',
+                  style: const TextStyle(
+                    color: _blue,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '$madridPoints PTS',
+                  style: const TextStyle(
+                    color: _gold,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const _ProductionTeamBadge(team: 'Real Madrid', source: ''),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FanWarContributorCard extends StatelessWidget {
+  const _FanWarContributorCard({required this.entries, required this.desktop});
+
+  final List<LeaderboardEntry> entries;
+  final bool desktop;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: EdgeInsets.all(desktop ? 22 : 0),
+      child: entries.isEmpty
+          ? const Padding(
+              padding: EdgeInsets.all(28),
+              child: _ProductionEmpty(
+                icon: Icons.groups_rounded,
+                title: 'No contributors yet',
+                body: 'Verified fan activity will populate this table.',
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (desktop) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text('TOP CONTRIBUTORS', style: _display(20)),
+                      ),
+                      const Text(
+                        'LIVE VERIFIED TOTALS',
+                        style: TextStyle(
+                          color: _lime,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .8,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 15),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      children: [
+                        SizedBox(width: 48, child: Text('RANK')),
+                        Expanded(flex: 3, child: Text('SUPPORTER')),
+                        Expanded(flex: 2, child: Text('CLUB')),
+                        SizedBox(
+                          width: 90,
+                          child: Text('POINTS', textAlign: TextAlign.end),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 22),
+                ],
+                ...entries.asMap().entries.map((row) {
+                  final entry = row.value;
+                  if (!desktop) {
+                    return ListTile(
+                      leading: Text('${row.key + 1}', style: _display(18)),
+                      title: Text('@${entry.username}'),
+                      subtitle: Text(entry.supportedTeam),
+                      trailing: Text(
+                        '${entry.seasonPoints}',
+                        style: _display(19, color: _lime),
+                      ),
+                    );
+                  }
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 48,
+                          child: Text(
+                            '#${row.key + 1}',
+                            style: _display(
+                              16,
+                              color: row.key < 3 ? _gold : null,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: Text(
+                            '@${entry.username}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text(
+                            entry.supportedTeam,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: _muted),
+                          ),
+                        ),
+                        SizedBox(
+                          width: 90,
+                          child: Text(
+                            '${entry.seasonPoints}',
+                            textAlign: TextAlign.end,
+                            style: _display(17, color: _lime),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
     ),
   );
 }
@@ -1179,49 +1874,72 @@ class _ProductionRewards extends StatelessWidget {
 class _InteractiveFanCardState extends State<_InteractiveFanCard>
     with SingleTickerProviderStateMixin {
   static const _cardSize = Size(320, 448);
-  late final AnimationController _ticker;
   Offset _targetTilt = Offset.zero;
   Offset _currentTilt = Offset.zero;
+  late final AnimationController _controller;
   Offset _velocity = Offset.zero;
+  static const double _stiffness = 110;
+  static const double _damping = 18;
+  bool _isHovered = false;
 
   @override
   void initState() {
     super.initState();
-    _ticker = AnimationController.unbounded(vsync: this)
-      ..addListener(_springTick)
-      ..repeat(min: 0, max: 1, period: const Duration(seconds: 1));
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 1),
+    )..addListener(_updatePhysics);
   }
 
-  void _springTick() {
-    const stiffness = 110.0;
-    const damping = 18.0;
-    const dt = 1 / 60;
-    final displacement = _targetTilt - _currentTilt;
-    final acceleration = displacement * stiffness - _velocity * damping;
-    _velocity += acceleration * dt;
-    _currentTilt += _velocity * dt;
-    if (mounted) setState(() {});
-  }
-
-  void _updateTarget(Offset local) {
-    _targetTilt = Offset(
-      ((local.dx / _cardSize.width) - .5).clamp(-.5, .5),
-      ((local.dy / _cardSize.height) - .5).clamp(-.5, .5),
+  void _updatePhysics() {
+    const dt = .016;
+    final forceX =
+        (_targetTilt.dx - _currentTilt.dx) * _stiffness -
+        _velocity.dx * _damping;
+    final forceY =
+        (_targetTilt.dy - _currentTilt.dy) * _stiffness -
+        _velocity.dy * _damping;
+    _velocity = Offset(_velocity.dx + forceX * dt, _velocity.dy + forceY * dt);
+    _currentTilt = Offset(
+      _currentTilt.dx + _velocity.dx * dt,
+      _currentTilt.dy + _velocity.dy * dt,
     );
+    if (mounted) setState(() {});
+    if (_velocity.distance < .001 &&
+        (_targetTilt - _currentTilt).distance < .001) {
+      _controller.stop();
+    }
   }
 
-  void _release() => _targetTilt = Offset.zero;
+  void _setTargetTilt(Offset target) {
+    _targetTilt = Offset(
+      target.dx.clamp(-1.0, 1.0),
+      target.dy.clamp(-1.0, 1.0),
+    );
+    if (!_controller.isAnimating) _controller.repeat();
+  }
+
+  void _updateTarget(Offset local) => _setTargetTilt(
+    Offset(
+      ((local.dx / _cardSize.width) - .5) * 2,
+      ((local.dy / _cardSize.height) - .5) * 2,
+    ),
+  );
+
+  void _release() {
+    if (mounted) setState(() => _isHovered = false);
+    _setTargetTilt(Offset.zero);
+  }
 
   @override
   void dispose() {
-    _ticker.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final profile = widget.profile;
-    final rating = (45 + profile.totalPoints ~/ 500).clamp(45, 99);
     final teamCode = profile.supportedTeam == 'Barcelona' ? 'FCB' : 'RMA';
     final initials = profile.displayName
         .split(RegExp(r'\s+'))
@@ -1229,31 +1947,69 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
         .take(2)
         .map((part) => part[0].toUpperCase())
         .join();
+    final rotateX = -_currentTilt.dy * 14 * (math.pi / 180);
+    final rotateY = _currentTilt.dx * 14 * (math.pi / 180);
     final transform = Matrix4.identity()
-      ..setEntry(3, 2, .0012)
-      ..rotateX(-_currentTilt.dy * .32)
-      ..rotateY(_currentTilt.dx * .38);
+      ..setEntry(3, 2, .001)
+      ..rotateX(rotateX)
+      ..rotateY(rotateY);
+    final glowAlignment = Alignment(
+      -_currentTilt.dx * 1.5,
+      -_currentTilt.dy * 1.5,
+    );
+    final portrait = widget.temporaryImage != null
+        ? Image.memory(
+            widget.temporaryImage!,
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            errorBuilder: (_, _, _) => _CardMonogram(initials: initials),
+          )
+        : profile.avatarUrl.isNotEmpty
+        ? _ProductionRemoteImage(
+            url: profile.avatarUrl,
+            fit: BoxFit.cover,
+            alignment: Alignment.topCenter,
+            fallback: _CardMonogram(initials: initials),
+          )
+        : _CardMonogram(initials: initials);
     return Center(
       child: MouseRegion(
-        onHover: (event) => _updateTarget(event.localPosition),
+        onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => _release(),
+        onHover: (event) => _updateTarget(event.localPosition),
         child: GestureDetector(
-          onPanStart: (event) => _updateTarget(event.localPosition),
-          onPanUpdate: (event) => _updateTarget(event.localPosition),
+          onPanStart: (event) {
+            setState(() => _isHovered = true);
+            _updateTarget(event.localPosition);
+          },
+          onPanUpdate: (event) {
+            if (!_isHovered) setState(() => _isHovered = true);
+            _updateTarget(event.localPosition);
+          },
           onPanEnd: (_) => _release(),
           onPanCancel: _release,
-          child: Transform(
-            transform: transform,
-            alignment: Alignment.center,
-            child: SizedBox.fromSize(
-              size: _cardSize,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  ClipPath(
-                    clipper: _FanCardClipper(),
-                    child: DecoratedBox(
-                      decoration: const BoxDecoration(
+          child: Container(
+            width: _cardSize.width,
+            height: _cardSize.height,
+            decoration: BoxDecoration(
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: .75),
+                  blurRadius: 34,
+                  offset: const Offset(0, 26),
+                ),
+              ],
+            ),
+            child: Transform(
+              transform: transform,
+              alignment: Alignment.center,
+              child: ClipPath(
+                clipper: _FanCardClipper(),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
@@ -1262,160 +2018,180 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                             Color(0xFF1A1E25),
                             Color(0xFF14171C),
                           ],
+                          stops: [0, .55, 1],
                         ),
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(29, 45, 29, 31),
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 28,
+                        vertical: 32,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Column(
                                 children: [
-                                  Column(
-                                    children: [
-                                      Text(
-                                        '$rating',
-                                        style: _display(
-                                          43,
-                                          color: const Color(0xFFE8E8E8),
-                                        ),
-                                      ),
-                                      const Text(
-                                        'RKE',
-                                        style: TextStyle(
-                                          color: Color(0xFFE8E8E8),
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: 1.2,
-                                        ),
-                                      ),
-                                      Container(
-                                        width: 28,
-                                        height: 1,
-                                        margin: const EdgeInsets.symmetric(
-                                          vertical: 10,
-                                        ),
-                                        color: const Color(0x47303030),
-                                      ),
-                                      Text(
-                                        teamCode,
-                                        style: const TextStyle(
-                                          color: Color(0xFFE8E8E8),
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                    ],
+                                  const Text(
+                                    '45',
+                                    style: TextStyle(
+                                      color: Color(0xFFE8E8E8),
+                                      fontSize: 42,
+                                      fontWeight: FontWeight.w900,
+                                      height: .85,
+                                    ),
                                   ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(14),
-                                      child: widget.temporaryImage != null
-                                          ? Image.memory(
-                                              widget.temporaryImage!,
-                                              fit: BoxFit.cover,
-                                              alignment: Alignment.topCenter,
-                                              errorBuilder: (_, _, _) =>
-                                                  _CardMonogram(
-                                                    initials: initials,
-                                                  ),
-                                            )
-                                          : profile.avatarUrl.isNotEmpty
-                                          ? Image.network(
-                                              profile.avatarUrl,
-                                              fit: BoxFit.cover,
-                                              alignment: Alignment.topCenter,
-                                              errorBuilder: (_, _, _) =>
-                                                  _CardMonogram(
-                                                    initials: initials,
-                                                  ),
-                                            )
-                                          : _CardMonogram(initials: initials),
+                                  const Text(
+                                    'RKE',
+                                    style: TextStyle(
+                                      color: Color(0xFFE8E8E8),
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 28,
+                                    height: 1,
+                                    margin: const EdgeInsets.symmetric(
+                                      vertical: 8,
+                                    ),
+                                    color: Colors.white24,
+                                  ),
+                                  Text(
+                                    teamCode,
+                                    style: const TextStyle(
+                                      color: Color(0xFFE8E8E8),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w900,
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                            Container(
-                              height: 1,
-                              color: const Color(0x47303030),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 9),
-                              child: Text(
-                                profile.displayName.toUpperCase(),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: _display(
-                                  18,
-                                  color: const Color(0xFFE8E8E8),
-                                  spacing: .8,
+                              Expanded(
+                                child: Center(
+                                  child:
+                                      widget.temporaryImage != null ||
+                                          profile.avatarUrl.isNotEmpty
+                                      ? SizedBox(
+                                          width: 118,
+                                          height: 168,
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                            child: portrait,
+                                          ),
+                                        )
+                                      : Text(
+                                          initials.isEmpty ? '?' : initials,
+                                          style: const TextStyle(
+                                            color: Color(0xFFE8E8E8),
+                                            fontSize: 54,
+                                            fontWeight: FontWeight.w900,
+                                            shadows: [
+                                              Shadow(
+                                                color: Colors.black54,
+                                                blurRadius: 24,
+                                                offset: Offset(0, 8),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                 ),
                               ),
+                            ],
+                          ),
+                          const Spacer(),
+                          Container(height: 1, color: Colors.white24),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: Text(
+                              profile.displayName.toUpperCase(),
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFFE8E8E8),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.5,
+                              ),
                             ),
-                            Container(
-                              height: 1,
-                              color: const Color(0x47303030),
-                            ),
-                            const SizedBox(height: 9),
-                            _FanCardPair(
-                              left: _FanCardStat(
+                          ),
+                          Container(height: 1, color: Colors.white24),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _FanCardStat(
                                 value: '${profile.totalPoints}',
                                 label: 'XP',
                               ),
-                              right: _FanCardStat(
+                              _FanCardStat(
                                 value: profile.monthlyPoints == 0
                                     ? '—'
                                     : '#342',
                                 label: 'RNK',
+                                reverse: true,
                               ),
-                            ),
-                            const SizedBox(height: 5),
-                            const _FanCardPair(
-                              left: _FanCardStat(value: '12', label: 'STK'),
-                              right: _FanCardStat(value: '68', label: 'ACC'),
-                              reverse: true,
-                            ),
-                            const SizedBox(height: 5),
-                            _FanCardPair(
-                              left: _FanCardStat(
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _FanCardStat(
+                                value: '${profile.currentStreak}',
+                                label: 'STK',
+                              ),
+                              const _FanCardStat(value: '0', label: 'ACC'),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _FanCardStat(
                                 value: '${profile.seasonPoints}',
                                 label: 'LTY',
                               ),
-                              right: const _FanCardStat(
-                                value: '10',
+                              const _FanCardStat(
+                                value: '—',
                                 label: 'BST',
+                                reverse: true,
                               ),
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                  IgnorePointer(
-                    child: ClipPath(
-                      clipper: _FanCardClipper(),
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            center: Alignment(
-                              _currentTilt.dx * 2,
-                              _currentTilt.dy * 2,
+                    IgnorePointer(
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 300),
+                        opacity: _isHovered ? 1 : .5,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: RadialGradient(
+                              center: glowAlignment,
+                              radius: .8,
+                              colors: [
+                                Colors.white.withValues(alpha: .26),
+                                Colors.white.withValues(alpha: .05),
+                                Colors.transparent,
+                              ],
+                              stops: const [0, .45, .7],
                             ),
-                            radius: .85,
-                            colors: [
-                              Colors.white.withValues(alpha: .12),
-                              Colors.transparent,
-                            ],
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  CustomPaint(painter: _FanCardBorderPainter()),
-                ],
+                    CustomPaint(painter: _FanCardBorderPainter()),
+                  ],
+                ),
               ),
             ),
           ),
@@ -1423,23 +2199,6 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
       ),
     );
   }
-}
-
-class _FanCardPair extends StatelessWidget {
-  const _FanCardPair({
-    required this.left,
-    required this.right,
-    this.reverse = false,
-  });
-  final Widget left;
-  final Widget right;
-  final bool reverse;
-  @override
-  Widget build(BuildContext context) => Row(
-    children: reverse
-        ? [Expanded(child: right), Expanded(child: left)]
-        : [Expanded(child: left), Expanded(child: right)],
-  );
 }
 
 class _CardMonogram extends StatelessWidget {
@@ -1455,33 +2214,48 @@ class _CardMonogram extends StatelessWidget {
 }
 
 class _FanCardStat extends StatelessWidget {
-  const _FanCardStat({required this.value, required this.label});
+  const _FanCardStat({
+    required this.value,
+    required this.label,
+    this.reverse = false,
+  });
   final String value;
   final String label;
+  final bool reverse;
+
   @override
-  Widget build(BuildContext context) => Column(
-    children: [
-      Text(
-        value,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w900,
-          fontSize: 12,
-        ),
+  Widget build(BuildContext context) {
+    final valueText = Text(
+      value,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 14,
+        fontWeight: FontWeight.w900,
       ),
-      Text(
-        label,
-        style: const TextStyle(
-          color: Colors.white60,
-          fontWeight: FontWeight.w900,
-          fontSize: 8,
-          letterSpacing: .8,
-        ),
+    );
+    final labelText = Text(
+      label,
+      style: const TextStyle(
+        color: Colors.white60,
+        fontSize: 9,
+        fontWeight: FontWeight.w900,
+        letterSpacing: .8,
       ),
-    ],
-  );
+    );
+    return SizedBox(
+      width: 80,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: reverse
+            ? [labelText, const SizedBox(width: 4), valueText]
+            : [valueText, const SizedBox(width: 4), labelText],
+      ),
+    );
+  }
 }
 
 class _FanCardClipper extends CustomClipper<Path> {
@@ -1509,6 +2283,8 @@ class _FanCardBorderPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6
       ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
         colors: [
           Color(0xFF6B7280),
           Color(0xFF9CA3AF),
@@ -1516,6 +2292,7 @@ class _FanCardBorderPainter extends CustomPainter {
           Color(0xFF9CA3AF),
           Color(0xFF6B7280),
         ],
+        stops: [0, .22, .48, .78, 1],
       ).createShader(Offset.zero & size);
     canvas.drawPath(path, paint);
   }
@@ -1530,7 +2307,7 @@ class _ProductionStreak extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final activeDays = TemporaryMockData.instance.enabled ? 12 : 0;
+    final activeDays = profile.currentStreak;
     final now = DateTime.now();
     final monthDays = DateUtils.getDaysInMonth(now.year, now.month);
     return _PageFrame(
@@ -1837,7 +2614,103 @@ class _ProductionAdminTools extends StatelessWidget {
   final AbuUserProfile profile;
 
   @override
-  Widget build(BuildContext context) => Card(
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      if (constraints.maxWidth < 980) return _buildMobile(context);
+      final actions = <Widget>[
+        _AdminQuickAction(
+          icon: Icons.bolt_rounded,
+          label: 'NEW CHALLENGE',
+          detail: 'Publish a phrase, quiz or Player Card challenge.',
+          color: _lime,
+          primary: true,
+          onTap: () => createChallenge(context),
+        ),
+        _AdminQuickAction(
+          icon: Icons.post_add_rounded,
+          label: 'NEW POST',
+          detail: 'Add an article, image, reaction or external link.',
+          color: _blue,
+          onTap: () => createPost(context),
+        ),
+        _AdminQuickAction(
+          icon: Icons.campaign_rounded,
+          label: 'LAUNCH POPUP',
+          detail: 'Schedule an in-app campaign for every platform.',
+          color: _gold,
+          onTap: () => editAnnouncement(context),
+        ),
+        if (profile.canManageRoles)
+          _AdminQuickAction(
+            icon: Icons.manage_accounts_rounded,
+            label: 'ROLES & ADMINS',
+            detail: 'Grant scoped access to trusted collaborators.',
+            color: _red,
+            onTap: () => manageRoles(context),
+          ),
+      ];
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              for (var index = 0; index < actions.length; index++) ...[
+                Expanded(child: actions[index]),
+                if (index != actions.length - 1) const SizedBox(width: 14),
+              ],
+            ],
+          ),
+          const SizedBox(height: 18),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: _lime.withValues(alpha: .1),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Icon(
+                          Icons.dashboard_customize_rounded,
+                          color: _lime,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('ENGAGEMENT CONTROL', style: _display(22)),
+                            Text(
+                              'Live content operations · signed in as ${profile.role.toUpperCase()}',
+                              style: const TextStyle(color: _muted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const _LiveDot(text: 'REAL-TIME'),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  const Divider(height: 1),
+                  const SizedBox(height: 12),
+                  _AdminEventManager(repository: repository),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    },
+  );
+
+  Widget _buildMobile(BuildContext context) => Card(
     child: Padding(
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -2125,69 +2998,119 @@ class _ProductionAdminTools extends StatelessWidget {
   }
 
   Future<void> editAnnouncement(BuildContext context) async {
-    final title = TextEditingController();
-    final body = TextEditingController();
-    final image = TextEditingController();
-    final link = TextEditingController();
-    final label = TextEditingController(text: 'OPEN NOW');
-    var enabled = true;
-    var frequency = 'once';
-    var startsAt = DateTime.now();
-    var endsAt = DateTime.now().add(const Duration(days: 7));
+    LaunchAnnouncement? existing;
+    try {
+      existing = await repository.watchLaunchAnnouncement().first;
+    } catch (_) {
+      // A missing announcement is a valid first-run state. The save action
+      // below will still surface any real Firestore permission/network error.
+    }
+    if (!context.mounted) return;
+    final title = TextEditingController(text: existing?.title ?? '');
+    final body = TextEditingController(text: existing?.body ?? '');
+    final image = TextEditingController(text: existing?.imageUrl ?? '');
+    final link = TextEditingController(text: existing?.linkUrl ?? '');
+    final label = TextEditingController(
+      text: existing?.buttonLabel ?? 'OPEN NOW',
+    );
+    var enabled = existing?.enabled ?? true;
+    var frequency = existing?.frequency ?? 'once';
+    var startsAt = existing?.startsAt ?? DateTime.now();
+    var endsAt =
+        existing?.endsAt ?? DateTime.now().add(const Duration(days: 7));
     final submit = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: const Text('App-launch popup'),
+          title: const Text('APP-LAUNCH POPUP'),
           content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
+            constraints: const BoxConstraints(maxWidth: 720),
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   SwitchListTile.adaptive(
                     value: enabled,
                     onChanged: (value) => setDialogState(() => enabled = value),
                     title: const Text('Show on app launch'),
                   ),
-                  DropdownButtonFormField<String>(
-                    initialValue: frequency,
-                    decoration: const InputDecoration(
-                      labelText: 'Display frequency',
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: _surface2,
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: _line),
                     ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 'once',
-                        child: Text('Once per campaign revision'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'daily',
-                        child: Text('Once per day'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'session',
-                        child: Text('Once per app session'),
-                      ),
-                      DropdownMenuItem(
-                        value: 'always',
-                        child: Text('Every app launch'),
-                      ),
-                    ],
-                    onChanged: (value) =>
-                        setDialogState(() => frequency = value ?? 'once'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'SCHEDULE & DELIVERY',
+                          style: TextStyle(
+                            color: _lime,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        DropdownButtonFormField<String>(
+                          initialValue: frequency,
+                          decoration: const InputDecoration(
+                            labelText: 'How often should each user see it?',
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'once',
+                              child: Text('Once for this campaign'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'daily',
+                              child: Text('Once per day'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'session',
+                              child: Text('Once per app session'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'always',
+                              child: Text('Every app launch'),
+                            ),
+                          ],
+                          onChanged: (value) =>
+                              setDialogState(() => frequency = value ?? 'once'),
+                        ),
+                        const SizedBox(height: 8),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final start = _AdminDateTile(
+                              label: 'Starts (date & time)',
+                              value: startsAt,
+                              onChanged: (value) =>
+                                  setDialogState(() => startsAt = value),
+                            );
+                            final end = _AdminDateTile(
+                              label: 'Expires (date & time)',
+                              value: endsAt,
+                              onChanged: (value) =>
+                                  setDialogState(() => endsAt = value),
+                            );
+                            if (constraints.maxWidth < 560) {
+                              return Column(children: [start, end]);
+                            }
+                            return Row(
+                              children: [
+                                Expanded(child: start),
+                                const SizedBox(width: 10),
+                                Expanded(child: end),
+                              ],
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  _AdminDateTile(
-                    label: 'Starts',
-                    value: startsAt,
-                    onChanged: (value) =>
-                        setDialogState(() => startsAt = value),
-                  ),
-                  _AdminDateTile(
-                    label: 'Ends',
-                    value: endsAt,
-                    onChanged: (value) => setDialogState(() => endsAt = value),
-                  ),
+                  const SizedBox(height: 14),
                   TextField(
                     controller: title,
                     decoration: const InputDecoration(labelText: 'Title'),
@@ -2201,13 +3124,20 @@ class _ProductionAdminTools extends StatelessWidget {
                   const SizedBox(height: 10),
                   TextField(
                     controller: image,
-                    decoration: const InputDecoration(labelText: 'Image URL'),
+                    keyboardType: TextInputType.url,
+                    decoration: const InputDecoration(
+                      labelText: 'Direct image URL (optional)',
+                      helperText: 'Use an http(s) image URL. Firebase Storage is recommended.',
+                    ),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: link,
+                    keyboardType: TextInputType.url,
                     decoration: const InputDecoration(
-                      labelText: 'Clickable link',
+                      labelText: 'Clickable link (optional)',
+                      helperText:
+                          'iamr.dev is automatically saved as https://iamr.dev',
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -2362,6 +3292,65 @@ class _ProductionAdminTools extends StatelessWidget {
   }
 }
 
+class _AdminQuickAction extends StatelessWidget {
+  const _AdminQuickAction({
+    required this.icon,
+    required this.label,
+    required this.detail,
+    required this.color,
+    required this.onTap,
+    this.primary = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String detail;
+  final Color color;
+  final VoidCallback onTap;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    color: primary ? _lime.withValues(alpha: .09) : null,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: .13),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, color: color, size: 23),
+                ),
+                const Spacer(),
+                Icon(Icons.north_east_rounded, color: color, size: 18),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Text(label, style: _display(18)),
+            const SizedBox(height: 6),
+            Text(
+              detail,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class _AdminEventManager extends StatelessWidget {
   const _AdminEventManager({required this.repository});
   final ProductionRepository repository;
@@ -2378,68 +3367,131 @@ class _AdminEventManager extends StatelessWidget {
           body: 'Create a Video Question or Player Card event above.',
         );
       }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('EVENT CONTROL', style: _display(18)),
-          const SizedBox(height: 8),
-          ...events.map(
-            (event) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(
-                event.kind == 'playerCard'
-                    ? Icons.style_rounded
-                    : Icons.quiz_rounded,
-              ),
-              title: Text(event.title),
-              subtitle: Text(
-                '${event.rewardPoints} points · ${_productionDate(event.availableUntil)}',
-              ),
-              trailing: DropdownButton<String>(
-                value:
-                    const [
-                      'draft',
-                      'scheduled',
-                      'open',
-                      'disabled',
-                      'ended',
-                      'archived',
-                    ].contains(event.status)
-                    ? event.status
-                    : 'draft',
-                items: const [
-                  DropdownMenuItem(value: 'draft', child: Text('Draft')),
-                  DropdownMenuItem(
-                    value: 'scheduled',
-                    child: Text('Scheduled'),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final desktop = constraints.maxWidth >= 820;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (!desktop) ...[
+                Text('EVENT CONTROL', style: _display(18)),
+                const SizedBox(height: 8),
+              ] else
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    children: [
+                      SizedBox(width: 52, child: Text('TYPE')),
+                      Expanded(flex: 4, child: Text('EVENT')),
+                      Expanded(flex: 2, child: Text('REWARD')),
+                      Expanded(flex: 2, child: Text('ENDS')),
+                      SizedBox(width: 130, child: Text('STATUS')),
+                    ],
                   ),
-                  DropdownMenuItem(value: 'open', child: Text('Live')),
-                  DropdownMenuItem(value: 'disabled', child: Text('Disabled')),
-                  DropdownMenuItem(value: 'ended', child: Text('Ended')),
-                  DropdownMenuItem(value: 'archived', child: Text('Archived')),
-                ],
-                onChanged: (status) async {
-                  if (status == null) return;
-                  try {
-                    await repository.setChallengeStatus(
-                      challenge: event,
-                      status: status,
-                    );
-                  } catch (error) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(productionErrorMessage(error))),
-                      );
-                    }
-                  }
-                },
+                ),
+              if (desktop) const Divider(height: 1),
+              ...events.map(
+                (event) => desktop
+                    ? Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 52,
+                              child: Icon(
+                                event.kind == 'playerCard'
+                                    ? Icons.style_rounded
+                                    : Icons.quiz_rounded,
+                                color: _lime,
+                              ),
+                            ),
+                            Expanded(
+                              flex: 4,
+                              child: Text(
+                                event.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text('${event.rewardPoints} points'),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(
+                                _productionDate(event.availableUntil),
+                                style: const TextStyle(color: _muted),
+                              ),
+                            ),
+                            SizedBox(
+                              width: 130,
+                              child: _statusPicker(context, event),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          event.kind == 'playerCard'
+                              ? Icons.style_rounded
+                              : Icons.quiz_rounded,
+                        ),
+                        title: Text(event.title),
+                        subtitle: Text(
+                          '${event.rewardPoints} points · ${_productionDate(event.availableUntil)}',
+                        ),
+                        trailing: _statusPicker(context, event),
+                      ),
               ),
-            ),
-          ),
-        ],
+            ],
+          );
+        },
       );
     },
   );
+
+  Widget _statusPicker(BuildContext context, AbuChallenge event) {
+    const statuses = [
+      'draft',
+      'scheduled',
+      'open',
+      'disabled',
+      'ended',
+      'archived',
+    ];
+    return DropdownButton<String>(
+      isExpanded: true,
+      value: statuses.contains(event.status) ? event.status : 'draft',
+      items: const [
+        DropdownMenuItem(value: 'draft', child: Text('Draft')),
+        DropdownMenuItem(value: 'scheduled', child: Text('Scheduled')),
+        DropdownMenuItem(value: 'open', child: Text('Live')),
+        DropdownMenuItem(value: 'disabled', child: Text('Disabled')),
+        DropdownMenuItem(value: 'ended', child: Text('Ended')),
+        DropdownMenuItem(value: 'archived', child: Text('Archived')),
+      ],
+      onChanged: (status) async {
+        if (status == null) return;
+        try {
+          await repository.setChallengeStatus(challenge: event, status: status);
+        } catch (error) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(productionErrorMessage(error))),
+            );
+          }
+        }
+      },
+    );
+  }
 }
 
 final Set<int> _shownAnnouncementRevisions = <int>{};
@@ -2461,53 +3513,89 @@ Future<void> showLaunchAnnouncement(
   if (announcement.frequency == 'once' && previous != null) return;
   if (announcement.frequency == 'daily' && previous == todayKey) return;
   _shownAnnouncementRevisions.add(announcement.revision);
-  if (announcement.frequency == 'once') {
-    await preferences.setString(key, DateTime.now().toIso8601String());
-  } else if (announcement.frequency == 'daily') {
-    await preferences.setString(key, todayKey);
+  if (!context.mounted) {
+    _shownAnnouncementRevisions.remove(announcement.revision);
+    return;
   }
-  if (!context.mounted) return;
-  await showDialog<void>(
-    context: context,
-    builder: (context) => AlertDialog(
-      clipBehavior: Clip.antiAlias,
-      titlePadding: EdgeInsets.zero,
-      title: announcement.imageUrl.isEmpty
-          ? null
-          : SizedBox(
-              height: 230,
-              width: 520,
-              child: Image.network(announcement.imageUrl, fit: BoxFit.cover),
-            ),
-      content: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(announcement.title, style: _display(27)),
-            const SizedBox(height: 10),
-            Text(
-              announcement.body,
-              style: const TextStyle(color: _muted, height: 1.5),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('LATER'),
-        ),
-        if (announcement.linkUrl.isNotEmpty)
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              launchUrl(Uri.parse(announcement.linkUrl));
-            },
-            child: Text(announcement.buttonLabel),
+  try {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        clipBehavior: Clip.antiAlias,
+        titlePadding: EdgeInsets.zero,
+        title: announcement.imageUrl.isEmpty
+            ? null
+            : SizedBox(
+                height: 230,
+                width: 560,
+                child: _ProductionRemoteImage(
+                  url: announcement.imageUrl,
+                  fit: BoxFit.cover,
+                  fallback: const ColoredBox(
+                    color: _surface2,
+                    child: Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.broken_image_rounded, color: _muted),
+                            SizedBox(height: 8),
+                            Text(
+                              'Image unavailable — use a direct HTTPS image URL.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: _muted, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(announcement.title, style: _display(27)),
+              const SizedBox(height: 10),
+              Text(
+                announcement.body,
+                style: const TextStyle(color: _muted, height: 1.5),
+              ),
+            ],
           ),
-      ],
-    ),
-  );
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('LATER'),
+          ),
+          if (announcement.linkUrl.isNotEmpty)
+            FilledButton(
+              onPressed: () async {
+                final uri = externalHttpUri(announcement.linkUrl);
+                Navigator.pop(context);
+                if (uri != null) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+              child: Text(announcement.buttonLabel),
+            ),
+        ],
+      ),
+    );
+    // A once/daily campaign is only consumed after its dialog was actually
+    // presented, so a rendering/context failure cannot silently hide it.
+    if (announcement.frequency == 'once') {
+      await preferences.setString(key, DateTime.now().toIso8601String());
+    } else if (announcement.frequency == 'daily') {
+      await preferences.setString(key, todayKey);
+    }
+  } catch (_) {
+    _shownAnnouncementRevisions.remove(announcement.revision);
+    rethrow;
+  }
 }

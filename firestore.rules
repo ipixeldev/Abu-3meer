@@ -31,6 +31,7 @@ service cloud.firestore {
           'email', 'username', 'displayName', 'country', 'supportedTeam',
           'avatarUrl', 'role', 'membershipMultiplier', 'suspended',
           'totalPoints', 'monthlyPoints', 'seasonPoints', 'monthlyPeriod',
+          'currentStreak', 'longestStreak', 'lastActivityAt',
           'onboardingComplete', 'createdAt', 'updatedAt'
         ])
         && request.resource.data.email == request.auth.token.email
@@ -52,6 +53,9 @@ service cloud.firestore {
         && request.resource.data.totalPoints == 0
         && request.resource.data.monthlyPoints == 0
         && request.resource.data.seasonPoints == 0
+        && request.resource.data.currentStreak == 0
+        && request.resource.data.longestStreak == 0
+        && request.resource.data.lastActivityAt == null
         && request.resource.data.onboardingComplete == true
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time

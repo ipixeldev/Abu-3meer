@@ -153,10 +153,24 @@
   <script>
     (function () {
       if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
+        let reloadingForUpdate = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (reloadingForUpdate || sessionStorage.getItem('abu3meer-sw-reloaded') === '1') return;
+          reloadingForUpdate = true;
+          sessionStorage.setItem('abu3meer-sw-reloaded', '1');
+          window.location.reload();
+        });
         window.addEventListener('load', function () {
-          navigator.serviceWorker.register('/pwa_service_worker.js').catch(function (error) {
-            console.warn('PWA service worker registration failed:', error);
-          });
+          navigator.serviceWorker.register('/pwa_service_worker.js')
+            .then(function (registration) {
+              registration.update();
+              window.setTimeout(function () {
+                sessionStorage.removeItem('abu3meer-sw-reloaded');
+              }, 4000);
+            })
+            .catch(function (error) {
+              console.warn('PWA service worker registration failed:', error);
+            });
         });
       }
     }());

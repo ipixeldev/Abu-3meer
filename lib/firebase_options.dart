@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
     appId: '1:418913638245:web:623c6dcae1e82ed7cef38c',
     messagingSenderId: '418913638245',
     projectId: 'abu-3meer',
-    authDomain: 'abu-3meer.web.app',
+    authDomain: 'abu-3meer.firebaseapp.com',
     storageBucket: 'abu-3meer.firebasestorage.app',
     measurementId: 'G-G9Z3KCG2PC',
   );

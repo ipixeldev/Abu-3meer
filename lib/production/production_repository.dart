@@ -8,6 +8,39 @@ import 'external_content_service.dart';
 import 'models.dart';
 import 'temporary_mock_data.dart';
 
+/// Parses a user-entered external URL without ever treating it as an in-app
+/// relative path. Admins can enter either `example.com` or a complete URL.
+Uri? externalHttpUri(String raw) {
+  final value = raw.trim();
+  if (value.isEmpty) return null;
+  // A value with an explicit scheme must already be HTTP(S). Without this
+  // guard, `mailto:...` would be mistaken for a bare domain and prefixed with
+  // https, producing a malformed but parseable URL.
+  final explicitScheme = RegExp(r'^[A-Za-z][A-Za-z0-9+.-]*:');
+  if (explicitScheme.hasMatch(value) &&
+      !value.toLowerCase().startsWith('http://') &&
+      !value.toLowerCase().startsWith('https://')) {
+    return null;
+  }
+  final candidate = value.contains('://') ? value : 'https://$value';
+  final uri = Uri.tryParse(candidate);
+  if (uri == null ||
+      !const {'http', 'https'}.contains(uri.scheme.toLowerCase()) ||
+      uri.host.isEmpty) {
+    return null;
+  }
+  return uri;
+}
+
+String _normalizedOptionalUrl(String raw, String field) {
+  if (raw.trim().isEmpty) return '';
+  final uri = externalHttpUri(raw);
+  if (uri == null) {
+    throw ArgumentError('$field must be a valid http or https URL.');
+  }
+  return uri.toString();
+}
+
 class ProductionRepository {
   ProductionRepository({
     FirebaseAuth? auth,
@@ -70,6 +103,9 @@ class ProductionRepository {
     }
     return externalContent.latestVideo(refresh: refresh);
   }
+
+  Future<FootballTeamAsset?> lookupTeam(String name) =>
+      externalContent.lookupTeam(name);
 
   Stream<List<PointLedgerEntry>> watchPointHistory(String uid) {
     if (TemporaryMockData.instance.enabled) {
@@ -329,6 +365,9 @@ class ProductionRepository {
         'totalPoints': 0,
         'monthlyPoints': 0,
         'seasonPoints': 0,
+        'currentStreak': 0,
+        'longestStreak': 0,
+        'lastActivityAt': null,
         'monthlyPeriod': monthlyPeriod,
         'onboardingComplete': true,
         'createdAt': timestamp,
@@ -490,16 +529,20 @@ class ProductionRepository {
     required String imageUrl,
     required String linkUrl,
     required String authorName,
-  }) => firestore.collection('posts').add({
-    'title': title.trim(),
-    'body': body.trim(),
-    'imageUrl': imageUrl.trim(),
-    'linkUrl': linkUrl.trim(),
-    'authorName': authorName.trim(),
-    'createdBy': auth.currentUser!.uid,
-    'publishedAt': FieldValue.serverTimestamp(),
-    'updatedAt': FieldValue.serverTimestamp(),
-  });
+  }) {
+    final normalizedImage = _normalizedOptionalUrl(imageUrl, 'Image URL');
+    final normalizedLink = _normalizedOptionalUrl(linkUrl, 'Clickable link');
+    return firestore.collection('posts').add({
+      'title': title.trim(),
+      'body': body.trim(),
+      'imageUrl': normalizedImage,
+      'linkUrl': normalizedLink,
+      'authorName': authorName.trim(),
+      'createdBy': auth.currentUser!.uid,
+      'publishedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  }
 
   Future<void> reactToPost(String postId) => firestore
       .collection('posts')
@@ -539,6 +582,8 @@ class ProductionRepository {
     if (!const ['once', 'daily', 'session', 'always'].contains(frequency)) {
       throw ArgumentError('Choose a supported popup frequency.');
     }
+    final normalizedImage = _normalizedOptionalUrl(imageUrl, 'Image URL');
+    final normalizedLink = _normalizedOptionalUrl(linkUrl, 'Clickable link');
     await firestore
         .collection('platformSettings')
         .doc('launchAnnouncement')
@@ -546,8 +591,8 @@ class ProductionRepository {
           'enabled': enabled,
           'title': title.trim(),
           'body': body.trim(),
-          'imageUrl': imageUrl.trim(),
-          'linkUrl': linkUrl.trim(),
+          'imageUrl': normalizedImage,
+          'linkUrl': normalizedLink,
           'buttonLabel': buttonLabel.trim(),
           'frequency': frequency,
           'startsAt': Timestamp.fromDate(startsAt),
@@ -672,8 +717,8 @@ class ProductionRepository {
       'kickoffAt': Timestamp.fromDate(kickoffAt),
       'predictionOpensAt': Timestamp.fromDate(predictionOpensAt),
       'predictionClosesAt': Timestamp.fromDate(predictionClosesAt),
-      'homeLogoUrl': homeLogoUrl.trim(),
-      'awayLogoUrl': awayLogoUrl.trim(),
+      'homeLogoUrl': _normalizedOptionalUrl(homeLogoUrl, 'Home logo URL'),
+      'awayLogoUrl': _normalizedOptionalUrl(awayLogoUrl, 'Away logo URL'),
       'status': 'open',
       'createdBy': auth.currentUser!.uid,
       'createdAt': FieldValue.serverTimestamp(),

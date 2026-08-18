@@ -17,7 +17,7 @@ Future<void> main() async {
           options: DefaultFirebaseOptions.currentPlatform,
         ).timeout(const Duration(seconds: 6));
         if (kIsWeb) {
-          await FirebaseAuth.instance.setPersistence(Persistence.SESSION);
+          await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
         }
         await Future.wait([
           AbuAppPreferences.instance.load(),

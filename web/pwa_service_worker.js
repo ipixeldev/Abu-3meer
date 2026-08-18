@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'abu3meer-pwa-v4';
+const CACHE_NAME = 'abu3meer-pwa-v5';
 const APP_SHELL = [
   '/manifest.json',
   '/icons/Abu3meer-64.png',

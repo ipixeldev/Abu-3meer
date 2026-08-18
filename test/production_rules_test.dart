@@ -63,11 +63,7 @@ void main() {
 
     test('submission at or after the server deadline fails', () {
       expect(
-        predictionIsOpen(
-          serverNow: closes,
-          opensAt: opens,
-          closesAt: closes,
-        ),
+        predictionIsOpen(serverNow: closes, opensAt: opens, closesAt: closes),
         isFalse,
       );
     });

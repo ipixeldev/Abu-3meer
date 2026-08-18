@@ -7,6 +7,8 @@ DateTime _date(Object? value) => switch (value) {
   _ => DateTime.fromMillisecondsSinceEpoch(0),
 };
 
+DateTime? _optionalDate(Object? value) => value == null ? null : _date(value);
+
 class AbuUserProfile {
   const AbuUserProfile({
     required this.uid,
@@ -22,6 +24,9 @@ class AbuUserProfile {
     required this.monthlyPoints,
     required this.seasonPoints,
     required this.suspended,
+    this.currentStreak = 0,
+    this.longestStreak = 0,
+    this.lastActivityAt,
   });
 
   final String uid;
@@ -37,6 +42,9 @@ class AbuUserProfile {
   final int monthlyPoints;
   final int seasonPoints;
   final bool suspended;
+  final int currentStreak;
+  final int longestStreak;
+  final DateTime? lastActivityAt;
 
   bool get onboardingComplete =>
       username.isNotEmpty && displayName.isNotEmpty && supportedTeam.isNotEmpty;
@@ -52,6 +60,9 @@ class AbuUserProfile {
     int? monthlyPoints,
     int? seasonPoints,
     double? membershipMultiplier,
+    int? currentStreak,
+    int? longestStreak,
+    DateTime? lastActivityAt,
   }) => AbuUserProfile(
     uid: uid,
     email: email,
@@ -66,6 +77,9 @@ class AbuUserProfile {
     monthlyPoints: monthlyPoints ?? this.monthlyPoints,
     seasonPoints: seasonPoints ?? this.seasonPoints,
     suspended: suspended,
+    currentStreak: currentStreak ?? this.currentStreak,
+    longestStreak: longestStreak ?? this.longestStreak,
+    lastActivityAt: lastActivityAt ?? this.lastActivityAt,
   );
 
   factory AbuUserProfile.fromDocument(
@@ -87,6 +101,9 @@ class AbuUserProfile {
       monthlyPoints: (data['monthlyPoints'] as num? ?? 0).toInt(),
       seasonPoints: (data['seasonPoints'] as num? ?? 0).toInt(),
       suspended: data['suspended'] as bool? ?? false,
+      currentStreak: (data['currentStreak'] as num? ?? 0).toInt(),
+      longestStreak: (data['longestStreak'] as num? ?? 0).toInt(),
+      lastActivityAt: _optionalDate(data['lastActivityAt']),
     );
   }
 }

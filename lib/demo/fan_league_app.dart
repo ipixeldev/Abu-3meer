@@ -57,8 +57,10 @@ class _Abu3meerBootstrapState extends State<Abu3meerBootstrap> {
   }
 
   Future<void> _start() async {
+    // The HTML launch screen already covers Flutter's bootstrap. Keep this
+    // native transition short so users do not see two consecutive splashes.
     final minimumSplash = Future<void>.delayed(
-      const Duration(milliseconds: 1900),
+      const Duration(milliseconds: 280),
     );
     try {
       await Future.wait([widget.initializeFirebase(), minimumSplash]);
@@ -711,32 +713,109 @@ class _PageFrame extends StatelessWidget {
   final Widget child;
   @override
   Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < 430;
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = width < 430;
+    final desktop = width >= 1100;
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
-        compact ? 16 : 22,
-        compact ? 18 : 24,
-        compact ? 16 : 22,
-        48,
+        compact
+            ? 16
+            : desktop
+            ? 40
+            : 22,
+        compact
+            ? 18
+            : desktop
+            ? 30
+            : 24,
+        compact
+            ? 16
+            : desktop
+            ? 40
+            : 22,
+        desktop ? 64 : 48,
       ),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1180),
+          constraints: BoxConstraints(maxWidth: desktop ? 1440 : 1180),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                kicker.toUpperCase(),
-                style: const TextStyle(
-                  color: _lime,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11,
-                  letterSpacing: 1.8,
+              if (desktop)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            kicker.toUpperCase(),
+                            style: const TextStyle(
+                              color: _lime,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
+                              letterSpacing: 1.8,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          Text(title, style: _display(44)),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _surface,
+                        borderRadius: BorderRadius.circular(99),
+                        border: Border.all(color: _line),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.desktop_windows_rounded,
+                            size: 15,
+                            color: _lime,
+                          ),
+                          SizedBox(width: 7),
+                          Text(
+                            'DESKTOP WORKSPACE',
+                            style: TextStyle(
+                              color: _muted,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
+              if (!desktop) ...[
+                Text(
+                  kicker.toUpperCase(),
+                  style: const TextStyle(
+                    color: _lime,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                    letterSpacing: 1.8,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(title, style: _display(compact ? 32 : 38)),
+              ],
+              SizedBox(
+                height: compact
+                    ? 18
+                    : desktop
+                    ? 30
+                    : 24,
               ),
-              const SizedBox(height: 7),
-              Text(title, style: _display(compact ? 32 : 38)),
-              SizedBox(height: compact ? 18 : 24),
               child,
             ],
           ),

@@ -67,6 +67,14 @@ function periodId(date = new Date()): string {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+function utcDayNumber(value: Date): number {
+  return Math.floor(Date.UTC(
+    value.getUTCFullYear(),
+    value.getUTCMonth(),
+    value.getUTCDate(),
+  ) / 86_400_000);
+}
+
 async function pointSettings(): Promise<Record<string, number>> {
   const snapshot = await db.collection("platformSettings").doc("points").get();
   return {...DEFAULT_POINTS, ...(snapshot.data() ?? {})};
@@ -106,6 +114,20 @@ async function awardPoints(params: {
     const monthlyPoints = (sameMonth ? Number(user.monthlyPoints ?? 0) : 0) + finalPoints;
     const seasonPoints = Number(user.seasonPoints ?? 0) + finalPoints;
     const totalPoints = Number(user.totalPoints ?? 0) + finalPoints;
+    const activityAt = Timestamp.now();
+    const lastActivity = user.lastActivityAt instanceof Timestamp
+      ? user.lastActivityAt as Timestamp
+      : null;
+    const dayGap = lastActivity == null
+      ? null
+      : utcDayNumber(activityAt.toDate()) - utcDayNumber(lastActivity.toDate());
+    const previousStreak = Number(user.currentStreak ?? 0);
+    const currentStreak = dayGap === 0
+      ? Math.max(previousStreak, 1)
+      : dayGap === 1
+        ? previousStreak + 1
+        : 1;
+    const longestStreak = Math.max(Number(user.longestStreak ?? 0), currentStreak);
     const createdAt = FieldValue.serverTimestamp();
 
     transaction.create(ledgerRef, {
@@ -124,6 +146,9 @@ async function awardPoints(params: {
       totalPoints,
       monthlyPoints,
       seasonPoints,
+      currentStreak,
+      longestStreak,
+      lastActivityAt: activityAt,
       monthlyPeriod: currentPeriod,
       updatedAt: createdAt,
     });
@@ -185,6 +210,9 @@ export const completeOnboarding = onCall({region}, async (request) => {
       totalPoints: existing.data()?.totalPoints ?? 0,
       monthlyPoints: existing.data()?.monthlyPoints ?? 0,
       seasonPoints: existing.data()?.seasonPoints ?? 0,
+      currentStreak: existing.data()?.currentStreak ?? 0,
+      longestStreak: existing.data()?.longestStreak ?? 0,
+      lastActivityAt: existing.data()?.lastActivityAt ?? null,
       monthlyPeriod: existing.data()?.monthlyPeriod ?? periodId(),
       onboardingComplete: true,
       createdAt: existing.data()?.createdAt ?? now,

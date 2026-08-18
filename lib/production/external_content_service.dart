@@ -20,6 +20,18 @@ class LatestVideo {
   final DateTime publishedAt;
 }
 
+class FootballTeamAsset {
+  const FootballTeamAsset({
+    required this.name,
+    required this.badgeUrl,
+    required this.league,
+  });
+
+  final String name;
+  final String badgeUrl;
+  final String league;
+}
+
 class AbuExternalContentService {
   AbuExternalContentService({http.Client? client})
     : _client = client ?? http.Client();
@@ -42,6 +54,40 @@ class AbuExternalContentService {
   Future<MatchEvent?> nextMatch({bool refresh = false}) {
     if (refresh) _nextMatchRequest = null;
     return _nextMatchRequest ??= _fetchNextMatch();
+  }
+
+  /// Finds the canonical team name, league and badge exposed by TheSportsDB.
+  /// The JSON endpoint supports browser CORS; the badge widget separately uses
+  /// an HTML image fallback because the image CDN does not always do so.
+  Future<FootballTeamAsset?> lookupTeam(String query) async {
+    final value = query.trim();
+    if (value.isEmpty) return null;
+    final endpoint = Uri.https(
+      'www.thesportsdb.com',
+      '/api/v1/json/123/searchteams.php',
+      {'t': value},
+    );
+    final response = await _client
+        .get(endpoint)
+        .timeout(const Duration(seconds: 12));
+    if (response.statusCode != 200) return null;
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final teams = payload['teams'] as List<dynamic>? ?? const [];
+    if (teams.isEmpty) return null;
+    final footballTeams = teams
+        .whereType<Map<String, dynamic>>()
+        .where(
+          (team) => team['strSport'] == null || team['strSport'] == 'Soccer',
+        )
+        .toList();
+    final team = footballTeams.isEmpty
+        ? teams.first as Map<String, dynamic>
+        : footballTeams.first;
+    return FootballTeamAsset(
+      name: team['strTeam'] as String? ?? value,
+      badgeUrl: team['strBadge'] as String? ?? '',
+      league: team['strLeague'] as String? ?? '',
+    );
   }
 
   Future<LatestVideo> _fetchLatestVideo() async {
