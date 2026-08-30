@@ -3,6 +3,7 @@
 // Barcelona / Real Madrid colours used only contextually — never as global theme.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 
 /// Semantic colour tokens used across the app.
 class AppColors {
@@ -133,7 +134,6 @@ ThemeData buildDarkTheme() {
     cardColor: AppColors.bgSurface,
     dividerColor: AppColors.divider,
     shadowColor: Colors.black,
-    fontFamily: 'Inter',
   );
 
   return base.copyWith(
@@ -144,7 +144,7 @@ ThemeData buildDarkTheme() {
       elevation: 0,
       scrolledUnderElevation: 1,
       centerTitle: false,
-      titleTextStyle: cs.textTheme.titleLarge?.copyWith(
+      titleTextStyle: base.textTheme.titleLarge?.copyWith(
         fontWeight: FontWeight.w700,
         letterSpacing: -0.5,
       ),

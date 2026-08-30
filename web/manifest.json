@@ -1,32 +1,39 @@
 {
-    "name": "The Fan League",
-    "short_name": "Fan League",
-    "start_url": ".",
+    "name": "Abu 3meer",
+    "short_name": "Abu 3meer",
+    "id": "/",
+    "start_url": "/?source=pwa",
+    "scope": "/",
     "display": "standalone",
+    "display_override": ["window-controls-overlay", "standalone"],
     "background_color": "#080B10",
-    "theme_color": "#C8FF38",
+    "theme_color": "#080B10",
     "description": "Watch. Predict. Compete. Become a legend.",
     "orientation": "any",
+    "categories": ["sports", "games", "social"],
+    "lang": "en",
+    "dir": "auto",
+    "launch_handler": { "client_mode": "navigate-existing" },
     "prefer_related_applications": false,
     "icons": [
         {
-            "src": "icons/Icon-192.png",
+            "src": "icons/Abu3meer-192.png",
             "sizes": "192x192",
             "type": "image/png"
         },
         {
-            "src": "icons/Icon-512.png",
+            "src": "icons/Abu3meer-512.png",
             "sizes": "512x512",
             "type": "image/png"
         },
         {
-            "src": "icons/Icon-maskable-192.png",
+            "src": "icons/Abu3meer-192.png",
             "sizes": "192x192",
             "type": "image/png",
             "purpose": "maskable"
         },
         {
-            "src": "icons/Icon-maskable-512.png",
+            "src": "icons/Abu3meer-512.png",
             "sizes": "512x512",
             "type": "image/png",
             "purpose": "maskable"

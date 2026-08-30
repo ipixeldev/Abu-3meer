@@ -1,6 +1,7 @@
 // Match, prediction, and result models.
 
 import 'package:flutter/material.dart';
+
 import 'user.dart';
 
 enum MatchStatus {
@@ -31,7 +32,6 @@ class Match {
   final int? awayScore;
   final String? firstScorerId;
   final String? manOfMatchId;
-  final bool bothTeamsScored;
   final int participatingFans;
   final int totalXpPool;
   final DateTime createdAt;
@@ -53,7 +53,6 @@ class Match {
     this.awayScore,
     this.firstScorerId,
     this.manOfMatchId,
-    this.bothTeamsScored = false,
     this.participatingFans = 0,
     this.totalXpPool = 0,
     required this.createdAt,
@@ -76,34 +75,31 @@ class Match {
     int? awayScore,
     String? firstScorerId,
     String? manOfMatchId,
-    bool? bothTeamsScored,
     int? participatingFans,
     int? totalXpPool,
     DateTime? createdAt,
     DateTime? updatedAt,
-  }) =>
-      Match(
-        id: id ?? this.id,
-        homeTeamName: homeTeamName ?? this.homeTeamName,
-        awayTeamName: awayTeamName ?? this.awayTeamName,
-        homeTeam: homeTeam ?? this.homeTeam,
-        awayTeam: awayTeam ?? this.awayTeam,
-        competition: competition ?? this.competition,
-        kickoff: kickoff ?? this.kickoff,
-        predictionDeadline: predictionDeadline ?? this.predictionDeadline,
-        stadium: stadium ?? this.stadium,
-        venueCity: venueCity ?? this.venueCity,
-        status: status ?? this.status,
-        homeScore: homeScore ?? this.homeScore,
-        awayScore: awayScore ?? this.awayScore,
-        firstScorerId: firstScorerId ?? this.firstScorerId,
-        manOfMatchId: manOfMatchId ?? this.manOfMatchId,
-        bothTeamsScored: bothTeamsScored ?? this.bothTeamsScored,
-        participatingFans: participatingFans ?? this.participatingFans,
-        totalXpPool: totalXpPool ?? this.totalXpPool,
-        createdAt: createdAt ?? this.createdAt,
-        updatedAt: updatedAt ?? this.updatedAt,
-      );
+  }) => Match(
+    id: id ?? this.id,
+    homeTeamName: homeTeamName ?? this.homeTeamName,
+    awayTeamName: awayTeamName ?? this.awayTeamName,
+    homeTeam: homeTeam ?? this.homeTeam,
+    awayTeam: awayTeam ?? this.awayTeam,
+    competition: competition ?? this.competition,
+    kickoff: kickoff ?? this.kickoff,
+    predictionDeadline: predictionDeadline ?? this.predictionDeadline,
+    stadium: stadium ?? this.stadium,
+    venueCity: venueCity ?? this.venueCity,
+    status: status ?? this.status,
+    homeScore: homeScore ?? this.homeScore,
+    awayScore: awayScore ?? this.awayScore,
+    firstScorerId: firstScorerId ?? this.firstScorerId,
+    manOfMatchId: manOfMatchId ?? this.manOfMatchId,
+    participatingFans: participatingFans ?? this.participatingFans,
+    totalXpPool: totalXpPool ?? this.totalXpPool,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
 
   bool get isElClasico =>
       (homeTeam == Team.barcelona && awayTeam == Team.realMadrid) ||
@@ -155,13 +151,7 @@ class Match {
 }
 
 /// Prediction types available.
-enum PredictionType {
-  matchWinner,
-  correctScore,
-  firstScorer,
-  manOfMatch,
-  bothTeamsScore,
-}
+enum PredictionType { matchWinner, correctScore, firstScorer, manOfMatch }
 
 /// A single prediction entry.
 class Prediction {
@@ -169,7 +159,7 @@ class Prediction {
   final String userId;
   final String matchId;
   final PredictionType type;
-  final dynamic value; // Team for winner, "2-1" for score, playerId for scorers, bool for BTTS
+  final dynamic value; // Team for winner, "2-1" for score, playerId for scorers
   final int xpReward;
   final bool isCorrect;
   final bool isLocked;
@@ -200,19 +190,18 @@ class Prediction {
     bool? isLocked,
     DateTime? createdAt,
     DateTime? resolvedAt,
-  }) =>
-      Prediction(
-        id: id ?? this.id,
-        userId: userId ?? this.userId,
-        matchId: matchId ?? this.matchId,
-        type: type ?? this.type,
-        value: value ?? this.value,
-        xpReward: xpReward ?? this.xpReward,
-        isCorrect: isCorrect ?? this.isCorrect,
-        isLocked: isLocked ?? this.isLocked,
-        createdAt: createdAt ?? this.createdAt,
-        resolvedAt: resolvedAt ?? this.resolvedAt,
-      );
+  }) => Prediction(
+    id: id ?? this.id,
+    userId: userId ?? this.userId,
+    matchId: matchId ?? this.matchId,
+    type: type ?? this.type,
+    value: value ?? this.value,
+    xpReward: xpReward ?? this.xpReward,
+    isCorrect: isCorrect ?? this.isCorrect,
+    isLocked: isLocked ?? this.isLocked,
+    createdAt: createdAt ?? this.createdAt,
+    resolvedAt: resolvedAt ?? this.resolvedAt,
+  );
 
   String get displayValue {
     switch (type) {
@@ -226,8 +215,6 @@ class Prediction {
       case PredictionType.firstScorer:
       case PredictionType.manOfMatch:
         return value.toString(); // Player name
-      case PredictionType.bothTeamsScore:
-        return value == true ? 'Yes' : 'No';
     }
   }
 
@@ -241,8 +228,6 @@ class Prediction {
         return 'First Scorer';
       case PredictionType.manOfMatch:
         return 'Man of the Match';
-      case PredictionType.bothTeamsScore:
-        return 'Both Teams to Score';
     }
   }
 }
@@ -287,7 +272,6 @@ class MatchResult {
   final int awayScore;
   final String? firstScorer;
   final String? manOfMatch;
-  final bool bothTeamsScored;
   final List<PredictionResult> predictionResults;
   final int totalXpEarned;
   final int rankChange;
@@ -302,7 +286,6 @@ class MatchResult {
     required this.awayScore,
     this.firstScorer,
     this.manOfMatch,
-    required this.bothTeamsScored,
     required this.predictionResults,
     required this.totalXpEarned,
     required this.rankChange,
@@ -312,7 +295,9 @@ class MatchResult {
   });
 
   bool get isImprovement => rankChange > 0;
-  String get rankChangeText => rankChange > 0 ? '↑ $rankChange' : (rankChange < 0 ? '↓ ${rankChange.abs()}' → '');
+  String get rankChangeText => rankChange > 0
+      ? '↑ $rankChange'
+      : (rankChange < 0 ? '↓ ${rankChange.abs()}' : '');
 }
 
 /// Individual prediction result.
@@ -351,39 +336,219 @@ class Player {
   });
 
   static const List<Player> barcelonaPlayers = [
-    Player(id: 'b_1', name: 'Ter Stegen', team: Team.barcelona, number: 1, position: 'GK'),
-    Player(id: 'b_2', name: 'Koundé', team: Team.barcelona, number: 23, position: 'DEF'),
-    Player(id: 'b_3', name: 'Araújo', team: Team.barcelona, number: 4, position: 'DEF'),
-    Player(id: 'b_4', name: 'Cubarsí', team: Team.barcelona, number: 2, position: 'DEF'),
-    Player(id: 'b_5', name: 'Balde', team: Team.barcelona, number: 3, position: 'DEF'),
-    Player(id: 'b_6', name: 'Pedri', team: Team.barcelona, number: 8, position: 'MID'),
-    Player(id: 'b_7', name: 'Gavi', team: Team.barcelona, number: 6, position: 'MID'),
-    Player(id: 'b_8', name: 'De Jong', team: Team.barcelona, number: 21, position: 'MID'),
-    Player(id: 'b_9', name: 'Lamine Yamal', team: Team.barcelona, number: 19, position: 'FWD'),
-    Player(id: 'b_10', name: 'Raphinha', team: Team.barcelona, number: 11, position: 'FWD'),
-    Player(id: 'b_11', name: 'Lewandowski', team: Team.barcelona, number: 9, position: 'FWD'),
-    Player(id: 'b_12', name: 'Ferran Torres', team: Team.barcelona, number: 7, position: 'FWD'),
-    Player(id: 'b_13', name: 'Olmo', team: Team.barcelona, number: 20, position: 'MID'),
-    Player(id: 'b_14', name: 'Casadó', team: Team.barcelona, number: 17, position: 'MID'),
-    Player(id: 'b_15', name: 'Iñaki Peña', team: Team.barcelona, number: 13, position: 'GK'),
+    Player(
+      id: 'b_1',
+      name: 'Ter Stegen',
+      team: Team.barcelona,
+      number: 1,
+      position: 'GK',
+    ),
+    Player(
+      id: 'b_2',
+      name: 'Koundé',
+      team: Team.barcelona,
+      number: 23,
+      position: 'DEF',
+    ),
+    Player(
+      id: 'b_3',
+      name: 'Araújo',
+      team: Team.barcelona,
+      number: 4,
+      position: 'DEF',
+    ),
+    Player(
+      id: 'b_4',
+      name: 'Cubarsí',
+      team: Team.barcelona,
+      number: 2,
+      position: 'DEF',
+    ),
+    Player(
+      id: 'b_5',
+      name: 'Balde',
+      team: Team.barcelona,
+      number: 3,
+      position: 'DEF',
+    ),
+    Player(
+      id: 'b_6',
+      name: 'Pedri',
+      team: Team.barcelona,
+      number: 8,
+      position: 'MID',
+    ),
+    Player(
+      id: 'b_7',
+      name: 'Gavi',
+      team: Team.barcelona,
+      number: 6,
+      position: 'MID',
+    ),
+    Player(
+      id: 'b_8',
+      name: 'De Jong',
+      team: Team.barcelona,
+      number: 21,
+      position: 'MID',
+    ),
+    Player(
+      id: 'b_9',
+      name: 'Lamine Yamal',
+      team: Team.barcelona,
+      number: 19,
+      position: 'FWD',
+    ),
+    Player(
+      id: 'b_10',
+      name: 'Raphinha',
+      team: Team.barcelona,
+      number: 11,
+      position: 'FWD',
+    ),
+    Player(
+      id: 'b_11',
+      name: 'Lewandowski',
+      team: Team.barcelona,
+      number: 9,
+      position: 'FWD',
+    ),
+    Player(
+      id: 'b_12',
+      name: 'Ferran Torres',
+      team: Team.barcelona,
+      number: 7,
+      position: 'FWD',
+    ),
+    Player(
+      id: 'b_13',
+      name: 'Olmo',
+      team: Team.barcelona,
+      number: 20,
+      position: 'MID',
+    ),
+    Player(
+      id: 'b_14',
+      name: 'Casadó',
+      team: Team.barcelona,
+      number: 17,
+      position: 'MID',
+    ),
+    Player(
+      id: 'b_15',
+      name: 'Iñaki Peña',
+      team: Team.barcelona,
+      number: 13,
+      position: 'GK',
+    ),
   ];
 
   static const List<Player> madridPlayers = [
-    Player(id: 'm_1', name: 'Courtois', team: Team.realMadrid, number: 1, position: 'GK'),
-    Player(id: 'm_2', name: 'Carvajal', team: Team.realMadrid, number: 2, position: 'DEF'),
-    Player(id: 'm_3', name: 'Militão', team: Team.realMadrid, number: 3, position: 'DEF'),
-    Player(id: 'm_4', name: 'Rüdiger', team: Team.realMadrid, number: 22, position: 'DEF'),
-    Player(id: 'm_5', name: 'Mendy', team: Team.realMadrid, number: 23, position: 'DEF'),
-    Player(id: 'm_6', name: 'Valverde', team: Team.realMadrid, number: 8, position: 'MID'),
-    Player(id: 'm_7', name: 'Camavinga', team: Team.realMadrid, number: 6, position: 'MID'),
-    Player(id: 'm_8', name: 'Bellingham', team: Team.realMadrid, number: 5, position: 'MID'),
-    Player(id: 'm_9', name: 'Mbappé', team: Team.realMadrid, number: 9, position: 'FWD'),
-    Player(id: 'm_10', name: 'Vinícius Jr.', team: Team.realMadrid, number: 7, position: 'FWD'),
-    Player(id: 'm_11', name: 'Rodrygo', team: Team.realMadrid, number: 11, position: 'FWD'),
-    Player(id: 'm_12', name: 'Endrick', team: Team.realMadrid, number: 16, position: 'FWD'),
-    Player(id: 'm_13', name: 'Modrić', team: Team.realMadrid, number: 10, position: 'MID'),
-    Player(id: 'm_14', name: 'Tchouaméni', team: Team.realMadrid, number: 14, position: 'MID'),
-    Player(id: 'm_15', name: 'Lunin', team: Team.realMadrid, number: 13, position: 'GK'),
+    Player(
+      id: 'm_1',
+      name: 'Courtois',
+      team: Team.realMadrid,
+      number: 1,
+      position: 'GK',
+    ),
+    Player(
+      id: 'm_2',
+      name: 'Carvajal',
+      team: Team.realMadrid,
+      number: 2,
+      position: 'DEF',
+    ),
+    Player(
+      id: 'm_3',
+      name: 'Militão',
+      team: Team.realMadrid,
+      number: 3,
+      position: 'DEF',
+    ),
+    Player(
+      id: 'm_4',
+      name: 'Rüdiger',
+      team: Team.realMadrid,
+      number: 22,
+      position: 'DEF',
+    ),
+    Player(
+      id: 'm_5',
+      name: 'Mendy',
+      team: Team.realMadrid,
+      number: 23,
+      position: 'DEF',
+    ),
+    Player(
+      id: 'm_6',
+      name: 'Valverde',
+      team: Team.realMadrid,
+      number: 8,
+      position: 'MID',
+    ),
+    Player(
+      id: 'm_7',
+      name: 'Camavinga',
+      team: Team.realMadrid,
+      number: 6,
+      position: 'MID',
+    ),
+    Player(
+      id: 'm_8',
+      name: 'Bellingham',
+      team: Team.realMadrid,
+      number: 5,
+      position: 'MID',
+    ),
+    Player(
+      id: 'm_9',
+      name: 'Mbappé',
+      team: Team.realMadrid,
+      number: 9,
+      position: 'FWD',
+    ),
+    Player(
+      id: 'm_10',
+      name: 'Vinícius Jr.',
+      team: Team.realMadrid,
+      number: 7,
+      position: 'FWD',
+    ),
+    Player(
+      id: 'm_11',
+      name: 'Rodrygo',
+      team: Team.realMadrid,
+      number: 11,
+      position: 'FWD',
+    ),
+    Player(
+      id: 'm_12',
+      name: 'Endrick',
+      team: Team.realMadrid,
+      number: 16,
+      position: 'FWD',
+    ),
+    Player(
+      id: 'm_13',
+      name: 'Modrić',
+      team: Team.realMadrid,
+      number: 10,
+      position: 'MID',
+    ),
+    Player(
+      id: 'm_14',
+      name: 'Tchouaméni',
+      team: Team.realMadrid,
+      number: 14,
+      position: 'MID',
+    ),
+    Player(
+      id: 'm_15',
+      name: 'Lunin',
+      team: Team.realMadrid,
+      number: 13,
+      position: 'GK',
+    ),
   ];
 
   static List<Player> forTeam(Team team) =>

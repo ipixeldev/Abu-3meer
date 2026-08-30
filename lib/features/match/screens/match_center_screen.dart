@@ -898,8 +898,6 @@ class _MatchCenterScreenState extends State<MatchCenterScreen>
         return Icons.sports_soccer_outlined;
       case PredictionType.manOfMatch:
         return Icons.star_outline;
-      case PredictionType.bothTeamsScore:
-        return Icons.compare_arrows_outlined;
     }
   }
 

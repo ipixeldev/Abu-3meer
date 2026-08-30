@@ -13,7 +13,7 @@ final List<LoyaltyReward> mockRewards = [
     id: 'rew_merch_channel_tee',
     name: 'Channel Merchandise — Premium Tee',
     description:
-        'Official Fan League creator tee. Black, embroidered logo. S–XXL.',
+        'Official Community creator tee. Black, embroidered logo. S–XXL.',
     imageUrl: 'assets/rewards/channel_tee.png',
     loyaltyCost: 2000,
     stock: 50,
@@ -40,7 +40,7 @@ final List<LoyaltyReward> mockRewards = [
     id: 'rew_merch_barca_shirt',
     name: 'Barcelona 2024/25 Home Shirt',
     description:
-        'Official Nike Barcelona home kit. Custom Fan League sleeve badge.',
+        'Official Nike Barcelona home kit. Custom Community sleeve badge.',
     imageUrl: 'assets/rewards/barca_shirt.png',
     loyaltyCost: 8000,
     stock: 10,
@@ -54,7 +54,7 @@ final List<LoyaltyReward> mockRewards = [
     id: 'rew_merch_madrid_shirt',
     name: 'Real Madrid 2024/25 Home Shirt',
     description:
-        'Official Adidas Real Madrid home kit. Custom Fan League sleeve badge.',
+        'Official Adidas Real Madrid home kit. Custom Community sleeve badge.',
     imageUrl: 'assets/rewards/madrid_shirt.png',
     loyaltyCost: 8000,
     stock: 10,
@@ -67,7 +67,7 @@ final List<LoyaltyReward> mockRewards = [
   LoyaltyReward(
     id: 'rew_merch_scarf_barca',
     name: 'Barcelona Fan Scarf',
-    description: 'Woven jacquard scarf. "Mes que un club" + Fan League logo.',
+    description: 'Woven jacquard scarf. "Mes que un club" + Community logo.',
     imageUrl: 'assets/rewards/barca_scarf.png',
     loyaltyCost: 1500,
     stock: 100,
@@ -80,7 +80,7 @@ final List<LoyaltyReward> mockRewards = [
   LoyaltyReward(
     id: 'rew_merch_scarf_madrid',
     name: 'Real Madrid Fan Scarf',
-    description: 'Woven jacquard scarf. "Hala Madrid" + Fan League logo.',
+    description: 'Woven jacquard scarf. "Hala Madrid" + Community logo.',
     imageUrl: 'assets/rewards/madrid_scarf.png',
     loyaltyCost: 1500,
     stock: 100,
@@ -288,7 +288,7 @@ final List<Notification> mockNotifications = [
     userId: 'usr_ahmed10',
     type: NotificationType.rankUp,
     title: 'You Moved Up!',
-    message: 'You climbed 18 places in the Fan League this week. Now #143!',
+    message: 'You climbed 18 places in the Community this week. Now #143!',
     actionUrl: '/league',
     read: true,
     createdAt: DateTime.now().subtract(const Duration(days: 2)),
@@ -343,7 +343,7 @@ final List<Notification> mockNotifications = [
     id: 'notif_9',
     userId: 'usr_ahmed10',
     type: NotificationType.system,
-    title: 'Welcome to Fan League!',
+    title: 'Welcome to the Community!',
     message: 'Thanks for joining. Complete your first prediction to earn the "First Steps" achievement.',
     actionUrl: '/predict',
     read: true,

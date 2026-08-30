@@ -2,12 +2,34 @@ import 'dart:math' as math;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lottie/lottie.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
+import 'package:glass_liquid_navbar/glass_liquid_navbar.dart' as glass_nav;
+
+import '../production/brand.dart';
+import '../production/api_client.dart';
+import '../production/app_preferences.dart';
+import '../production/external_content_service.dart';
+import '../production/ehzerha_embed.dart';
+import '../production/models.dart';
+import '../production/production_repository.dart';
+import '../production/location_service.dart';
+import '../production/notification_service.dart';
+import '../features/match/screens/match_facts_screen.dart';
+import '../features/videos/exclusive_videos_view.dart';
 
 part 'fan_league_extended.dart';
 part 'trivia_arena.dart';
+part 'production_ui.dart';
+part 'production_features.dart';
+part 'phase3_admin_points.dart';
 
 const _ink = Color(0xFF080B10);
 const _surface = Color(0xFF11161E);
@@ -19,51 +41,77 @@ const _muted = Color(0xFF929CAA);
 const _blue = Color(0xFF3878FF);
 const _red = Color(0xFFFF4D62);
 
+// Light mode deliberately uses a separate, editorial sports palette. These
+// colours are not lightened versions of the dark neon theme: royal blue is the
+// primary action colour, coral is the energy accent, and cool porcelain
+// surfaces keep long fixture and leaderboard screens comfortable to read.
+const _lightInk = Color(0xFF172033);
+const _lightCanvas = Color(0xFFF3F6FB);
+const _lightSurface = Color(0xFFFFFFFF);
+const _lightSurface2 = Color(0xFFE9EFF8);
+const _lightLine = Color(0xFFD4DDEA);
+const _lightMuted = Color(0xFF66758A);
+const _lightPrimary = Color(0xFF2457D6);
+const _lightPrimaryDark = Color(0xFF173B98);
+const _lightAccent = Color(0xFFC44762);
+const _lightSuccess = Color(0xFF087F5B);
+
+bool _isDarkTheme(BuildContext context) =>
+    Theme.of(context).brightness == Brightness.dark;
+
+/// The production accent deliberately changes with the selected appearance.
+/// Dark mode keeps the original stadium-lime identity, while light mode uses
+/// the higher-contrast royal blue palette requested for daylight surfaces.
+Color _productionPrimary(BuildContext context) =>
+    _isDarkTheme(context) ? _lime : _lightPrimary;
+
+Color _productionOnPrimary(BuildContext context) =>
+    _isDarkTheme(context) ? _ink : Colors.white;
+
+Color _productionSurface(BuildContext context) =>
+    _isDarkTheme(context) ? _surface : _lightSurface;
+
+Color _productionLine(BuildContext context) =>
+    _isDarkTheme(context) ? _line : _lightLine;
+
+Color _productionMuted(BuildContext context) =>
+    _isDarkTheme(context) ? _muted : _lightMuted;
+
 const _latestVideoId = 'u_pHQ5jAoWk';
 const _latestVideoUrl = 'https://www.youtube.com/watch?v=$_latestVideoId';
 const _latestVideoTitle = '🚨 يلي أهلو ما ربوه ميسي يربيه 🔥 انجلترا ❌ ارجنتين';
 
-class FanLeagueBootstrap extends StatefulWidget {
-  const FanLeagueBootstrap({super.key, required this.initializeFirebase});
+class Abu3meerBootstrap extends StatefulWidget {
+  const Abu3meerBootstrap({super.key, required this.initializeFirebase});
 
-  final Future<Object?> Function() initializeFirebase;
+  final Future<void> Function() initializeFirebase;
 
   @override
-  State<FanLeagueBootstrap> createState() => _FanLeagueBootstrapState();
+  State<Abu3meerBootstrap> createState() => _Abu3meerBootstrapState();
 }
 
-class _FanLeagueBootstrapState extends State<FanLeagueBootstrap> {
+class _Abu3meerBootstrapState extends State<Abu3meerBootstrap> {
   bool _ready = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _start());
+    _start();
   }
 
   Future<void> _start() async {
-    final minimumSplash = Future<void>.delayed(
-      const Duration(milliseconds: 1900),
-    );
     try {
-      await Future.wait([widget.initializeFirebase(), minimumSplash]);
-    } catch (_) {
-      await minimumSplash;
-    }
+      await widget.initializeFirebase();
+    } catch (_) {}
     if (mounted) setState(() => _ready = true);
   }
 
   @override
   Widget build(BuildContext context) => Directionality(
     textDirection: TextDirection.ltr,
-    child: AnimatedSwitcher(
-      duration: const Duration(milliseconds: 650),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      child: _ready
-          ? const FanLeagueApp(key: ValueKey('fan-league-app'))
-          : const _PremiumSplash(key: ValueKey('premium-splash')),
-    ),
+    child: _ready
+        ? const FanLeagueApp(key: ValueKey('fan-league-app'))
+        : const _PremiumSplash(key: ValueKey('premium-splash')),
   );
 }
 
@@ -93,7 +141,10 @@ class _PremiumSplash extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 18),
-                Text('FAN LEAGUE', style: _display(35, spacing: 1.6)),
+                Text(
+                  AbuBrand.appName.toUpperCase(),
+                  style: _display(35, spacing: 1.6),
+                ),
                 const SizedBox(height: 8),
                 const Text(
                   'THE MATCH NEVER ENDS',
@@ -132,43 +183,166 @@ class FanLeagueApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = ThemeData.dark(useMaterial3: true);
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'The Fan League',
-      theme: base.copyWith(
-        scaffoldBackgroundColor: _ink,
-        colorScheme: const ColorScheme.dark(
+    final preferences = AbuAppPreferences.instance;
+    return AnimatedBuilder(
+      animation: preferences,
+      builder: (context, _) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: AbuBrand.appName,
+        locale: preferences.locale,
+        supportedLocales: const [Locale('en'), Locale('ar')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        themeMode: preferences.themeMode,
+        theme: _abuTheme(brightness: Brightness.light),
+        darkTheme: _abuTheme(brightness: Brightness.dark),
+        builder: (context, child) => Directionality(
+          textDirection: preferences.isArabic
+              ? TextDirection.rtl
+              : TextDirection.ltr,
+          child: child!,
+        ),
+        home: const _ProductionGate(),
+      ),
+    );
+  }
+}
+
+ThemeData _abuTheme({required Brightness brightness}) {
+  final dark = brightness == Brightness.dark;
+  final base = dark
+      ? ThemeData.dark(useMaterial3: true)
+      : ThemeData.light(useMaterial3: true);
+  final surface = dark ? _surface : _lightSurface;
+  final surface2 = dark ? _surface2 : _lightSurface2;
+  final line = dark ? _line : _lightLine;
+  final scheme = dark
+      ? const ColorScheme.dark(
           primary: _lime,
           secondary: _gold,
           surface: _surface,
-        ),
-        textTheme: GoogleFonts.interTextTheme(base.textTheme)
-            .apply(bodyColor: Colors.white, displayColor: Colors.white),
-        cardTheme: CardThemeData(
-          color: _surface,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: const BorderSide(color: _line),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: _surface2,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: _line),
-          ),
-        ),
+        )
+      : const ColorScheme.light(
+          primary: _lightPrimary,
+          onPrimary: Colors.white,
+          primaryContainer: Color(0xFFDCE6FF),
+          onPrimaryContainer: _lightPrimaryDark,
+          secondary: _lightAccent,
+          onSecondary: Colors.white,
+          secondaryContainer: Color(0xFFFFE0E7),
+          onSecondaryContainer: Color(0xFF7F243A),
+          tertiary: _lightSuccess,
+          onTertiary: Colors.white,
+          tertiaryContainer: Color(0xFFD4F3E8),
+          onTertiaryContainer: Color(0xFF075A42),
+          error: Color(0xFFB42318),
+          onError: Colors.white,
+          surface: _lightSurface,
+          onSurface: _lightInk,
+          surfaceContainerHighest: _lightSurface2,
+          onSurfaceVariant: _lightMuted,
+          outline: _lightLine,
+          outlineVariant: Color(0xFFE2E8F2),
+        );
+  return base.copyWith(
+    scaffoldBackgroundColor: dark ? _ink : _lightCanvas,
+    canvasColor: dark ? base.canvasColor : _lightCanvas,
+    colorScheme: scheme,
+    dividerColor: dark ? base.dividerColor : line,
+    textTheme: GoogleFonts.interTextTheme(base.textTheme).apply(
+      bodyColor: dark ? Colors.white : _lightInk,
+      displayColor: dark ? Colors.white : _lightInk,
+    ),
+    cardTheme: CardThemeData(
+      color: surface,
+      elevation: dark ? 0 : 2,
+      shadowColor: dark
+          ? Colors.black.withValues(alpha: .04)
+          : _lightInk.withValues(alpha: .08),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: line),
       ),
-      home: const _DemoGate(),
-    );
-  }
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: surface2,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: line),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: dark ? _lime : _lightPrimary, width: 1.5),
+      ),
+    ),
+    filledButtonTheme: dark
+        ? base.filledButtonTheme
+        : FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              backgroundColor: _lightPrimary,
+              foregroundColor: Colors.white,
+              disabledBackgroundColor: _lightPrimary.withValues(alpha: .25),
+              disabledForegroundColor: _lightMuted,
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 15),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+    outlinedButtonTheme: dark
+        ? base.outlinedButtonTheme
+        : OutlinedButtonThemeData(
+            style: OutlinedButton.styleFrom(
+              foregroundColor: _lightPrimaryDark,
+              side: const BorderSide(color: _lightLine),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+    segmentedButtonTheme: dark
+        ? base.segmentedButtonTheme
+        : SegmentedButtonThemeData(
+            style: ButtonStyle(
+              foregroundColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? Colors.white
+                    : _lightInk,
+              ),
+              backgroundColor: WidgetStateProperty.resolveWith(
+                (states) => states.contains(WidgetState.selected)
+                    ? _lightPrimary
+                    : Colors.transparent,
+              ),
+              side: const WidgetStatePropertyAll(BorderSide(color: _lightLine)),
+            ),
+          ),
+    navigationBarTheme: NavigationBarThemeData(
+      backgroundColor: surface,
+      indicatorColor: dark
+          ? _lime.withValues(alpha: .18)
+          : _lightPrimary.withValues(alpha: .12),
+    ),
+    appBarTheme: AppBarTheme(
+      backgroundColor: dark ? _ink : _lightSurface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      iconTheme: IconThemeData(color: dark ? Colors.white : _lightInk),
+      titleTextStyle: TextStyle(
+        color: dark ? Colors.white : _lightInk,
+        fontWeight: FontWeight.w900,
+        fontSize: 18,
+      ),
+    ),
+  );
 }
 
 class _DemoGate extends StatefulWidget {
@@ -348,7 +522,7 @@ class _BrandIntro extends StatelessWidget {
         _LogoMark(size: compact ? 54 : 64),
         SizedBox(height: compact ? 18 : 24),
         Text(
-          'THE FAN\nLEAGUE',
+          'ABU 3MEER\nCOMMUNITY',
           style: _display(compact ? 52 : 64, height: .88),
         ),
         SizedBox(height: compact ? 14 : 18),
@@ -387,7 +561,7 @@ class _FanLeagueShellState extends State<FanLeagueShell> {
   int _awayScore = 1;
   bool _predictionLocked = false;
   final _destinations = const [
-    (Icons.grid_view_rounded, 'Fan Hub'),
+    (Icons.grid_view_rounded, 'Community'),
     (Icons.sports_soccer_rounded, 'Predict'),
     (Icons.leaderboard_rounded, 'League'),
     (Icons.bolt_rounded, 'Challenges'),
@@ -483,7 +657,7 @@ class _FanLeagueShellState extends State<FanLeagueShell> {
                         _LogoMark(size: 38),
                         SizedBox(width: 12),
                         Text(
-                          'FAN LEAGUE',
+                          'COMMUNITY',
                           style: TextStyle(
                             fontWeight: FontWeight.w900,
                             letterSpacing: 1.2,
@@ -583,7 +757,7 @@ class _TopBar extends StatelessWidget implements PreferredSizeWidget {
       titleSpacing: compact ? 10 : NavigationToolbar.kMiddleSpacing,
       title: compact
           ? Text(
-              narrow ? 'FAN' : 'FAN LEAGUE',
+              narrow ? 'ABU' : 'COMMUNITY',
               maxLines: 1,
               overflow: TextOverflow.fade,
               style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
@@ -653,32 +827,114 @@ class _PageFrame extends StatelessWidget {
   final Widget child;
   @override
   Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < 430;
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = width < 430;
+    final desktop = width >= 900;
+    final primary = _productionPrimary(context);
+    final surface = _productionSurface(context);
+    final line = _productionLine(context);
+    final muted = _productionMuted(context);
     return SingleChildScrollView(
+      physics: const ClampingScrollPhysics(),
       padding: EdgeInsets.fromLTRB(
-        compact ? 16 : 22,
-        compact ? 18 : 24,
-        compact ? 16 : 22,
-        48,
+        compact
+            ? 16
+            : desktop
+            ? 40
+            : 22,
+        compact
+            ? 18
+            : desktop
+            ? 30
+            : 24,
+        compact
+            ? 16
+            : desktop
+            ? 40
+            : 22,
+        desktop ? 64 : 160,
       ),
       child: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1180),
+          constraints: BoxConstraints(maxWidth: desktop ? 1440 : 1180),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                kicker.toUpperCase(),
-                style: const TextStyle(
-                  color: _lime,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 11,
-                  letterSpacing: 1.8,
+              if (desktop)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            kicker.toUpperCase(),
+                            style: TextStyle(
+                              color: primary,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 11,
+                              letterSpacing: 1.8,
+                            ),
+                          ),
+                          const SizedBox(height: 7),
+                          Text(title, style: _display(44)),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        color: surface,
+                        borderRadius: BorderRadius.circular(99),
+                        border: Border.all(color: line),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.desktop_windows_rounded,
+                            size: 15,
+                            color: primary,
+                          ),
+                          SizedBox(width: 7),
+                          Text(
+                            'DESKTOP WORKSPACE',
+                            style: TextStyle(
+                              color: muted,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
+              if (!desktop) ...[
+                Text(
+                  kicker.toUpperCase(),
+                  style: TextStyle(
+                    color: primary,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 11,
+                    letterSpacing: 1.8,
+                  ),
+                ),
+                const SizedBox(height: 7),
+                Text(title, style: _display(compact ? 32 : 38)),
+              ],
+              SizedBox(
+                height: compact
+                    ? 18
+                    : desktop
+                    ? 30
+                    : 24,
               ),
-              const SizedBox(height: 7),
-              Text(title, style: _display(compact ? 32 : 38)),
-              SizedBox(height: compact ? 18 : 24),
               child,
             ],
           ),
@@ -1010,7 +1266,6 @@ class _PredictPage extends StatefulWidget {
 
 class _PredictPageState extends State<_PredictPage> {
   String winner = 'Barcelona';
-  bool btts = true;
   String scorer = 'Lamine Yamal';
   @override
   Widget build(BuildContext context) => _PageFrame(
@@ -1132,20 +1387,6 @@ class _PredictPageState extends State<_PredictPage> {
                       : (v) => setState(() => scorer = v!),
                 ),
               ),
-              _PredictionCard(
-                title: 'BOTH TEAMS SCORE',
-                xp: 150,
-                child: SegmentedButton<bool>(
-                  segments: const [
-                    ButtonSegment(value: true, label: Text('YES')),
-                    ButtonSegment(value: false, label: Text('NO')),
-                  ],
-                  selected: {btts},
-                  onSelectionChanged: widget.locked
-                      ? null
-                      : (v) => setState(() => btts = v.first),
-                ),
-              ),
             ];
             if (box.maxWidth > 760) {
               return _ResponsiveGrid(minWidth: 340, children: cards);
@@ -1236,7 +1477,7 @@ class _LeaguePageState extends State<_LeaguePage> {
   @override
   Widget build(BuildContext context) => _PageFrame(
     kicker: 'Global competition',
-    title: 'Fan League',
+    title: 'Community',
     child: Column(
       children: [
         Align(
@@ -1774,13 +2015,6 @@ class _MatchResultPage extends StatelessWidget {
               xp: '+250 XP',
               correct: true,
             ),
-            _ResultTile(
-              title: 'Both teams score',
-              pick: 'Yes',
-              result: 'Correct',
-              xp: '+150 XP',
-              correct: true,
-            ),
           ],
         ),
         const SizedBox(height: 18),
@@ -1797,13 +2031,13 @@ class _MatchResultPage extends StatelessWidget {
                     children: [
                       Text('Great matchday, Ahmed!', style: _display(23)),
                       const Text(
-                        '3 of 4 predictions correct · You climbed 18 places.',
+                        '2 of 3 predictions correct · You climbed 18 places.',
                         style: TextStyle(color: _muted),
                       ),
                     ],
                   ),
                 ),
-                Text('+500 XP', style: _display(27, color: _lime)),
+                Text('+350 XP', style: _display(27, color: _lime)),
               ],
             ),
           ),
@@ -2604,7 +2838,7 @@ class _AdminConsolePageState extends State<_AdminConsolePage> {
 
   @override
   Widget build(BuildContext context) => _PageFrame(
-    kicker: 'Fan League operations',
+    kicker: 'Community operations',
     title: 'Admin console',
     child: Column(
       children: [
@@ -3460,37 +3694,8 @@ class _TeamCrest extends StatelessWidget {
   final List<Color> colors;
   final double size;
   @override
-  Widget build(BuildContext context) {
-    final asset = switch (label.toUpperCase()) {
-      'BAR' || 'FCB' => 'assets/images/fcb.png',
-      'RMA' => 'assets/images/rma.png',
-      _ => null,
-    };
-    if (asset != null) {
-      final radius = BorderRadius.circular(size * .22);
-      return Container(
-        width: size,
-        height: size,
-        padding: EdgeInsets.all(size * .07),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: .94),
-          borderRadius: radius,
-          border: Border.all(color: Colors.white.withValues(alpha: .16)),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(size * .15),
-          child: Image.asset(
-            asset,
-            fit: BoxFit.contain,
-            filterQuality: FilterQuality.high,
-            errorBuilder: (_, _, _) =>
-                _FallbackCrest(label: label, colors: colors, size: size),
-          ),
-        ),
-      );
-    }
-    return _FallbackCrest(label: label, colors: colors, size: size);
-  }
+  Widget build(BuildContext context) =>
+      _FallbackCrest(label: label, colors: colors, size: size);
 }
 
 class _FallbackCrest extends StatelessWidget {
@@ -3556,37 +3761,54 @@ class _Pill extends StatelessWidget {
     required this.text,
     required this.color,
     this.compact = false,
+    this.onTap,
   });
   final IconData icon;
   final String text;
   final Color color;
   final bool compact;
+  final VoidCallback? onTap;
+
   @override
-  Widget build(BuildContext context) => Container(
-    padding: EdgeInsets.symmetric(
-      horizontal: compact ? 8 : 10,
-      vertical: compact ? 6 : 7,
-    ),
-    decoration: BoxDecoration(
-      color: color.withValues(alpha: .1),
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: color.withValues(alpha: .3)),
-    ),
-    child: Row(
-      children: [
-        Icon(icon, size: compact ? 13 : 14, color: color),
-        SizedBox(width: compact ? 4 : 5),
-        Text(
-          text,
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w900,
-            fontSize: 10,
+  Widget build(BuildContext context) {
+    final body = Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 6 : 7,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: .1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: .3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: compact ? 13 : 14, color: color),
+          SizedBox(width: compact ? 4 : 5),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w900,
+              fontSize: 10,
+            ),
           ),
+        ],
+      ),
+    );
+    if (onTap != null) {
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: body,
         ),
-      ],
-    ),
-  );
+      );
+    }
+    return body;
+  }
 }
 
 class _SideItem extends StatelessWidget {
@@ -3601,34 +3823,40 @@ class _SideItem extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => Material(
-    color: selected ? _lime.withValues(alpha: .11) : Colors.transparent,
-    borderRadius: BorderRadius.circular(12),
-    child: InkWell(
-      onTap: onTap,
+  Widget build(BuildContext context) {
+    final primary = _productionPrimary(context);
+    final muted = _productionMuted(context);
+    return Material(
+      color: selected ? primary.withValues(alpha: .11) : Colors.transparent,
       borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 13),
-        child: Row(
-          children: [
-            Icon(icon, color: selected ? _lime : _muted, size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: selected ? Colors.white : _muted,
-                  fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 13),
+          child: Row(
+            children: [
+              Icon(icon, color: selected ? primary : muted, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: selected
+                        ? (_isDarkTheme(context) ? Colors.white : primary)
+                        : muted,
+                    fontWeight: selected ? FontWeight.w800 : FontWeight.w500,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -3656,28 +3884,31 @@ class _LiveDot extends StatelessWidget {
   const _LiveDot({required this.text});
   final String text;
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-    decoration: BoxDecoration(
-      color: _lime.withValues(alpha: .1),
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Row(
-      children: [
-        const CircleAvatar(radius: 3, backgroundColor: _lime),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: const TextStyle(
-            color: _lime,
-            fontWeight: FontWeight.w900,
-            fontSize: 9,
-            letterSpacing: 1,
+  Widget build(BuildContext context) {
+    final primary = _productionPrimary(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: primary.withValues(alpha: .1),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(radius: 3, backgroundColor: primary),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              color: primary,
+              fontWeight: FontWeight.w900,
+              fontSize: 9,
+              letterSpacing: 1,
+            ),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class _RewardChip extends StatelessWidget {
@@ -3765,19 +3996,76 @@ class _Activity extends StatelessWidget {
   );
 }
 
-class _LogoMark extends StatelessWidget {
+class _LogoMark extends StatefulWidget {
   const _LogoMark({required this.size});
   final double size;
+
   @override
-  Widget build(BuildContext context) => Container(
-    width: size,
-    height: size,
-    alignment: Alignment.center,
-    decoration: BoxDecoration(
-      color: _lime,
-      borderRadius: BorderRadius.circular(size * .28),
+  State<_LogoMark> createState() => _LogoMarkState();
+}
+
+class _LogoMarkState extends State<_LogoMark>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AnimationController(vsync: this);
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  void stop() {
+    controller
+      ..stop()
+      ..value = 0;
+  }
+
+  @override
+  Widget build(BuildContext context) => MouseRegion(
+    cursor: SystemMouseCursors.click,
+    onEnter: (_) {
+      if (controller.duration != null) controller.repeat();
+    },
+    onExit: (_) => stop(),
+    child: GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        if (controller.duration != null) controller.forward(from: 0);
+      },
+      child: Container(
+        width: widget.size,
+        height: widget.size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: _productionPrimary(context),
+          borderRadius: BorderRadius.circular(widget.size * .28),
+        ),
+        child: Padding(
+          padding: EdgeInsets.all(widget.size * .08),
+          child: Lottie.asset(
+            'assets/animations/ball-loading.json',
+            controller: controller,
+            repeat: false,
+            fit: BoxFit.contain,
+            onLoaded: (composition) {
+              controller.duration = composition.duration;
+              controller.value = 0;
+            },
+            errorBuilder: (_, _, _) => Icon(
+              Icons.sports_soccer_rounded,
+              color: _productionOnPrimary(context),
+              size: widget.size * .62,
+            ),
+          ),
+        ),
+      ),
     ),
-    child: Icon(Icons.sports_soccer_rounded, color: _ink, size: size * .62),
   );
 }
 
@@ -3831,7 +4119,7 @@ class _WarRingPainter extends CustomPainter {
 
 TextStyle _display(
   double size, {
-  Color color = Colors.white,
+  Color? color,
   double height = 1,
   double spacing = -.4,
 }) => GoogleFonts.barlowCondensed(

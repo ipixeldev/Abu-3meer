@@ -1,4 +1,4 @@
-// Typography scale for the Fan League demo.
+// Typography scale for the Abu 3meer Community demo.
 // Uses Google Fonts at runtime: Barlow Condensed (headlines/numbers) + Inter (UI/body).
 // Provides TextStyle helpers with consistent weights, tracking, and line heights.
 
@@ -348,7 +348,7 @@ class AppTextStyles {
 
 /// Extension for quick access on BuildContext.
 extension AppTextStylesExt on BuildContext {
-  AppTextStyles get text => const AppTextStyles();
+  AppTextStyles get text => AppTextStyles();
   ThemeData get theme => Theme.of(this);
   ColorScheme get cs => Theme.of(this).colorScheme;
 }

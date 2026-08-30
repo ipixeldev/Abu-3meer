@@ -50,3 +50,35 @@ app.*.map.json
 # Local Firebase CLI cache and machine-specific assistant settings
 .firebase/
 .claude/
+.npm-cache/
+functions/node_modules/
+functions/lib/
+
+# Local credentials and environment files
+.env
+**/.env
+*firebase-adminsdk*.json
+*firebase-service-account*.json
+*service-account*.json
+*.p8
+*.p12
+*.mobileprovision
+**/.cloudflared/
+/server/secrets/
+/android/app/abu3meer-debug.keystore
+
+# Local browser-verification artifacts
+.playwright-cli/
+/output/
+
+# Per-machine API endpoint configuration. Temporary Cloudflare URLs must never
+# be committed because they expire whenever the quick tunnel is restarted.
+/ios/Flutter/ApiEndpoint.local.xcconfig
+/tool/api_endpoint.local.json
+
+# One-off local repair/probe output; production sources live elsewhere.
+/patch_*.py
+/test_asc_api.rb
+/functions/disable_popup.js
+/android/gradle/gradle-daemon-jvm.properties
+/ios/fastlane/report.xml

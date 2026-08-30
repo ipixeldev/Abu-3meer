@@ -244,7 +244,7 @@ class _MainShellState extends State<MainShell>
         children: [
           // Logo/Name
           Text(
-            'FAN LEAGUE',
+            'COMMUNITY',
             style: AppTextStyles.titleSmall(color: AppColors.accentPrimary),
           ),
           const Spacer(),

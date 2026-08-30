@@ -1,38 +1,41 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <base href="$FLUTTER_BASE_HREF">
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="The Fan League — watch, predict, compete, and become a legend.">
+  <meta name="description" content="Abu 3meer — predict, answer, find Player Cards and compete on the leaderboard.">
+  <meta property="og:title" content="Abu 3meer">
+  <meta property="og:description" content="Abu 3meer football challenges, predictions, Player Cards and leaderboards.">
+  <meta property="og:type" content="website">
   <meta name="theme-color" content="#080B10">
+  <meta name="color-scheme" content="dark">
+  <meta name="darkreader-lock">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="The Fan League">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
-  <link rel="icon" type="image/png" href="favicon.png">
+  <meta name="apple-mobile-web-app-title" content="Abu 3meer">
+  <link rel="apple-touch-icon" href="icons/Abu3meer-192.png">
+  <link rel="icon" type="image/png" href="icons/Abu3meer-64.png">
   <link rel="manifest" href="manifest.json">
-  <title>The Fan League</title>
+  <title>Abu 3meer</title>
   <style>
-    :root { color-scheme: dark; }
-    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #080b10; }
+    :root { color-scheme: only dark; background: #080b10; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #080b10 !important;
+      forced-color-adjust: none; }
     #app-shell { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center;
       overflow: hidden; background: #080b10; color: white; font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-      transition: opacity .5s ease, visibility .5s ease; }
+      transition: opacity .4s ease, visibility .4s ease; }
     #app-shell.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-    #app-shell::before { content: ''; position: absolute; inset: -20%;
-      background: radial-gradient(circle at 50% 37%, #2c3c19 0, #12180f 20%, #080b10 52%); }
-    #app-shell::after { content: ''; position: absolute; width: min(64vw, 620px); aspect-ratio: 1;
-      border: 1px solid rgba(200,255,56,.08); border-radius: 50%; box-shadow:
-      0 0 0 70px rgba(200,255,56,.025), 0 0 0 150px rgba(200,255,56,.018); }
+    #app-shell::before { content: ''; position: absolute; inset: 0;
+      background: radial-gradient(circle at 50% 40%, rgba(200,255,56,.06) 0%, rgba(8,11,16,.98) 65%, #080b10 100%); }
     .shell-card { position: relative; z-index: 1; width: min(88vw, 430px); text-align: center; }
-    #splash-animation { width: 174px; height: 174px; margin: auto; filter: drop-shadow(0 0 32px rgba(200,255,56,.18)); }
-    #splash-fallback { display: none; width: 122px; height: 122px; margin: 26px auto;
-      place-items: center; border: 1px solid rgba(200,255,56,.34); border-radius: 50%; font-size: 54px; }
-    .shell-title { margin-top: 10px; font-size: clamp(30px, 8vw, 40px); font-weight: 950; letter-spacing: 3px; }
-    .shell-kicker { margin-top: 8px; min-height: 14px; color: #c8ff38; font-size: 10px;
+    #splash-animation { width: 160px; height: 160px; margin: auto; filter: drop-shadow(0 0 32px rgba(200,255,56,.18)); }
+    #splash-fallback { display: none; width: 100px; height: 100px; margin: 20px auto;
+      place-items: center; border: 1px solid rgba(200,255,56,.34); border-radius: 50%; font-size: 24px; font-weight: 900; color: #c8ff38; }
+    .shell-title { margin-top: 14px; font-size: clamp(28px, 7vw, 36px); font-weight: 950; letter-spacing: 2.5px; }
+    .shell-kicker { margin-top: 6px; min-height: 14px; color: #c8ff38; font-size: 10px;
       font-weight: 900; letter-spacing: 2.5px; line-height: 1.5; }
-    #ball-animation { width: 72px; height: 72px; margin: 20px auto 0; }
+    #ball-animation { width: 64px; height: 64px; margin: 24px auto 0; }
     #startup-actions { display: none; margin-top: 18px; }
     #startup-actions.visible { display: block; }
     #startup-detail { margin: 0 auto 14px; max-width: 390px; color: #929caa; font-size: 11px;
@@ -41,14 +44,35 @@
       padding: 11px 22px; color: #080b10; background: #c8ff38; cursor: pointer; font: 900 12px/1 system-ui;
       letter-spacing: 1.2px; }
     #retry-button:disabled { opacity: .65; cursor: wait; }
+    #pwa-promotion { position: fixed; right: max(18px, env(safe-area-inset-right));
+      bottom: max(18px, env(safe-area-inset-bottom)); z-index: 2147483000; display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; width: min(420px, calc(100vw - 36px));
+      box-sizing: border-box; padding: 12px 12px 12px 16px; color: #f8fafc; background: rgba(17,22,30,.97);
+      border: 1px solid rgba(200,255,56,.26); border-radius: 16px; box-shadow: 0 20px 54px rgba(0,0,0,.4);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif; backdrop-filter: blur(18px); }
+    #pwa-promotion[hidden], body.obs-active #pwa-promotion, body.pwa-standalone #pwa-promotion { display: none !important; }
+    .pwa-promotion-copy { min-width: 0; }
+    #pwa-promotion-title { color: #c8ff38; font-size: 11px; font-weight: 950; letter-spacing: 1.2px; }
+    #pwa-promotion-message { margin-top: 3px; color: #a4adba; font-size: 11px; font-weight: 650; line-height: 1.35; }
+    #pwa-promotion-action, #pwa-promotion-dismiss { appearance: none; cursor: pointer; font-family: inherit; font-weight: 900; }
+    #pwa-promotion-action { min-height: 38px; padding: 0 16px; color: #080b10; background: #c8ff38;
+      border: 0; border-radius: 999px; font-size: 11px; letter-spacing: .7px; }
+    #pwa-promotion-action:disabled { opacity: .6; cursor: wait; }
+    #pwa-promotion-dismiss { width: 34px; height: 34px; padding: 0; color: #a4adba; background: transparent;
+      border: 0; border-radius: 50%; font-size: 20px; line-height: 1; }
+    #pwa-promotion-dismiss:hover { color: #fff; background: rgba(255,255,255,.07); }
+    @media (max-width: 700px) {
+      #pwa-promotion { right: 12px; bottom: calc(92px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); }
+      #pwa-promotion-message { display: none; }
+    }
   </style>
 </head>
 <body>
   <div id="app-shell" role="status" aria-live="polite">
     <div class="shell-card">
       <div id="splash-animation" aria-hidden="true"></div>
-      <div id="splash-fallback" aria-hidden="true">⚽</div>
-      <div class="shell-title">FAN LEAGUE</div>
+      <div id="splash-fallback" aria-hidden="true">3</div>
+      <div class="shell-title">ABU 3MEER</div>
       <div id="shell-status" class="shell-kicker">THE MATCH NEVER ENDS</div>
       <div id="ball-animation" aria-hidden="true"></div>
       <div id="startup-actions">
@@ -57,6 +81,15 @@
       </div>
     </div>
   </div>
+
+  <aside id="pwa-promotion" aria-live="polite" aria-label="App installation and updates" hidden>
+    <div class="pwa-promotion-copy">
+      <div id="pwa-promotion-title">INSTALL ABU 3MEER</div>
+      <div id="pwa-promotion-message">Add the fan experience to this device.</div>
+    </div>
+    <button id="pwa-promotion-action" type="button">INSTALL</button>
+    <button id="pwa-promotion-dismiss" type="button" aria-label="Dismiss">&times;</button>
+  </aside>
 
   <script src="lottie.min.js"></script>
   <script>
@@ -74,7 +107,7 @@
           return;
         }
         try {
-          window.lottie.loadAnimation({ container, renderer: 'svg', loop: true, autoplay: true, path });
+          window.lottie.loadAnimation({ container, renderer: 'canvas', loop: true, autoplay: true, path });
         } catch (_) {
           if (fallback) fallback.style.display = 'grid';
         }
@@ -139,19 +172,12 @@
         showFailure('Startup is taking longer than expected. Clear the previous Flutter cache and retry.');
       }, 15000);
 
-      // Old Flutter builds can remain controlled by a service worker even after a new deployment.
-      // Unregister it now; the custom bootstrap below deliberately does not install another one.
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function (registrations) {
-          registrations.forEach(function (registration) { registration.unregister(); });
-        });
-      }
-
       if (window.location.protocol === 'file:') {
         showFailure('Flutter Web must be served. Run: flutter run -d web-server');
       }
     }());
   </script>
+  <script src="pwa_lifecycle.js"></script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

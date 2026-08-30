@@ -1,4 +1,4 @@
-// Home / Fan Hub - The main dashboard screen.
+// Home / Community - The main dashboard screen.
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';

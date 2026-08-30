@@ -35,7 +35,6 @@ class _PredictionsScreenState extends State<PredictionsScreen>
   String _correctScore = '2-1';
   String? _firstScorerId;
   String? _manOfMatchId;
-  bool _bothTeamsScore = false;
 
   final TextEditingController _scoreController = TextEditingController();
 
@@ -77,9 +76,6 @@ class _PredictionsScreenState extends State<PredictionsScreen>
           case PredictionType.manOfMatch:
             _manOfMatchId = p.value as String?;
             break;
-          case PredictionType.bothTeamsScore:
-            _bothTeamsScore = p.value as bool;
-            break;
         }
       }
     }
@@ -108,9 +104,6 @@ class _PredictionsScreenState extends State<PredictionsScreen>
       total += config.xpRewards[PredictionType.firstScorer] ?? 0;
     if (_manOfMatchId != null)
       total += config.xpRewards[PredictionType.manOfMatch] ?? 0;
-    if (_bothTeamsScore)
-      total += config.xpRewards[PredictionType.bothTeamsScore] ?? 0;
-
     setState(() => _totalPotentialXp = total);
   }
 
@@ -118,8 +111,7 @@ class _PredictionsScreenState extends State<PredictionsScreen>
       _matchWinner != null ||
       _correctScore.isNotEmpty ||
       _firstScorerId != null ||
-      _manOfMatchId != null ||
-      _bothTeamsScore;
+      _manOfMatchId != null;
 
   bool get _allPredictionsFilled {
     final match = findMatchById(widget.matchId);
@@ -132,7 +124,6 @@ class _PredictionsScreenState extends State<PredictionsScreen>
     if (_correctScore.isNotEmpty) filled++;
     if (_firstScorerId != null) filled++;
     if (_manOfMatchId != null) filled++;
-    if (_bothTeamsScore) filled++;
     return filled >= requiredTypes.length;
   }
 
@@ -161,13 +152,6 @@ class _PredictionsScreenState extends State<PredictionsScreen>
     if (_manOfMatchId != null) {
       state.setPrediction(match.id, PredictionType.manOfMatch, _manOfMatchId);
     }
-    // Note: bothTeamsScore is a bool, so we always save it
-    state.setPrediction(
-      match.id,
-      PredictionType.bothTeamsScore,
-      _bothTeamsScore,
-    );
-
     // Lock them
     state.lockPredictions(match.id);
 
@@ -309,16 +293,6 @@ class _PredictionsScreenState extends State<PredictionsScreen>
                                 match,
                                 'Man of the Match',
                               ),
-                            ),
-                            _buildPredictionType(
-                              type: PredictionType.bothTeamsScore,
-                              title: 'Both Teams to Score',
-                              icon: Icons.compare_arrows_outlined,
-                              xpReward:
-                                  config.xpRewards[PredictionType
-                                      .bothTeamsScore] ??
-                                  0,
-                              child: _buildBttsSelector(),
                             ),
                           ],
 
@@ -543,8 +517,6 @@ class _PredictionsScreenState extends State<PredictionsScreen>
         return _firstScorerId != null;
       case PredictionType.manOfMatch:
         return _manOfMatchId != null;
-      case PredictionType.bothTeamsScore:
-        return _bothTeamsScore;
     }
   }
 
@@ -824,36 +796,6 @@ class _PredictionsScreenState extends State<PredictionsScreen>
               ),
             );
           }).toList(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBttsSelector() {
-    return Row(
-      children: [
-        Expanded(
-          child: _PredictionOption(
-            label: 'Yes',
-            icon: Icon(Icons.check_circle, size: 28, color: AppColors.success),
-            selected: _bothTeamsScore == true,
-            onTap: () => setState(() {
-              _bothTeamsScore = true;
-              _updatePotentialXp();
-            }),
-          ),
-        ),
-        const SizedBox(width: AppSpacing.md),
-        Expanded(
-          child: _PredictionOption(
-            label: 'No',
-            icon: Icon(Icons.cancel, size: 28, color: AppColors.error),
-            selected: _bothTeamsScore == false && _bothTeamsScore != true,
-            onTap: () => setState(() {
-              _bothTeamsScore = false;
-              _updatePotentialXp();
-            }),
-          ),
         ),
       ],
     );

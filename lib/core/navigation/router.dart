@@ -87,7 +87,7 @@ GoRouter createRouter(AppState appState) {
         navigatorKey: NavKeys.shellNavigatorKey,
         builder: (context, state, child) => MainShell(child: child),
         routes: [
-          // Home / Fan Hub
+          // Home / Community
           GoRoute(
             path: AppRoutes.home,
             name: 'home',
@@ -124,7 +124,7 @@ GoRouter createRouter(AppState appState) {
             ],
           ),
 
-          // Fan League
+          // Community
           GoRoute(
             path: AppRoutes.league,
             name: 'league',

@@ -127,7 +127,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: AppSpacing.sm),
 
                   Text(
-                    'Sign in to continue your Fan League journey',
+                    'Sign in to continue your Community journey',
                     style: AppTextStyles.bodyMedium(),
                     textAlign: TextAlign.center,
                   ),

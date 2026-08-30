@@ -1,0 +1,3 @@
+[submodule "packages/liquid_glass_widgets"]
+	path = packages/liquid_glass_widgets
+	url = https://github.com/sdegenaar/liquid_glass_widgets.git
