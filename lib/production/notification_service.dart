@@ -11,6 +11,7 @@ import '../firebase_options.dart';
 import 'api_production_repository.dart';
 import 'api_client.dart';
 import 'app_preferences.dart';
+import 'notification_presentation.dart';
 
 @pragma('vm:entry-point')
 Future<void> abuFirebaseMessagingBackgroundHandler(
@@ -47,7 +48,9 @@ class NotificationService {
   String? _registeredToken;
   String? _registeredUserId;
   final Set<String> _registeringTokens = <String>{};
+  Future<void>? _initializationFuture;
   bool _initialized = false;
+  bool _appleSystemForegroundPresentationEnabled = false;
 
   Stream<Map<String, dynamic>> get notificationTaps =>
       _notificationTapController.stream;
@@ -65,7 +68,22 @@ class NotificationService {
       await attachRepository(apiRepo);
     }
     if (_initialized) return;
-    _initialized = true;
+    final pending = _initializationFuture;
+    if (pending != null) return await pending;
+
+    final operation = _initializeMessaging();
+    _initializationFuture = operation;
+    try {
+      await operation;
+      _initialized = true;
+    } finally {
+      if (identical(_initializationFuture, operation)) {
+        _initializationFuture = null;
+      }
+    }
+  }
+
+  Future<void> _initializeMessaging() async {
     registerBackgroundHandler();
 
     // Be explicit because users can restore an iOS backup containing an old
@@ -100,6 +118,24 @@ class NotificationService {
       },
     );
 
+    final isApplePlatform = !kIsWeb && (Platform.isIOS || Platform.isMacOS);
+    if (isApplePlatform) {
+      try {
+        await _fcm.setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        _appleSystemForegroundPresentationEnabled = true;
+        debugPrint('[FCM] Apple foreground system banners enabled.');
+      } catch (error) {
+        _appleSystemForegroundPresentationEnabled = false;
+        debugPrint(
+          '[FCM] Apple foreground presentation setup failed; using local fallback: $error',
+        );
+      }
+    }
+
     if (!kIsWeb && Platform.isAndroid) {
       const channel = AndroidNotificationChannel(
         channelId,
@@ -114,17 +150,30 @@ class NotificationService {
           ?.createNotificationChannel(channel);
     }
 
-    // Foreground messages are converted into real OS notification banners.
-    // Background notification payloads are displayed by FCM/APNs itself.
+    // Apple displays notification payloads through the system foreground
+    // presentation options above. Android and data-only Apple messages use a
+    // local notification. Background payloads are displayed by FCM/APNs.
     _foregroundSubscription ??= FirebaseMessaging.onMessage.listen((message) {
       final notification = message.notification;
+      final useLocalPresentation = shouldPresentForegroundNotificationLocally(
+        isApplePlatform: isApplePlatform,
+        appleSystemPresentationEnabled:
+            _appleSystemForegroundPresentationEnabled,
+        hasNotificationPayload: notification != null,
+      );
+      debugPrint(
+        '[FCM Foreground] messageId=${message.messageId} notificationPayload=${notification != null} presentation=${useLocalPresentation ? 'local' : 'apple-system'}',
+      );
+      if (!useLocalPresentation) return;
       unawaited(
         _showLocalNotification(
           id: message.messageId?.hashCode ?? message.hashCode,
           title: notification?.title ?? 'Abu 3meer ⚽',
           body: notification?.body ?? '',
           payload: _encodePayload(message.data),
-        ),
+        ).catchError((Object error) {
+          debugPrint('[FCM Foreground] Local banner failed: $error');
+        }),
       );
     });
     _openedSubscription ??= FirebaseMessaging.onMessageOpenedApp.listen((
@@ -192,9 +241,18 @@ class NotificationService {
       return false;
     }
 
-    final granted =
+    final authorized =
         settings.authorizationStatus == AuthorizationStatus.authorized ||
         settings.authorizationStatus == AuthorizationStatus.provisional;
+    final isApplePlatform = !kIsWeb && (Platform.isIOS || Platform.isMacOS);
+    final alertsEnabled =
+        !isApplePlatform || settings.alert == AppleNotificationSetting.enabled;
+    final granted = authorized && alertsEnabled;
+    if (isApplePlatform) {
+      debugPrint(
+        '[FCM Permission] authorization=${settings.authorizationStatus.name} alerts=${settings.alert.name} notificationCenter=${settings.notificationCenter.name} sound=${settings.sound.name}',
+      );
+    }
     try {
       final preferences = await SharedPreferences.getInstance();
       await preferences.setBool(_prefKeyNotificationsEnabled, granted);
