@@ -42,7 +42,6 @@ export function deriveStreakCount(
  */
 export async function checkInDailyStreak(
   userId: string,
-  isYouTubeMember: boolean,
 ): Promise<StreakResult> {
   const now = new Date();
   const today = utcDateKey(now);
@@ -79,16 +78,16 @@ export async function checkInDailyStreak(
     }
 
     const ruleRes = await client.query(
-      `SELECT base_points, member_multiplier
+      `SELECT base_points
        FROM point_rules
        WHERE key = 'dailyStreak'`,
     );
     const basePoints = Number(
       ruleRes.rows[0]?.base_points ?? config.pointDefaults.dailyStreak,
     );
-    const multiplier = isYouTubeMember
-      ? Number(ruleRes.rows[0]?.member_multiplier ?? config.pointDefaults.memberMultiplier)
-      : 1;
+    // Daily attendance is intentionally never eligible for the YouTube member
+    // bonus. The 2x benefit applies only to predictions and video answers.
+    const multiplier = 1;
     const finalPoints = Math.round(basePoints * multiplier);
     const idempotencyKey = `streak:${userId}:${today}`;
 

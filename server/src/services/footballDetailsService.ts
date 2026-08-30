@@ -775,6 +775,7 @@ export interface ProviderSectionResolverDependencies {
   read(key: string): Promise<CachedProviderSection | null>;
   write(key: string, entry: CachedProviderSection, ttlSeconds: number): Promise<void>;
   load(): Promise<JsonRecord | null>;
+  isNegativeValue?(value: JsonRecord): boolean;
 }
 
 export interface SportsDbBudgetReservation {
@@ -839,7 +840,9 @@ function providerCacheKey(endpoint: string, parameters: Record<string, string>):
       normalizedParameters,
     ]))
     .digest('hex');
-  return `cache:football:v2:${digest}`;
+  // v3 invalidates pre-fix empty lineup envelopes that may still carry the
+  // old 30-minute positive TTL after deployment.
+  return `cache:football:v3:${digest}`;
 }
 
 function setLocalProviderSection(
@@ -908,7 +911,12 @@ export function sportsDbDailyCounterKey(now = new Date()): string {
   const providerName = provider.name === 'API-Football'
     ? 'api-football'
     : 'sportsdb';
-  return `quota:football:${providerName}:${provider.cacheFingerprint}:${day}`;
+  // Keep the quota guard outside the unversioned Redis namespace. Older
+  // installations restored their transient quota counter together with the
+  // durable Redis archive during a server migration. A stale/corrupt counter
+  // could then deny provider requests even though API-Football still reported
+  // almost the full daily allowance.
+  return `quota:football:v2:${providerName}:${provider.cacheFingerprint}:${day}`;
 }
 
 async function reserveRedisSportsDbRequest(
@@ -1112,10 +1120,13 @@ export async function resolveSharedProviderSection(
     if (rechecked) return valueFromCachedProviderSection(rechecked);
     try {
       const value = await dependencies.load();
+      const isNegativeValue = value === null || (
+        value !== null && dependencies.isNegativeValue?.(value) === true
+      );
       await dependencies.write(
         cacheKey,
         { value },
-        value === null ? negativeTtlSeconds : positiveTtlSeconds,
+        isNegativeValue ? negativeTtlSeconds : positiveTtlSeconds,
       );
       return value;
     } catch (error) {
@@ -1139,6 +1150,36 @@ export async function resolveSharedProviderSection(
   }
 }
 
+/**
+ * Provider envelopes are valid JSON even when a section has not been
+ * published yet. Treat those empty arrays/nulls as negative cache hits;
+ * otherwise an early lineup request can hide a newly published lineup for the
+ * full 30-minute positive TTL.
+ */
+export function isEmptyProviderSection(value: JsonRecord): boolean {
+  const sectionKeys = [
+    'response',
+    'events',
+    'results',
+    'timeline',
+    'lineup',
+    'eventstats',
+    'table',
+    'teams',
+    'player',
+    'players',
+  ];
+  let foundSection = false;
+  for (const key of sectionKeys) {
+    if (!Object.prototype.hasOwnProperty.call(value, key)) continue;
+    foundSection = true;
+    const section = value[key];
+    if (Array.isArray(section) && section.length > 0) return false;
+    if (section != null && !Array.isArray(section)) return false;
+  }
+  return foundSection;
+}
+
 async function fetchSection(
   endpoint: string,
   parameters: Record<string, string>,
@@ -1152,7 +1193,29 @@ async function fetchSection(
       read: cachedProviderSection,
       write: storeProviderSection,
       load: () => fetchProviderSection(endpoint, parameters),
+      isNegativeValue: isEmptyProviderSection,
     },
+  );
+}
+
+export async function resolveAvailableProviderSections(
+  requests: Promise<JsonRecord | null>[],
+): Promise<(JsonRecord | null)[]> {
+  const settled = await Promise.allSettled(requests);
+  const fulfilled = settled.filter(
+    (result): result is PromiseFulfilledResult<JsonRecord | null> =>
+      result.status === 'fulfilled',
+  );
+  if (fulfilled.length === 0) {
+    const firstFailure = settled.find(
+      (result): result is PromiseRejectedResult => result.status === 'rejected',
+    );
+    throw firstFailure?.reason ?? new Error(
+      'Football detail sections are unavailable.',
+    );
+  }
+  return settled.map(
+    result => result.status === 'fulfilled' ? result.value : null,
   );
 }
 
@@ -1170,14 +1233,19 @@ export async function fetchExternalMatchDetails(eventId: string): Promise<Extern
     const league = record(fixtureItem?.league);
     const leagueId = text(league?.id);
     const season = text(league?.season);
-    const [events, lineups, statistics, standings] = await Promise.all([
-      fetchSection('fixtures/events', { fixture: id }),
-      fetchSection('fixtures/lineups', { fixture: id }),
-      fetchSection('fixtures/statistics', { fixture: id }),
-      leagueId && season
-        ? fetchSection('standings', { league: leagueId, season })
-        : Promise.resolve(null),
-    ]);
+    // Detail sections are independent upstream resources. A temporary failure
+    // in statistics or standings must not erase an available live timeline or
+    // official lineup. If every section fails, preserve the provider error so
+    // callers can retry rather than caching a completely empty result.
+    const [events, lineups, statistics, standings] =
+      await resolveAvailableProviderSections([
+        fetchSection('fixtures/events', { fixture: id }),
+        fetchSection('fixtures/lineups', { fixture: id }),
+        fetchSection('fixtures/statistics', { fixture: id }),
+        leagueId && season
+          ? fetchSection('standings', { league: leagueId, season })
+          : Promise.resolve(null),
+      ]);
     return normalizeApiFootballMatchDetailsPayload({
       fixture: fixture?.response,
       events: events?.response,
@@ -1191,14 +1259,15 @@ export async function fetchExternalMatchDetails(eventId: string): Promise<Extern
   const eventData = firstRow(event?.events);
   const leagueId = text(eventData?.idLeague);
   const season = text(eventData?.strSeason);
-  const [timeline, lineup, statistics, standings] = await Promise.all([
-    fetchSection('lookuptimeline.php', { id }),
-    fetchSection('lookuplineup.php', { id }),
-    fetchSection('lookupeventstats.php', { id }),
-    leagueId && season
-      ? fetchSection('lookuptable.php', { l: leagueId, s: season })
-      : Promise.resolve(null),
-  ]);
+  const [timeline, lineup, statistics, standings] =
+    await resolveAvailableProviderSections([
+      fetchSection('lookuptimeline.php', { id }),
+      fetchSection('lookuplineup.php', { id }),
+      fetchSection('lookupeventstats.php', { id }),
+      leagueId && season
+        ? fetchSection('lookuptable.php', { l: leagueId, s: season })
+        : Promise.resolve(null),
+    ]);
 
   return normalizeExternalMatchDetailsPayload(
     {
@@ -1236,14 +1305,61 @@ async function fetchApiFootballFeaturedTeamFixtures(direction: 'next' | 'last') 
   );
 }
 
+export function apiFootballWeekWindow(now: Date, days: number): {
+  earliest: number;
+  latest: number;
+  from: string;
+  to: string;
+  season: string;
+} {
+  const boundedDays = Math.max(1, Math.min(days, 14));
+  const earliest = now.getTime() - 4 * 60 * 60 * 1000;
+  const latest = now.getTime() + (boundedDays * 24 + 12) * 60 * 60 * 1000;
+  return {
+    earliest,
+    latest,
+    from: new Date(earliest).toISOString().slice(0, 10),
+    to: new Date(latest).toISOString().slice(0, 10),
+    // API-Football requires the season alongside team + date-range filters.
+    // European competitions use the starting year as their season ID.
+    season: String(
+      now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear() - 1,
+    ),
+  };
+}
+
+async function fetchApiFootballFeaturedTeamFixtureRange(
+  from: string,
+  to: string,
+  season: string,
+) {
+  const provider = activeFootballProvider();
+  return Promise.all(
+    provider.featuredTeamIds.map(team =>
+      fetchSection('fixtures', {
+        team,
+        from,
+        to,
+        season,
+        timezone: 'UTC',
+      }),
+    ),
+  );
+}
+
 export async function fetchExternalWeekMatches(days = 7): Promise<ExternalFootballMatch[]> {
   const isApiFootball = activeFootballProviderName() === 'API-Football';
+  const window = apiFootballWeekWindow(new Date(), days);
   const payloads = isApiFootball
-    ? await fetchApiFootballFeaturedTeamFixtures('next')
+    // `next` drops a fixture the moment it kicks off. A bounded date range
+    // keeps today's live/recent fixture beside upcoming matches, which is the
+    // behavior expected by the shared Predict screen.
+    ? await fetchApiFootballFeaturedTeamFixtureRange(
+        window.from,
+        window.to,
+        window.season,
+      )
     : await fetchFeaturedTeamEventPayloads('eventsnext.php');
-  const now = Date.now();
-  const earliest = now - 4 * 60 * 60 * 1000;
-  const latest = now + (Math.max(1, Math.min(days, 14)) * 24 + 12) * 60 * 60 * 1000;
   return uniqueMatches(
     payloads.flatMap(payload =>
       isApiFootball
@@ -1253,7 +1369,9 @@ export async function fetchExternalWeekMatches(days = 7): Promise<ExternalFootba
   )
     .filter(match => {
       const kickoff = Date.parse(match.kickoff_at);
-      return Number.isFinite(kickoff) && kickoff >= earliest && kickoff <= latest;
+      return Number.isFinite(kickoff) &&
+        kickoff >= window.earliest &&
+        kickoff <= window.latest;
     })
     .sort((left, right) => Date.parse(left.kickoff_at) - Date.parse(right.kickoff_at));
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   LoyaltyRedemptionError,
+  adminMembershipState,
   achievementClaimId,
   achievementProgressValue,
   calculateLoyaltyRefund,
@@ -12,6 +13,8 @@ import {
   didBothTeamsScore,
   evaluateChallengeAnswers,
   footballSeasonId,
+  isMemberMultiplierEligible,
+  memberMultiplierForSource,
   normalizeChallengeAnswer,
   parseFootballSeasonId,
   playerCardOwnershipId,
@@ -35,6 +38,45 @@ test("launch point rules apply normal and member multipliers", () => {
   assert.equal(calculatePoints(40, 2), 80);
   assert.equal(calculatePoints(20, 1), 20);
   assert.equal(calculatePoints(20, 2), 40);
+});
+
+test("member multiplier is limited to predictions and video questions", () => {
+  for (const source of [
+    "exactPrediction",
+    "firstScorer",
+    "winnerOutcome",
+    "bothTeamsScore",
+    "videoQuestion",
+  ] as const) {
+    assert.equal(isMemberMultiplierEligible(source), true);
+    assert.equal(memberMultiplierForSource(source, 2), 2);
+  }
+
+  for (const source of [
+    "playerCard",
+    "dailyStreak",
+    "signUpBonus",
+    "achievement",
+    "adminAdjustment",
+  ] as const) {
+    assert.equal(isMemberMultiplierEligible(source), false);
+    assert.equal(memberMultiplierForSource(source, 2), 1);
+    assert.equal(memberMultiplierForSource(source, 10), 1);
+  }
+
+  assert.equal(memberMultiplierForSource("videoQuestion", 2, false), 1);
+  assert.equal(memberMultiplierForSource("exactPrediction", 2, false), 1);
+});
+
+test("trusted admin membership state has fixed grant and revoke multipliers", () => {
+  assert.deepEqual(adminMembershipState(true), {
+    isYouTubeMember: true,
+    membershipMultiplier: 2,
+  });
+  assert.deepEqual(adminMembershipState(false), {
+    isYouTubeMember: false,
+    membershipMultiplier: 1,
+  });
 });
 
 test("reward ids are deterministic for duplicate prevention", () => {

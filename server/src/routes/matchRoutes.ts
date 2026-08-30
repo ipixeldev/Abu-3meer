@@ -60,7 +60,9 @@ export async function matchRoutes(fastify: FastifyInstance) {
 
   fastify.get('/matches/:id/details', async (request, reply) => {
     const { id } = request.params as { id: string };
-    const cacheKey = `cache:matches:${id}:details`;
+    // v2 drops pre-fix detail snapshots that could contain a long-cached empty
+    // lineup/table after the provider had already published those sections.
+    const cacheKey = `cache:matches:v2:${id}:details`;
     const cached = await getCachedJson(cacheKey);
     if (cached) return cached;
 

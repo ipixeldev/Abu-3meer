@@ -1,5 +1,9 @@
 import { query } from '../db/pool.js';
-import { awardPoints } from './pointsService.js';
+import {
+  awardPoints,
+  memberMultiplierForSource,
+  PointSourceType,
+} from './pointsService.js';
 
 export function normalizeChallengeAnswer(text: string): string {
   return text
@@ -20,7 +24,7 @@ export async function submitChallengeAnswer(
 ): Promise<{ correct: boolean; pointsAwarded: number; message?: string }> {
   // Check if challenge is active
   const challengeRes = await query(
-    `SELECT id, title, kind, status, reward_points, member_points, correct_answer,
+    `SELECT id, title, kind, status, reward_points, correct_answer,
             normalized_correct_answer, starts_at, ends_at, maximum_attempts
      FROM challenges
      WHERE id = $1`,
@@ -62,15 +66,16 @@ export async function submitChallengeAnswer(
 
   if (isCorrect) {
     const basePoints = challenge.reward_points || 10;
-    const multiplier = isYouTubeMember ? 2.0 : 1.0;
+    const sourceType: PointSourceType =
+      challenge.kind === 'playerCard' ? 'player_card' : 'video_phrase';
     const idempotencyKey = `challenge:${challengeId}:user:${userId}`;
 
     const awardRes = await awardPoints({
       userId,
-      sourceType: challenge.kind === 'playerCard' ? 'player_card' : 'video_phrase',
+      sourceType,
       sourceId: challengeId,
       basePoints,
-      multiplier,
+      multiplier: memberMultiplierForSource(sourceType, isYouTubeMember),
       description: `Solved Challenge: ${challenge.title}`,
       idempotencyKey,
     });

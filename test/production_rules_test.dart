@@ -5,22 +5,59 @@ void main() {
   group('production point rules', () {
     test('normal and member exact predictions award 100 and 200', () {
       expect(calculatePoints(basePoints: 100, multiplier: 1), 100);
-      expect(calculatePoints(basePoints: 100, multiplier: 2), 200);
+      expect(
+        calculatePoints(
+          basePoints: 100,
+          multiplier: memberMultiplierForSource(
+            source: PointSource.exactPrediction,
+            isMember: true,
+          ),
+        ),
+        200,
+      );
     });
 
     test('first scorer uses its independent bonus rule', () {
       expect(PointRuleDefaults.baseFor(PointSource.firstScorer), 20);
-      expect(calculatePoints(basePoints: 20, multiplier: 2), 40);
+      expect(
+        calculatePoints(
+          basePoints: 20,
+          multiplier: memberMultiplierForSource(
+            source: PointSource.firstScorer,
+            isMember: true,
+          ),
+        ),
+        40,
+      );
     });
 
     test('normal and member video questions award 40 and 80', () {
       expect(calculatePoints(basePoints: 40, multiplier: 1), 40);
-      expect(calculatePoints(basePoints: 40, multiplier: 2), 80);
+      expect(
+        calculatePoints(
+          basePoints: 40,
+          multiplier: memberMultiplierForSource(
+            source: PointSource.videoQuestion,
+            isMember: true,
+          ),
+        ),
+        80,
+      );
     });
 
-    test('normal and member Player Cards award 20 and 40', () {
-      expect(calculatePoints(basePoints: 20, multiplier: 1), 20);
-      expect(calculatePoints(basePoints: 20, multiplier: 2), 40);
+    test('Player Cards stay at base points for channel members', () {
+      expect(
+        calculatePoints(
+          basePoints: 20,
+          multiplier: memberMultiplierForSource(
+            source: PointSource.playerCard,
+            isMember: true,
+          ),
+        ),
+        20,
+      );
+      expect(isMemberMultiplierEligible(PointSource.dailyStreak), isFalse);
+      expect(isMemberMultiplierEligible(PointSource.signUpBonus), isFalse);
     });
 
     test('negative point inputs are rejected', () {

@@ -21,6 +21,48 @@ export const DEFAULT_POINTS = Object.freeze({
   memberMultiplier: 2,
 });
 
+const MEMBER_MULTIPLIER_SOURCES = new Set<PointSource>([
+  "exactPrediction",
+  "firstScorer",
+  "winnerOutcome",
+  // This legacy prediction source remains active in the Firebase settlement
+  // path, so it follows the same policy as every other prediction reward.
+  "bothTeamsScore",
+  "videoQuestion",
+]);
+
+export function isMemberMultiplierEligible(source: PointSource): boolean {
+  return MEMBER_MULTIPLIER_SOURCES.has(source);
+}
+
+/**
+ * Channel membership doubles prediction rewards and video-question answers
+ * only. All other activities remain at their base value even if a caller
+ * accidentally asks to apply the member multiplier.
+ */
+export function memberMultiplierForSource(
+  source: PointSource,
+  membershipMultiplier: number,
+  applyMembershipMultiplier = true,
+): number {
+  return applyMembershipMultiplier && isMemberMultiplierEligible(source) ?
+    membershipMultiplier :
+    1;
+}
+
+export type AdminMembershipState = {
+  isYouTubeMember: boolean;
+  membershipMultiplier: number;
+};
+
+/** Membership state can only be produced by a trusted admin/server action. */
+export function adminMembershipState(isMember: boolean): AdminMembershipState {
+  return {
+    isYouTubeMember: isMember,
+    membershipMultiplier: isMember ? DEFAULT_POINTS.memberMultiplier : 1,
+  };
+}
+
 export function calculatePoints(basePoints: number, multiplier: number): number {
   if (!Number.isFinite(basePoints) || !Number.isFinite(multiplier)) {
     throw new Error("Points must be finite numbers.");

@@ -1,5 +1,9 @@
 import { query, getClient } from '../db/pool.js';
-import { awardPoints, getPointRules } from './pointsService.js';
+import {
+  awardPoints,
+  getPointRules,
+  memberMultiplierForSource,
+} from './pointsService.js';
 import { normalizeChallengeAnswer } from './challengeService.js';
 import { config } from '../config.js';
 
@@ -248,8 +252,6 @@ export async function settleMatchPredictions(matchId: string): Promise<{ process
       actualAway,
       actualFirstScorer: match.first_scorer,
     });
-    const multiplier = pred.is_youtube_member ? 2.0 : 1.0;
-
     const components = [
       {
         correct: result.isExact,
@@ -282,7 +284,10 @@ export async function settleMatchPredictions(matchId: string): Promise<{ process
         sourceType: component.sourceType,
         sourceId: matchId,
         basePoints: component.basePoints,
-        multiplier,
+        multiplier: memberMultiplierForSource(
+          component.sourceType,
+          pred.is_youtube_member,
+        ),
         description: `${component.label}: ${match.home_team} vs ${match.away_team}`,
         idempotencyKey: `pred_reward:${pred.id}:${component.key}`,
       });

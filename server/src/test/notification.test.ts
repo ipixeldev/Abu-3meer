@@ -4,6 +4,7 @@ import {
   isPermanentPushTokenError,
   normalizePushData,
   notificationPreferenceColumn,
+  summarizePushFailureCodes,
 } from '../services/notificationDomain.js';
 
 describe('push notification domain', () => {
@@ -17,7 +18,28 @@ describe('push notification domain', () => {
   it('only deactivates permanently invalid provider tokens', () => {
     assert.equal(isPermanentPushTokenError('messaging/registration-token-not-registered'), true);
     assert.equal(isPermanentPushTokenError('messaging/invalid-registration-token'), true);
+    assert.equal(isPermanentPushTokenError('messaging/mismatched-credential'), true);
     assert.equal(isPermanentPushTokenError('messaging/internal-error'), false);
+  });
+
+  it('summarizes provider failures without including tokens or messages', () => {
+    assert.deepEqual(
+      summarizePushFailureCodes([
+        'messaging/third-party-auth-error',
+        'messaging/third-party-auth-error',
+        undefined,
+      ]),
+      {
+        failureCodes: ['messaging/third-party-auth-error'],
+        requiresTokenRefresh: false,
+        providerConfigurationError: true,
+      }
+    );
+    assert.deepEqual(summarizePushFailureCodes(['messaging/mismatched-credential']), {
+      failureCodes: ['messaging/mismatched-credential'],
+      requiresTokenRefresh: true,
+      providerConfigurationError: false,
+    });
   });
 
   it('maps campaign categories to user preference columns', () => {

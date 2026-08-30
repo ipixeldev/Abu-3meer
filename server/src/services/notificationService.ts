@@ -4,6 +4,7 @@ import {
   isPermanentPushTokenError,
   normalizePushData,
   notificationPreferenceColumn,
+  summarizePushFailureCodes,
   type NotificationCategory,
 } from './notificationDomain.js';
 
@@ -273,14 +274,25 @@ export async function sendTestNotification(userId: string) {
     'Push notifications are connected to your device.',
     { category: 'general', route: '/settings', test: 'true' }
   );
+  const diagnostics = summarizePushFailureCodes(
+    response.responses.map(result => result.error?.code)
+  );
   for (let index = 0; index < devices.rows.length; index += 1) {
     if (isPermanentPushTokenError(response.responses[index]?.error?.code)) {
       await query('UPDATE devices SET is_active = false WHERE id = $1', [devices.rows[index].id]);
     }
   }
+  if (response.failureCount > 0) {
+    // Codes identify the corrective action without leaking FCM registration
+    // tokens, APNs tokens, service-account values, or provider error bodies.
+    console.error(
+      `[FCM Test] ${response.failureCount}/${devices.rows.length} delivery attempt(s) failed; codes=${diagnostics.failureCodes.join(',') || 'unknown'}`
+    );
+  }
   return {
     sentCount: response.successCount,
     failedCount: response.failureCount,
     noRegisteredDevice: false,
+    ...diagnostics,
   };
 }

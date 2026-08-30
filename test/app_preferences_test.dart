@@ -7,7 +7,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test(
-    'theme, language, and notification preferences persist locally',
+    'dark-only theme, language, and notification preferences persist locally',
     () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final preferences = AbuAppPreferences.instance;
@@ -20,7 +20,8 @@ void main() {
       await preferences.setNewsNotifications(true);
 
       final stored = await SharedPreferences.getInstance();
-      expect(stored.getString('abu_theme_mode'), 'light');
+      expect(stored.getString('abu_theme_mode'), 'dark');
+      expect(preferences.themeMode, ThemeMode.dark);
       expect(stored.getString('abu_language'), 'ar');
       expect(stored.getBool('abu_notifications_matches'), isFalse);
       expect(stored.getBool('abu_notifications_challenges'), isFalse);

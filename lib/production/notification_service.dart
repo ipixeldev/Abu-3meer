@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
 import 'api_production_repository.dart';
+import 'api_client.dart';
 import 'app_preferences.dart';
 
 @pragma('vm:entry-point')
@@ -44,6 +45,7 @@ class NotificationService {
   StreamSubscription<RemoteMessage>? _foregroundSubscription;
   StreamSubscription<RemoteMessage>? _openedSubscription;
   String? _registeredToken;
+  String? _registeredUserId;
   final Set<String> _registeringTokens = <String>{};
   bool _initialized = false;
 
@@ -65,6 +67,15 @@ class NotificationService {
     if (_initialized) return;
     _initialized = true;
     registerBackgroundHandler();
+
+    // Be explicit because users can restore an iOS backup containing an old
+    // Firebase auto-init preference. Token creation and refresh must remain on
+    // for server-delivered notifications.
+    try {
+      await _fcm.setAutoInitEnabled(true);
+    } catch (error) {
+      debugPrint('[FCM] Could not enable token auto-init yet: $error');
+    }
 
     const initializationSettingsDarwin = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -145,9 +156,14 @@ class NotificationService {
     await _authSubscription?.cancel();
     _authSubscription = apiRepo.authChanges.listen((user) {
       if (user != null) {
+        if (_registeredUserId != user.uid) {
+          _registeredToken = null;
+          _registeredUserId = null;
+        }
         unawaited(_syncTokenSafely(apiRepo));
       } else {
         _registeredToken = null;
+        _registeredUserId = null;
       }
     });
     if (apiRepo.auth.currentUser != null) {
@@ -200,7 +216,10 @@ class NotificationService {
     return granted;
   }
 
-  Future<void> syncTokenWithBackend(ApiProductionRepository apiRepo) async {
+  Future<void> syncTokenWithBackend(
+    ApiProductionRepository apiRepo, {
+    bool forceRegistration = false,
+  }) async {
     _apiRepo = apiRepo;
     if (apiRepo.auth.currentUser == null) return;
     try {
@@ -214,10 +233,10 @@ class NotificationService {
       // token. The short retry avoids the common first-launch race.
       if (!kIsWeb && Platform.isIOS) {
         String? apnsToken;
-        for (var attempt = 0; attempt < 6 && apnsToken == null; attempt++) {
+        for (var attempt = 0; attempt < 20 && apnsToken == null; attempt++) {
           apnsToken = await _fcm.getAPNSToken();
           if (apnsToken == null) {
-            await Future<void>.delayed(const Duration(milliseconds: 350));
+            await Future<void>.delayed(const Duration(milliseconds: 500));
           }
         }
         if (apnsToken == null) {
@@ -230,7 +249,7 @@ class NotificationService {
 
       final token = await _fcm.getToken();
       if (token != null && token.isNotEmpty) {
-        await _registerToken(token);
+        await _registerToken(token, force: forceRegistration);
       }
     } catch (error) {
       debugPrint('[FCM] Token registration failed: $error');
@@ -238,10 +257,16 @@ class NotificationService {
     }
   }
 
-  Future<void> _registerToken(String token) async {
+  Future<void> _registerToken(String token, {bool force = false}) async {
     final repository = _apiRepo;
-    if (repository == null || repository.auth.currentUser == null) return;
-    if (_registeredToken == token || !_registeringTokens.add(token)) return;
+    final currentUser = repository?.auth.currentUser;
+    if (repository == null || currentUser == null) return;
+    if ((!force &&
+            _registeredToken == token &&
+            _registeredUserId == currentUser.uid) ||
+        !_registeringTokens.add(token)) {
+      return;
+    }
     final platform = kIsWeb
         ? 'web'
         : Platform.isIOS
@@ -254,6 +279,7 @@ class NotificationService {
         locale: AbuAppPreferences.instance.locale.toLanguageTag(),
       );
       _registeredToken = token;
+      _registeredUserId = currentUser.uid;
       debugPrint('[FCM] Device token registered with the self-hosted API.');
     } finally {
       _registeringTokens.remove(token);
@@ -304,8 +330,47 @@ class NotificationService {
     if (repository == null || repository.auth.currentUser == null) {
       throw StateError('Sign in before testing push notifications.');
     }
-    await syncTokenWithBackend(repository);
-    return await repository.sendPushNotificationTest();
+    // Always upsert before a test. This repairs an inactive migrated row and
+    // re-associates the token if the person changed Firebase accounts.
+    await syncTokenWithBackend(repository, forceRegistration: true);
+    var result = await repository.sendPushNotificationTest();
+
+    // FCM explicitly told us the token is permanently unusable (stale,
+    // unregistered, or minted by another Firebase sender). Rotate it once,
+    // register the replacement, and retry without requiring a reinstall.
+    if (result['requiresTokenRefresh'] == true) {
+      await _replaceMessagingToken(repository);
+      result = await repository.sendPushNotificationTest();
+    }
+
+    if (result['providerConfigurationError'] == true) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'Firebase could not authenticate with Apple Push Notification service. Verify the APNs authentication key for com.abu3meer.app in the abu-3meer-9fd70 Firebase project.',
+        details: result['failureCodes'],
+      );
+    }
+    if ((result['failedCount'] as num? ?? 0) > 0) {
+      final codes =
+          (result['failureCodes'] as List?)?.whereType<String>().join(', ') ??
+          'unknown';
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'Firebase rejected the push notification ($codes).',
+        details: result['failureCodes'],
+      );
+    }
+    return result;
+  }
+
+  Future<void> _replaceMessagingToken(
+    ApiProductionRepository repository,
+  ) async {
+    _registeredToken = null;
+    _registeredUserId = null;
+    await _fcm.deleteToken();
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    await syncTokenWithBackend(repository, forceRegistration: true);
   }
 
   Future<void> unregisterCurrentDevice() async {
@@ -315,6 +380,7 @@ class NotificationService {
     if (token == null || token.isEmpty) return;
     await repository.unregisterFcmToken(token);
     _registeredToken = null;
+    _registeredUserId = null;
   }
 
   Future<void> _showLocalNotification({

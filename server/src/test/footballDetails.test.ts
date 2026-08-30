@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   CachedProviderSection,
   FootballProviderError,
+  apiFootballWeekWindow,
+  isEmptyProviderSection,
   normalizeApiFootballFixtures,
   normalizeApiFootballMatchDetailsPayload,
   normalizeApiFootballPlayerProfiles,
@@ -15,6 +17,7 @@ import {
   normalizeFootballTeams,
   normalizeTimelineType,
   reserveSportsDbDailyRequest,
+  resolveAvailableProviderSections,
   resolveSharedProviderSection,
   sportsDbCacheTtlForEndpoint,
   sportsDbDailyCounterKey,
@@ -59,6 +62,23 @@ test('normalizes API-Football fixtures into the stable mobile match shape', () =
   assert.equal(matches[0]?.status, 'upcoming');
   assert.equal(matches[1]?.status, 'live');
   assert.equal(matches[1]?.home_score, 1);
+});
+
+test('uses a date range that retains live fixtures in the weekly feed', () => {
+  const window = apiFootballWeekWindow(
+    new Date('2026-08-30T15:53:00Z'),
+    7,
+  );
+  assert.equal(window.from, '2026-08-30');
+  assert.equal(window.to, '2026-09-07');
+  assert.equal(window.season, '2026');
+  assert.ok(Date.parse('2026-08-30T15:00:00Z') >= window.earliest);
+  assert.ok(Date.parse('2026-09-06T14:15:00Z') <= window.latest);
+
+  assert.equal(
+    apiFootballWeekWindow(new Date('2027-02-01T12:00:00Z'), 7).season,
+    '2026',
+  );
 });
 
 test('maps API-Football details, standings, teams and player catalogs', () => {
@@ -258,6 +278,46 @@ test('uses short live-data TTLs and longer stable-section TTLs', () => {
   );
 });
 
+test('caches valid empty provider envelopes with the short negative TTL', async () => {
+  assert.equal(isEmptyProviderSection({ response: [] }), true);
+  assert.equal(isEmptyProviderSection({ lineup: null }), true);
+  assert.equal(isEmptyProviderSection({ table: [] }), true);
+  assert.equal(
+    isEmptyProviderSection({ response: [{ fixture: { id: 1 } }] }),
+    false,
+  );
+
+  const cache = new Map<string, CachedProviderSection>();
+  let receivedTtl = 0;
+  await resolveSharedProviderSection('test:negative-envelope', 1800, 20, {
+    read: async key => cache.get(key) ?? null,
+    write: async (key, entry, ttlSeconds) => {
+      cache.set(key, entry);
+      receivedTtl = ttlSeconds;
+    },
+    load: async () => ({ response: [] }),
+    isNegativeValue: isEmptyProviderSection,
+  });
+  assert.equal(receivedTtl, 20);
+});
+
+test('preserves available detail sections when one upstream section fails', async () => {
+  const expected = { response: [{ id: 1 }] };
+  const sections = await resolveAvailableProviderSections([
+    Promise.resolve(expected),
+    Promise.reject(new Error('standings unavailable')),
+  ]);
+  assert.deepEqual(sections, [expected, null]);
+
+  await assert.rejects(
+    resolveAvailableProviderSections([
+      Promise.reject(new Error('events unavailable')),
+      Promise.reject(new Error('lineups unavailable')),
+    ]),
+    /events unavailable/,
+  );
+});
+
 test('normalizes external fixtures into the match shape consumed by mobile clients', () => {
   const matches = normalizeExternalFootballEvents([
     {
@@ -421,7 +481,10 @@ test('coalesces and briefly caches sanitized provider failures instead of return
 
 test('uses a UTC daily shared quota key and honors a denied reservation', async () => {
   const now = new Date('2026-08-29T23:58:00Z');
-  assert.match(sportsDbDailyCounterKey(now), /:2026-08-29$/);
+  assert.match(
+    sportsDbDailyCounterKey(now),
+    /^quota:football:v2:.*:2026-08-29$/,
+  );
   let receivedKey = '';
   let receivedLimit = 0;
   const reservation = await reserveSportsDbDailyRequest(

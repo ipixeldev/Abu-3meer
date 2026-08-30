@@ -6,7 +6,7 @@ export async function streakRoutes(fastify: FastifyInstance) {
   fastify.post('/streaks/check-in', { preHandler: [authenticateUser] }, async (request, reply) => {
     const user = request.user!;
     try {
-      const result = await checkInDailyStreak(user.id, user.isYouTubeMember);
+      const result = await checkInDailyStreak(user.id);
       return result;
     } catch (err: any) {
       const statusCode = Number(err?.statusCode || 500);

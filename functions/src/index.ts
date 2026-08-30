@@ -15,6 +15,7 @@ import {
   LoyaltyRedemptionError,
   PointSource,
   RedemptionStatus,
+  adminMembershipState,
   achievementClaimId,
   achievementProgressValue,
   calculateLoyaltyRefund,
@@ -24,6 +25,7 @@ import {
   challengeIsOpen,
   didBothTeamsScore,
   evaluateChallengeAnswers,
+  memberMultiplierForSource,
   parseFootballSeasonId,
   playerCardOwnershipId,
   predictionIsOpen,
@@ -307,7 +309,11 @@ async function awardPoints(params: {
       throw new HttpsError("permission-denied", "This account is suspended.");
     }
     const membershipMultiplier = Number(user.membershipMultiplier ?? 1);
-    const multiplier = params.applyMembershipMultiplier === false ? 1 : membershipMultiplier;
+    const multiplier = memberMultiplierForSource(
+      params.sourceType,
+      membershipMultiplier,
+      params.applyMembershipMultiplier !== false,
+    );
     const finalPoints = calculatePoints(params.basePoints, multiplier);
     const sameMonth = user.monthlyPeriod === currentPeriod;
     // Empty season IDs are legacy/current-season records. Preserve their
@@ -1143,6 +1149,32 @@ export const submitChallenge = onCall(phase3CallableOptions(region), async (requ
   });
 });
 
+// Backward-compatible name used by released Flutter builds for the advanced
+// challenge UI. Keep the payload translation server-side so those builds do
+// not fail with functions/not-found while newer clients use submitChallenge.
+export const submitChallengeAnswers = onCall(phase3CallableOptions(region), async (request) => {
+  const auth = requireAuth(request.auth);
+  const challengeKind = String(request.data?.kind ?? "");
+  if (![
+    "videoPhrase",
+    "videoQuestion",
+    "secretPhrase",
+    "multipleChoice",
+    "trueFalse",
+    "multiQuestion",
+    "quiz",
+    "playerCard",
+  ].includes(challengeKind)) {
+    throw new HttpsError("invalid-argument", "Challenge type is invalid.");
+  }
+  return submitChallengeAttempt({
+    uid: auth.uid,
+    collection: challengeKind === "playerCard" ? "playerCards" : "videoQuestions",
+    id: identifier(request.data?.challengeId, "Challenge", 128),
+    answers: request.data?.answers,
+  });
+});
+
 export const submitVideoAnswer = onCall(phase3CallableOptions(region), async (request) => {
   const auth = requireAuth(request.auth);
   return submitChallengeAttempt({
@@ -1872,13 +1904,53 @@ export const deleteAccountData = onCall(phase3CallableOptions(region), async (re
 });
 
 export const verifyYouTubeMembership = onCall(phase3CallableOptions(region), async (request) => {
+  requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "Automatic YouTube channel-member verification is not configured. Membership must be verified independently and assigned by an administrator.",
+  );
+});
+
+/**
+ * Manual compatibility path for Firebase-backed challenge rewards. The
+ * PostgreSQL API has its own audited admin endpoint; this callable keeps the
+ * legacy Firebase user mirror aligned without allowing user self-promotion.
+ */
+export const adminSetYouTubeMembership = onCall(phase3CallableOptions(region), async (request) => {
   const auth = requireAuth(request.auth);
-  const uid = auth.uid;
-  // This is scaffolding. In a real scenario, we'd verify an OAuth token with the YouTube Data API.
-  // We'll set the multiplier assuming it's valid for testing purposes, or check a custom token.
-  await db.collection("users").doc(uid).update({
-    membershipMultiplier: 2,
-    youtubeVerifiedAt: FieldValue.serverTimestamp(),
+  await requireAdmin(auth.uid);
+  const targetUserId = documentId(request.data?.targetUserId, "Target user", 128);
+  if (typeof request.data?.isMember !== "boolean") {
+    throw new HttpsError("invalid-argument", "Membership status is required.");
+  }
+  const reason = text(request.data?.reason, "Reason", 240);
+  if (reason.length < 3) {
+    throw new HttpsError("invalid-argument", "Reason must contain at least 3 characters.");
+  }
+
+  const membership = adminMembershipState(request.data.isMember);
+  const targetRef = db.collection("users").doc(targetUserId);
+  const auditRef = db.collection("adminAuditLogs").doc();
+  await db.runTransaction(async (transaction) => {
+    const target = await transaction.get(targetRef);
+    if (!target.exists) {
+      throw new HttpsError("not-found", "User profile is missing.");
+    }
+    const changedAt = FieldValue.serverTimestamp();
+    transaction.update(targetRef, {
+      ...membership,
+      youtubeMembershipVerifiedAt: membership.isYouTubeMember ? changedAt : null,
+      youtubeVerifiedAt: membership.isYouTubeMember ? changedAt : null,
+      updatedAt: changedAt,
+    });
+    transaction.create(auditRef, {
+      adminId: auth.uid,
+      action: membership.isYouTubeMember ? "GRANT_YOUTUBE_MEMBERSHIP" : "REVOKE_YOUTUBE_MEMBERSHIP",
+      targetUserId,
+      reason,
+      changes: membership,
+      createdAt: changedAt,
+    });
   });
-  return {ok: true, multiplier: 2};
+  return {ok: true, ...membership};
 });

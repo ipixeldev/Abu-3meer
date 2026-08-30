@@ -151,6 +151,158 @@ class _StreakPill extends StatelessWidget {
   }
 }
 
+Future<void> _showStreakGoals(
+  BuildContext context,
+  AbuUserProfile profile,
+) async {
+  const milestones = <int>[3, 7, 14, 30, 60, 100];
+  final current = profile.currentStreak;
+  final next = milestones.firstWhere(
+    (value) => value > current,
+    orElse: () => ((current ~/ 30) + 1) * 30,
+  );
+  await showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    backgroundColor: _surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (sheetContext) => SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _line,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                const _StreakIconWidget(size: 34),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        abuText(sheetContext, 'STREAK GOALS', 'أهداف السلسلة'),
+                        style: _display(24),
+                      ),
+                      Text(
+                        abuText(
+                          sheetContext,
+                          '$current days active · Best ${profile.longestStreak}',
+                          '$current يوم نشط · الأفضل ${profile.longestStreak}',
+                        ),
+                        style: const TextStyle(color: _muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(sheetContext).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            for (final milestone in milestones) ...[
+              _StreakGoalRow(
+                days: milestone,
+                completed: current >= milestone,
+                current: current,
+              ),
+              if (milestone != milestones.last) const SizedBox(height: 10),
+            ],
+            const SizedBox(height: 18),
+            Text(
+              abuText(
+                sheetContext,
+                'Next goal: $next days. Complete an eligible activity each day to keep the streak alive.',
+                'الهدف التالي: $next يوم. أكمل نشاطاً مؤهلاً كل يوم للحفاظ على السلسلة.',
+              ),
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _StreakGoalRow extends StatelessWidget {
+  const _StreakGoalRow({
+    required this.days,
+    required this.completed,
+    required this.current,
+  });
+
+  final int days;
+  final bool completed;
+  final int current;
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = (current / days).clamp(0.0, 1.0);
+    final color = completed ? _productionPrimary(context) : _red;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: _surface2,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: .35)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            completed ? Icons.check_circle_rounded : Icons.flag_rounded,
+            color: color,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  abuText(context, '$days DAY GOAL', 'هدف $days يوم'),
+                  style: const TextStyle(fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(height: 7),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 6,
+                    backgroundColor: _line,
+                    color: color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            completed ? '✓' : '${current.clamp(0, days)}/$days',
+            style: TextStyle(color: color, fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// A local, dependency-free rendition of Google's four-colour G mark.
 ///
 /// Keeping this as vector paint means the sign-in control remains crisp and
@@ -1980,7 +2132,7 @@ class _ProductionShellState extends State<_ProductionShell>
       _ProductionHome(
         repository: widget.repository,
         profile: profile,
-        onOpenStreak: () => setState(() => index = _profileShellPageIndex),
+        onOpenStreak: () => _showStreakGoals(context, profile),
       ),
       _ProductionMatches(repository: widget.repository, profile: profile),
       _ProductionChallenges(repository: widget.repository),
@@ -2086,8 +2238,7 @@ class _ProductionShellState extends State<_ProductionShell>
                   else ...[
                     _StreakPill(
                       streak: profile.currentStreak,
-                      onTap: () =>
-                          setState(() => index = _profileShellPageIndex),
+                      onTap: () => _showStreakGoals(context, profile),
                       compact: narrowHeader,
                     ),
                     SizedBox(width: narrowHeader ? 4 : 6),
@@ -2553,7 +2704,7 @@ class _ProductionDesktopScaffold extends StatelessWidget {
                       ),
                       color: _red,
                       compact: true,
-                      onTap: () => onSelect(_profileShellPageIndex),
+                      onTap: () => _showStreakGoals(context, profile),
                     ),
                     const SizedBox(width: 10),
                     _Pill(
@@ -2671,8 +2822,8 @@ class _ProductionHome extends StatelessWidget {
       kicker: profile.isYouTubeMember
           ? abuText(
               context,
-              'YouTube Member · 2× points',
-              'عضو يوتيوب · نقاط مضاعفة',
+              'YouTube Member · 2× predictions & video answers',
+              'عضو يوتيوب · ×٢ للتوقعات وإجابات الفيديو',
             )
           : abuText(context, 'Abu 3meer Community', 'مجتمع أبو عمير'),
       title: profile.isGuest
@@ -2691,12 +2842,12 @@ class _ProductionHome extends StatelessWidget {
                   _GuestWelcomeCard(repository: repository),
                   const SizedBox(height: 16),
                 ],
+                _ProductionLatestVideoCard(repository: repository),
+                const SizedBox(height: 16),
                 _HomeDirectChallengeActionSection(
                   repository: repository,
                   profile: profile,
                 ),
-                const SizedBox(height: 16),
-                match,
                 const SizedBox(height: 16),
                 _ProductionPointsHero(profile: profile),
                 const SizedBox(height: 16),
@@ -2705,9 +2856,9 @@ class _ProductionHome extends StatelessWidget {
                   onTap: onOpenStreak,
                 ),
                 const SizedBox(height: 16),
-                _ProductionLatestVideoCard(repository: repository),
-                const SizedBox(height: 16),
                 _ProductionHomeActivityFeed(repository: repository),
+                const SizedBox(height: 16),
+                match,
               ],
             );
           }
@@ -2717,6 +2868,8 @@ class _ProductionHome extends StatelessWidget {
                 _GuestWelcomeCard(repository: repository),
                 const SizedBox(height: 18),
               ],
+              _ProductionLatestVideoCard(repository: repository),
+              const SizedBox(height: 18),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -2729,8 +2882,6 @@ class _ProductionHome extends StatelessWidget {
                           profile: profile,
                         ),
                         const SizedBox(height: 18),
-                        match,
-                        const SizedBox(height: 18),
                         _ProductionPointsHero(profile: profile),
                       ],
                     ),
@@ -2738,21 +2889,17 @@ class _ProductionHome extends StatelessWidget {
                   const SizedBox(width: 22),
                   Expanded(
                     flex: 5,
-                    child: Column(
-                      children: [
-                        _ProductionLatestVideoCard(repository: repository),
-                        const SizedBox(height: 18),
-                        _ProductionHomeStreakCard(
-                          profile: profile,
-                          onTap: onOpenStreak,
-                        ),
-                      ],
+                    child: _ProductionHomeStreakCard(
+                      profile: profile,
+                      onTap: onOpenStreak,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 22),
               _ProductionHomeActivityFeed(repository: repository),
+              const SizedBox(height: 22),
+              match,
             ],
           );
         },
@@ -2884,8 +3031,13 @@ class _DirectChallengeInlineCardState
       );
       if (!mounted) return;
       final correct = result['correct'] == true;
-      final points =
-          result['points'] ?? (widget.profile.isYouTubeMember ? 20 : 10);
+      final basePoints = widget.challenge.rewardPoints > 0
+          ? widget.challenge.rewardPoints
+          : 10;
+      final memberEligible =
+          widget.challenge.canonicalKind != 'playerCard' &&
+          widget.profile.isYouTubeMember;
+      final points = result['points'] ?? basePoints * (memberEligible ? 2 : 1);
       if (correct) {
         setState(() => _solved = true);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2950,7 +3102,11 @@ class _DirectChallengeInlineCardState
     final challenge = widget.challenge;
     final isPlayerCard = challenge.canonicalKind == 'playerCard';
     final isMember = widget.profile.isYouTubeMember;
-    final pointsText = isMember ? '+20 XP (2×)' : '+10 XP';
+    final basePoints = challenge.rewardPoints > 0 ? challenge.rewardPoints : 10;
+    final memberEligible = isMember && !isPlayerCard;
+    final pointsText = memberEligible
+        ? '+${basePoints * 2} XP (2×)'
+        : '+$basePoints XP';
     final cardTitle = isPlayerCard
         ? abuText(context, 'HIDDEN PLAYER CARD', 'بطاقة اللاعب المخفي')
         : abuText(context, 'SECRET VIDEO PHRASE', 'العبارة السرية في الفيديو');
@@ -9490,6 +9646,7 @@ class _ProductionProfileState extends State<_ProductionProfile> {
   Future<void> _verifyMember() async {
     setState(() => verifyingMember = true);
     try {
+      await widget.repository.refreshProfile(widget.profile.uid, force: true);
       final verified = await widget.repository.verifyYouTubeMembership(
         widget.profile.uid,
       );
@@ -9505,8 +9662,8 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                     )
                   : abuText(
                       context,
-                      'No active YouTube channel membership detected with this account.',
-                      'لم يتم العثور على اشتراك نشط لعضوية القناة بهذا الحساب.',
+                      'Paid channel membership is not verified yet. Membership status is approved by an administrator until secure YouTube verification is connected.',
+                      'لم يتم توثيق عضوية القناة المدفوعة بعد. يعتمد توثيق العضوية حالياً من المشرف إلى أن يتم ربط تحقق يوتيوب الآمن.',
                     ),
             ),
           ),
@@ -9603,11 +9760,11 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                         : Icon(Icons.workspace_premium_rounded, size: 18),
                     label: Text(
                       verifyingMember
-                          ? abuText(context, 'VERIFYING…', 'جارٍ التحقق…')
+                          ? abuText(context, 'REFRESHING…', 'جارٍ التحديث…')
                           : abuText(
                               context,
-                              'VERIFY YOUTUBE MEMBERSHIP FOR GOLD CARD',
-                              'التحقق من عضوية يوتيوب لفتح البطاقة الذهبية',
+                              'REFRESH MEMBERSHIP STATUS',
+                              'تحديث حالة العضوية',
                             ),
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
@@ -10385,8 +10542,8 @@ class _ProductionSettings extends StatelessWidget {
                       Text(
                         abuText(
                           context,
-                          'Member points activate only after secure verification with the creator\'s YouTube account.',
-                          'تتفعل نقاط الأعضاء فقط بعد التحقق الآمن عبر حساب منشئ قناة يوتيوب.',
+                          'Verified members receive 2× points on predictions and video-question answers only. Signup and daily streak points stay unchanged.',
+                          'يحصل الأعضاء الموثقون على نقاط ×٢ للتوقعات وإجابات أسئلة الفيديو فقط. لا تتضاعف نقاط التسجيل أو السلسلة اليومية.',
                         ),
                         style: TextStyle(color: _muted, height: 1.45),
                       ),

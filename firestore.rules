@@ -31,15 +31,40 @@ service cloud.firestore {
         && username.size() <= 24
         && username.matches('^[a-z0-9_]+$');
     }
+    function hasNoClientMembershipFields() {
+      return !request.resource.data.keys().hasAny([
+        'isYouTubeMember',
+        'membershipMultiplier',
+        'youtubeMembershipVerifiedAt',
+        'youtubeVerifiedAt',
+        'youtubeChannelId',
+        'youtubeMemberSince'
+      ]);
+    }
+    function keepsServerMembershipFields() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+        'isYouTubeMember',
+        'membershipMultiplier',
+        'youtubeMembershipVerifiedAt',
+        'youtubeVerifiedAt',
+        'youtubeChannelId',
+        'youtubeMemberSince'
+      ]);
+    }
 
     match /users/{uid} {
       allow read: if signedIn();
-      allow create: if (own(uid) && (request.resource.data.role in ['user', 'member'] || !('role' in request.resource.data)) && request.resource.data.suspended != true) || admin();
+      allow create: if (
+        own(uid)
+        && (!('role' in request.resource.data) || request.resource.data.role == 'user')
+        && request.resource.data.suspended != true
+        && hasNoClientMembershipFields()
+      ) || admin();
       allow update: if admin() || (
         own(uid)
         && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role)
         && (!('suspended' in request.resource.data) || request.resource.data.suspended == resource.data.suspended)
-        && (!('isYouTubeMember' in request.resource.data) || request.resource.data.isYouTubeMember == resource.data.isYouTubeMember)
+        && keepsServerMembershipFields()
       );
       allow delete: if false;
 

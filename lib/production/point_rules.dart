@@ -32,6 +32,23 @@ abstract final class PointRuleDefaults {
   };
 }
 
+bool isMemberMultiplierEligible(PointSource source) => switch (source) {
+  PointSource.exactPrediction ||
+  PointSource.firstScorer ||
+  PointSource.winnerOutcome ||
+  PointSource.videoQuestion => true,
+  PointSource.playerCard ||
+  PointSource.dailyStreak ||
+  PointSource.signUpBonus ||
+  PointSource.adminAdjustment => false,
+};
+
+num memberMultiplierForSource({
+  required PointSource source,
+  required bool isMember,
+  num configuredMultiplier = PointRuleDefaults.memberMultiplier,
+}) => isMember && isMemberMultiplierEligible(source) ? configuredMultiplier : 1;
+
 int calculatePoints({required int basePoints, required num multiplier}) {
   if (basePoints < 0 || multiplier < 0) {
     throw ArgumentError('Points and multiplier must be non-negative.');

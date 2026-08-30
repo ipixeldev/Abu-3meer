@@ -2,9 +2,55 @@ import { getClient, query } from '../db/pool.js';
 import { redis } from '../redis/client.js';
 import { config } from '../config.js';
 
+export type PointSourceType =
+  | 'signup_bonus'
+  | 'prediction_exact'
+  | 'prediction_scorer'
+  | 'prediction_winner'
+  | 'prediction_win'
+  | 'video_phrase'
+  | 'player_card'
+  | 'daily_streak'
+  | 'admin_adjustment'
+  | 'achievement_bonus';
+
+const memberMultiplierSources = new Set<PointSourceType>([
+  'prediction_exact',
+  'prediction_scorer',
+  'prediction_winner',
+  'prediction_win',
+  'video_phrase',
+]);
+
+export function isMemberMultiplierEligible(sourceType: PointSourceType): boolean {
+  return memberMultiplierSources.has(sourceType);
+}
+
+/**
+ * YouTube membership doubles only prediction rewards and answers to video
+ * questions. Sign-up, daily attendance, Player Cards, achievements and manual
+ * adjustments deliberately remain at their base value.
+ */
+export function memberMultiplierForSource(
+  sourceType: PointSourceType,
+  isYouTubeMember: boolean,
+  configuredMultiplier = config.pointDefaults.memberMultiplier,
+): number {
+  return isYouTubeMember && isMemberMultiplierEligible(sourceType)
+    ? configuredMultiplier
+    : 1;
+}
+
+export function enforceEligibleMultiplier(
+  sourceType: PointSourceType,
+  requestedMultiplier = 1,
+): number {
+  return isMemberMultiplierEligible(sourceType) ? requestedMultiplier : 1;
+}
+
 export interface AwardPointsParams {
   userId: string;
-  sourceType: 'signup_bonus' | 'prediction_exact' | 'prediction_scorer' | 'prediction_winner' | 'prediction_win' | 'video_phrase' | 'player_card' | 'daily_streak' | 'admin_adjustment' | 'achievement_bonus';
+  sourceType: PointSourceType;
   sourceId: string;
   basePoints: number;
   multiplier?: number;
@@ -28,7 +74,13 @@ export async function awardPoints(params: AwardPointsParams): Promise<{ success:
       return { success: true, pointsAwarded: existing.rows[0].final_points, alreadyAwarded: true };
     }
 
-    const multiplier = params.multiplier ?? 1.0;
+    // Enforce the product rule at the ledger boundary as well as at callers.
+    // This prevents a future award path from accidentally doubling an
+    // ineligible activity such as a sign-up or daily check-in.
+    const multiplier = enforceEligibleMultiplier(
+      params.sourceType,
+      params.multiplier ?? 1.0,
+    );
     const finalPoints = Math.round(params.basePoints * multiplier);
 
     // 2. Insert ledger transaction

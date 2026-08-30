@@ -300,7 +300,9 @@ export async function profileRoutes(fastify: FastifyInstance) {
   // Admin-only membership management: Normal users CANNOT self-promote to YouTube Member
   fastify.post(
     '/admin/users/:id/membership',
-    { preHandler: [requirePermission('users.suspend')] },
+    // Membership changes affect point economics and are intentionally more
+    // privileged than ordinary moderator suspension actions.
+    { preHandler: [requirePermission('settings.manage')] },
     async (request, reply) => {
       const { id: identifier } = request.params as { id: string };
       const schema = z.object({

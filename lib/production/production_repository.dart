@@ -2381,48 +2381,30 @@ class ProductionRepository {
 
   Future<bool> verifyYouTubeMembership(String uid) async {
     if (uid.isEmpty || uid == 'guest') return false;
-    try {
-      final doc = await firestore.collection('users').doc(uid).get();
-      final currentMember = doc.data()?['isYouTubeMember'] == true;
-      if (currentMember) return true;
-
-      if (!kIsWeb) {
-        if (!_googleInitialized) {
-          await GoogleSignIn.instance.initialize();
-          _googleInitialized = true;
-        }
-        final account = await GoogleSignIn.instance.authenticate();
-        final idToken = account.authentication.idToken ?? '';
-        bool verified = false;
-        if (idToken.isNotEmpty) {
-          verified = await externalContent.checkYouTubeMembership(idToken);
-        }
-        if (verified) {
-          await setUserYouTubeMembership(uid: uid, isMember: true);
-          return true;
-        }
-      }
-    } catch (_) {}
-    return false;
-  }
-
-  Future<void> setUserYouTubeMembership({
-    required String uid,
-    required bool isMember,
-  }) async {
-    await firestore.collection('users').doc(uid).set({
-      'isYouTubeMember': isMember,
-      'youtubeMembershipVerifiedAt': isMember
-          ? FieldValue.serverTimestamp()
-          : null,
-      'updatedAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    // Automatic paid-channel membership verification is not configured yet.
+    // Never infer it from a normal subscription or let a client write its own
+    // multiplier. The API/admin directory remains the source of truth.
+    return _localProfiles[uid]?.isYouTubeMember ?? false;
   }
 
   Future<void> setAdminYouTubeMembership({
     required String uid,
     required bool isMember,
-  }) => apiRepo.setAdminYouTubeMembership(userId: uid, isMember: isMember);
+  }) async {
+    final reason = isMember
+        ? 'Gold membership granted from the admin user directory.'
+        : 'Gold membership revoked from the admin user directory.';
+    await apiRepo.setAdminYouTubeMembership(userId: uid, isMember: isMember);
+    // Advanced challenges still use Firebase Functions, so mirror the audited
+    // admin decision there. This callable independently verifies admin access.
+    await functions
+        .httpsCallable('adminSetYouTubeMembership')
+        .call<Map<String, dynamic>>({
+          'targetUserId': uid,
+          'isMember': isMember,
+          'reason': reason,
+        });
+  }
 
   // ── Games Arena Visibility Toggle ───────────────────────────────────────
 
