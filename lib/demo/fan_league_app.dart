@@ -56,9 +56,7 @@ const _lightSuccess = Color(0xFF087F5B);
 
 bool _isDarkTheme(BuildContext context) => true;
 
-/// The production accent deliberately changes with the selected appearance.
-/// Dark mode keeps the original stadium-lime identity, while light mode uses
-/// the higher-contrast royal blue palette requested for daylight surfaces.
+/// Abu 3meer uses the stadium-lime accent throughout its dark-only interface.
 Color _productionPrimary(BuildContext context) => _lime;
 
 Color _productionOnPrimary(BuildContext context) => _ink;
@@ -2614,12 +2612,6 @@ class _SettingsPageState extends State<_SettingsPage> {
                   leading: Icon(Icons.language_rounded),
                   title: Text('Language'),
                   trailing: Text('English', style: TextStyle(color: _muted)),
-                ),
-                const ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.dark_mode_rounded),
-                  title: Text('Appearance'),
-                  trailing: Text('Dark', style: TextStyle(color: _muted)),
                 ),
               ],
             ),

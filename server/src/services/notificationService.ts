@@ -4,7 +4,8 @@ import {
   isPermanentPushTokenError,
   normalizePushData,
   notificationPreferenceColumn,
-  summarizePushFailureCodes,
+  safePushFailureCode,
+  summarizePushFailures,
   type NotificationCategory,
 } from './notificationDomain.js';
 
@@ -274,11 +275,12 @@ export async function sendTestNotification(userId: string) {
     'Push notifications are connected to your device.',
     { category: 'general', route: '/settings', test: 'true' }
   );
-  const diagnostics = summarizePushFailureCodes(
-    response.responses.map(result => result.error?.code)
+  const diagnostics = summarizePushFailures(
+    response.responses.filter(result => !result.success).map(result => result.error)
   );
   for (let index = 0; index < devices.rows.length; index += 1) {
-    if (isPermanentPushTokenError(response.responses[index]?.error?.code)) {
+    const result = response.responses[index];
+    if (!result?.success && isPermanentPushTokenError(safePushFailureCode(result.error))) {
       await query('UPDATE devices SET is_active = false WHERE id = $1', [devices.rows[index].id]);
     }
   }
@@ -293,6 +295,7 @@ export async function sendTestNotification(userId: string) {
     sentCount: response.successCount,
     failedCount: response.failureCount,
     noRegisteredDevice: false,
+    diagnosticVersion: 2,
     ...diagnostics,
   };
 }

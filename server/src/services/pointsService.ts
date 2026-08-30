@@ -20,6 +20,7 @@ const memberMultiplierSources = new Set<PointSourceType>([
   'prediction_winner',
   'prediction_win',
   'video_phrase',
+  'player_card',
 ]);
 
 export function isMemberMultiplierEligible(sourceType: PointSourceType): boolean {
@@ -27,8 +28,8 @@ export function isMemberMultiplierEligible(sourceType: PointSourceType): boolean
 }
 
 /**
- * YouTube membership doubles only prediction rewards and answers to video
- * questions. Sign-up, daily attendance, Player Cards, achievements and manual
+ * YouTube membership doubles prediction rewards and video-challenge answers,
+ * including Player Cards. Sign-up, daily attendance, achievements and manual
  * adjustments deliberately remain at their base value.
  */
 export function memberMultiplierForSource(

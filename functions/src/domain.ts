@@ -29,6 +29,7 @@ const MEMBER_MULTIPLIER_SOURCES = new Set<PointSource>([
   // path, so it follows the same policy as every other prediction reward.
   "bothTeamsScore",
   "videoQuestion",
+  "playerCard",
 ]);
 
 export function isMemberMultiplierEligible(source: PointSource): boolean {
@@ -36,9 +37,9 @@ export function isMemberMultiplierEligible(source: PointSource): boolean {
 }
 
 /**
- * Channel membership doubles prediction rewards and video-question answers
- * only. All other activities remain at their base value even if a caller
- * accidentally asks to apply the member multiplier.
+ * Channel membership doubles prediction rewards and video-challenge answers,
+ * including Player Cards. All other activities remain at their base value even
+ * if a caller accidentally asks to apply the member multiplier.
  */
 export function memberMultiplierForSource(
   source: PointSource,

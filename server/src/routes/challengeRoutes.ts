@@ -22,7 +22,7 @@ export async function challengeRoutes(fastify: FastifyInstance) {
 
     const res = await query(
       `SELECT id, video_id, title, description, kind, status, reward_points,
-              CASE WHEN kind = 'playerCard' THEN reward_points ELSE member_points END AS member_points,
+              reward_points * 2 AS member_points,
               video_url, image_url, maximum_attempts, member_only, starts_at, ends_at
        FROM challenges
        WHERE status = 'open' AND starts_at <= CURRENT_TIMESTAMP AND ends_at >= CURRENT_TIMESTAMP

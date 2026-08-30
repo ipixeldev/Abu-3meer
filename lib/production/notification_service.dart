@@ -338,7 +338,14 @@ class NotificationService {
     // FCM explicitly told us the token is permanently unusable (stale,
     // unregistered, or minted by another Firebase sender). Rotate it once,
     // register the replacement, and retry without requiring a reinstall.
-    if (result['requiresTokenRefresh'] == true) {
+    final firstFailureCodes =
+        (result['failureCodes'] as List?)?.whereType<String>().toList(
+          growable: false,
+        ) ??
+        const <String>[];
+    final legacyUnknownFailure =
+        (result['failedCount'] as num? ?? 0) > 0 && firstFailureCodes.isEmpty;
+    if (result['requiresTokenRefresh'] == true || legacyUnknownFailure) {
       await _replaceMessagingToken(repository);
       result = await repository.sendPushNotificationTest();
     }
@@ -354,6 +361,13 @@ class NotificationService {
       final codes =
           (result['failureCodes'] as List?)?.whereType<String>().join(', ') ??
           'unknown';
+      if (codes.isEmpty || codes == 'unknown') {
+        throw AbuApiException(
+          statusCode: 502,
+          message: 'The Ubuntu push API did not return Firebase diagnostics. Pull the current backend build, rebuild the API container, and try again.',
+          details: result,
+        );
+      }
       throw AbuApiException(
         statusCode: 502,
         message: 'Firebase rejected the push notification ($codes).',

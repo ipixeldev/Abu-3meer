@@ -2822,8 +2822,8 @@ class _ProductionHome extends StatelessWidget {
       kicker: profile.isYouTubeMember
           ? abuText(
               context,
-              'YouTube Member · 2× predictions & video answers',
-              'عضو يوتيوب · ×٢ للتوقعات وإجابات الفيديو',
+              'YouTube Member · 2× predictions & video challenges',
+              'عضو يوتيوب · ×٢ للتوقعات وتحديات الفيديو',
             )
           : abuText(context, 'Abu 3meer Community', 'مجتمع أبو عمير'),
       title: profile.isGuest
@@ -3034,9 +3034,7 @@ class _DirectChallengeInlineCardState
       final basePoints = widget.challenge.rewardPoints > 0
           ? widget.challenge.rewardPoints
           : 10;
-      final memberEligible =
-          widget.challenge.canonicalKind != 'playerCard' &&
-          widget.profile.isYouTubeMember;
+      final memberEligible = widget.profile.isYouTubeMember;
       final points = result['points'] ?? basePoints * (memberEligible ? 2 : 1);
       if (correct) {
         setState(() => _solved = true);
@@ -3103,7 +3101,7 @@ class _DirectChallengeInlineCardState
     final isPlayerCard = challenge.canonicalKind == 'playerCard';
     final isMember = widget.profile.isYouTubeMember;
     final basePoints = challenge.rewardPoints > 0 ? challenge.rewardPoints : 10;
-    final memberEligible = isMember && !isPlayerCard;
+    final memberEligible = isMember;
     final pointsText = memberEligible
         ? '+${basePoints * 2} XP (2×)'
         : '+$basePoints XP';
@@ -10348,33 +10346,6 @@ class _ProductionSettings extends StatelessWidget {
               title: abuText(context, 'EXPERIENCE', 'تجربة الاستخدام'),
               children: [
                 ListTile(
-                  leading: Icon(Icons.contrast_rounded, color: primary),
-                  title: Text(abuText(context, 'Appearance', 'المظهر')),
-                  subtitle: Text(
-                    abuText(
-                      context,
-                      'Choose the theme used across the app.',
-                      'اختر المظهر المستخدم في التطبيق.',
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
-                  child: SizedBox(
-                    width: double.infinity,
-                    child: ListTile(
-                      leading: const Icon(Icons.dark_mode_rounded),
-                      title: Text(
-                        abuText(context, 'Dark mode', 'الوضع الداكن'),
-                      ),
-                      subtitle: Text(
-                        abuText(context, 'Always enabled', 'مفعّل دائماً'),
-                      ),
-                    ),
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
                   leading: Icon(Icons.language_rounded, color: primary),
                   title: Text(abuText(context, 'Language', 'اللغة')),
                   subtitle: Text(
@@ -10542,8 +10513,8 @@ class _ProductionSettings extends StatelessWidget {
                       Text(
                         abuText(
                           context,
-                          'Verified members receive 2× points on predictions and video-question answers only. Signup and daily streak points stay unchanged.',
-                          'يحصل الأعضاء الموثقون على نقاط ×٢ للتوقعات وإجابات أسئلة الفيديو فقط. لا تتضاعف نقاط التسجيل أو السلسلة اليومية.',
+                          'Verified members receive 2× points on predictions and video challenges, including Player Cards. Signup and daily streak points stay unchanged.',
+                          'يحصل الأعضاء الموثقون على نقاط ×٢ للتوقعات وتحديات الفيديو، بما فيها بطاقات اللاعبين. لا تتضاعف نقاط التسجيل أو السلسلة اليومية.',
                         ),
                         style: TextStyle(color: _muted, height: 1.45),
                       ),

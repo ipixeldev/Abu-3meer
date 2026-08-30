@@ -36,8 +36,8 @@ bool isMemberMultiplierEligible(PointSource source) => switch (source) {
   PointSource.exactPrediction ||
   PointSource.firstScorer ||
   PointSource.winnerOutcome ||
-  PointSource.videoQuestion => true,
-  PointSource.playerCard ||
+  PointSource.videoQuestion ||
+  PointSource.playerCard => true,
   PointSource.dailyStreak ||
   PointSource.signUpBonus ||
   PointSource.adminAdjustment => false,

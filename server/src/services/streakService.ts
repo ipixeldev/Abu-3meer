@@ -86,7 +86,7 @@ export async function checkInDailyStreak(
       ruleRes.rows[0]?.base_points ?? config.pointDefaults.dailyStreak,
     );
     // Daily attendance is intentionally never eligible for the YouTube member
-    // bonus. The 2x benefit applies only to predictions and video answers.
+    // bonus. The 2x benefit applies only to predictions and video challenges.
     const multiplier = 1;
     const finalPoints = Math.round(basePoints * multiplier);
     const idempotencyKey = `streak:${userId}:${today}`;

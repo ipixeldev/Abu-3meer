@@ -40,20 +40,20 @@ test("launch point rules apply normal and member multipliers", () => {
   assert.equal(calculatePoints(20, 2), 40);
 });
 
-test("member multiplier is limited to predictions and video questions", () => {
+test("member multiplier is limited to predictions and video challenges", () => {
   for (const source of [
     "exactPrediction",
     "firstScorer",
     "winnerOutcome",
     "bothTeamsScore",
     "videoQuestion",
+    "playerCard",
   ] as const) {
     assert.equal(isMemberMultiplierEligible(source), true);
     assert.equal(memberMultiplierForSource(source, 2), 2);
   }
 
   for (const source of [
-    "playerCard",
     "dailyStreak",
     "signUpBonus",
     "achievement",

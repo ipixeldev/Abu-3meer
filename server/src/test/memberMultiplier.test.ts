@@ -23,17 +23,18 @@ describe('YouTube member point multiplier scope', () => {
     }
   });
 
-  it('doubles video-question answers for verified members', () => {
-    assert.equal(isMemberMultiplierEligible('video_phrase'), true);
-    assert.equal(memberMultiplierForSource('video_phrase', true, 2), 2);
-    assert.equal(memberMultiplierForSource('video_phrase', false, 2), 1);
+  it('doubles all video-challenge answers for verified members', () => {
+    for (const source of ['video_phrase', 'player_card'] as PointSourceType[]) {
+      assert.equal(isMemberMultiplierEligible(source), true);
+      assert.equal(memberMultiplierForSource(source, true, 2), 2);
+      assert.equal(memberMultiplierForSource(source, false, 2), 1);
+    }
   });
 
-  it('never doubles signup, daily streak, or Player Card points', () => {
+  it('never doubles signup, daily streak, achievement, or admin points', () => {
     const baseOnlySources: PointSourceType[] = [
       'signup_bonus',
       'daily_streak',
-      'player_card',
       'admin_adjustment',
       'achievement_bonus',
     ];
@@ -50,5 +51,6 @@ describe('YouTube member point multiplier scope', () => {
     assert.equal(enforceEligibleMultiplier('signup_bonus', 10), 1);
     assert.equal(enforceEligibleMultiplier('prediction_exact', 2), 2);
     assert.equal(enforceEligibleMultiplier('video_phrase', 2), 2);
+    assert.equal(enforceEligibleMultiplier('player_card', 2), 2);
   });
 });

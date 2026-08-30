@@ -45,7 +45,7 @@ void main() {
       );
     });
 
-    test('Player Cards stay at base points for channel members', () {
+    test('Player Cards receive the channel-member video reward multiplier', () {
       expect(
         calculatePoints(
           basePoints: 20,
@@ -54,10 +54,25 @@ void main() {
             isMember: true,
           ),
         ),
-        20,
+        40,
       );
+      expect(isMemberMultiplierEligible(PointSource.playerCard), isTrue);
       expect(isMemberMultiplierEligible(PointSource.dailyStreak), isFalse);
       expect(isMemberMultiplierEligible(PointSource.signUpBonus), isFalse);
+      expect(
+        memberMultiplierForSource(
+          source: PointSource.dailyStreak,
+          isMember: true,
+        ),
+        1,
+      );
+      expect(
+        memberMultiplierForSource(
+          source: PointSource.signUpBonus,
+          isMember: true,
+        ),
+        1,
+      );
     });
 
     test('negative point inputs are rejected', () {
