@@ -145,4 +145,34 @@ void main() {
     );
     expect(source, contains('refreshExclusiveVideos(force: true)'));
   });
+
+  test('launch-popup editor remains compatible with AlertDialog intrinsics', () {
+    final source = File('lib/demo/production_features.dart').readAsStringSync();
+    final editorStart = source.indexOf(
+      'Future<void> editAnnouncement(BuildContext context)',
+    );
+    final editorEnd = source.indexOf(
+      'Future<void> manageAchievements',
+      editorStart,
+    );
+    final editor = source.substring(editorStart, editorEnd);
+
+    // AlertDialog uses IntrinsicWidth. A LayoutBuilder anywhere in this
+    // subtree throws during layout on Android and leaves only the dim barrier.
+    expect(editor, isNot(contains('LayoutBuilder(')));
+    expect(editor, contains('MediaQuery.sizeOf(context).width'));
+  });
+
+  test(
+    'exclusive-video play does not depend on Android package visibility',
+    () {
+      final source = File('lib/features/videos/exclusive_videos_view.dart')
+          .readAsStringSync();
+
+      expect(source, isNot(contains('canLaunchUrl(')));
+      expect(source, contains('LaunchMode.externalApplication'));
+      expect(source, contains('LaunchMode.platformDefault'));
+      expect(source, contains('formatCompactDate'));
+    },
+  );
 }

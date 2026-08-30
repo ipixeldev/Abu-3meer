@@ -2304,29 +2304,7 @@ class _ProductionShellState extends State<_ProductionShell>
                     ? const Color(0xFF090D14)
                     : _lightSurface,
                 title: Row(
-                  children: [
-                    _LogoMark(size: narrowHeader ? 30 : 32),
-                    if (!narrowHeader || profile.isGuest) ...[
-                      SizedBox(width: narrowHeader ? 7 : 10),
-                      Flexible(
-                        child: Text(
-                          AbuBrand.appName.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.fade,
-                          softWrap: false,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: narrowHeader ? 14 : 16,
-                            letterSpacing: .6,
-                            color:
-                                Theme.of(context).brightness == Brightness.dark
-                                ? Colors.white
-                                : _lightInk,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
+                  children: [_BrandHeaderLogo(height: narrowHeader ? 34 : 40)],
                 ),
                 actions: [
                   if (profile.isGuest)
@@ -2576,6 +2554,35 @@ class _LiquidGlassNavBar extends StatelessWidget {
   }
 }
 
+class _BrandHeaderLogo extends StatelessWidget {
+  const _BrandHeaderLogo({required this.height});
+
+  final double height;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    image: true,
+    label: AbuBrand.appName,
+    child: Image.asset(
+      'assets/branding/logo.png',
+      height: height,
+      width: height * 2.5,
+      fit: BoxFit.contain,
+      alignment: AlignmentDirectional.centerStart,
+      filterQuality: FilterQuality.high,
+      errorBuilder: (context, error, stackTrace) => Text(
+        AbuBrand.appName.toUpperCase(),
+        style: TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w900,
+          fontSize: height * .4,
+          letterSpacing: .6,
+        ),
+      ),
+    ),
+  );
+}
+
 class _ProductionDesktopScaffold extends StatelessWidget {
   const _ProductionDesktopScaffold({
     required this.items,
@@ -2603,36 +2610,9 @@ class _ProductionDesktopScaffold extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                const _LogoMark(size: 42),
-                const SizedBox(width: 13),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        abuText(context, 'ABU 3MEER', 'أبو عمير'),
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: .9,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        abuText(context, 'FAN PLATFORM', 'منصة الجماهير'),
-                        style: TextStyle(
-                          color: _muted,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.4,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+            const Align(
+              alignment: AlignmentDirectional.centerStart,
+              child: _BrandHeaderLogo(height: 48),
             ),
             const SizedBox(height: 28),
             Padding(

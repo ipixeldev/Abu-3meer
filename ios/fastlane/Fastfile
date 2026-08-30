@@ -1,18 +1,79 @@
 default_platform(:ios)
 
+def abu3meer_api_key
+  app_store_connect_api_key(
+    key_id: ENV.fetch("APP_STORE_CONNECT_KEY_ID"),
+    issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
+    key_filepath: ENV.fetch("APP_STORE_CONNECT_API_KEY_PATH"),
+    in_house: false
+  )
+end
+
+def abu3meer_metadata(locale, filename)
+  File.read(
+    File.expand_path("metadata/#{locale}/#{filename}.txt", __dir__),
+    encoding: "UTF-8"
+  ).strip
+end
+
 platform :ios do
   lane :check_testflight do
-    api_key = app_store_connect_api_key(
-      key_id: ENV.fetch("APP_STORE_CONNECT_KEY_ID"),
-      issuer_id: ENV.fetch("APP_STORE_CONNECT_ISSUER_ID"),
-      key_filepath: ENV.fetch("APP_STORE_CONNECT_API_KEY_PATH"),
-      in_house: false
-    )
+    abu3meer_api_key
 
     app = Spaceship::ConnectAPI::App.find("com.abu3meer.app")
     builds = app.get_builds
     builds.each do |b|
       UI.success("TestFlight Build #{b.version} -> Processing State: #{b.processing_state} | Upload Date: #{b.uploaded_date}")
     end
+  end
+
+  desc "Upload an existing IPA and distribute it to both Abu 3meer TestFlight groups"
+  lane :upload_testflight do |options|
+    api_key = abu3meer_api_key
+    ipa_path = options[:ipa] || ENV.fetch("IPA_PATH")
+    app = Spaceship::ConnectAPI::App.find("com.abu3meer.app")
+    beta_review = Spaceship::ConnectAPI
+      .get_beta_app_review_detail(filter: { app: app.id })
+      .to_models
+      .first
+    UI.user_error!("TestFlight review information is missing") unless beta_review
+
+    localized_app_info = ["ar-SA", "en-US"].to_h do |locale|
+      [
+        locale,
+        {
+          feedback_email: beta_review.contact_email,
+          marketing_url: abu3meer_metadata(locale, "marketing_url"),
+          privacy_policy_url: abu3meer_metadata(locale, "privacy_url"),
+          description: abu3meer_metadata(locale, "description")
+        }
+      ]
+    end
+    localized_build_info = ["ar-SA", "en-US"].to_h do |locale|
+      [locale, { whats_new: abu3meer_metadata(locale, "release_notes") }]
+    end
+
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: ipa_path,
+      app_identifier: "com.abu3meer.app",
+      localized_app_info: localized_app_info,
+      localized_build_info: localized_build_info,
+      beta_app_review_info: {
+        contact_email: beta_review.contact_email,
+        contact_first_name: beta_review.contact_first_name,
+        contact_last_name: beta_review.contact_last_name,
+        contact_phone: beta_review.contact_phone,
+        demo_account_required: beta_review.demo_account_required,
+        demo_account_name: beta_review.demo_account_name,
+        demo_account_password: beta_review.demo_account_password,
+        notes: beta_review.notes
+      },
+      distribute_external: true,
+      groups: ["Abu 3meer External"],
+      notify_external_testers: true,
+      skip_waiting_for_build_processing: false,
+      uses_non_exempt_encryption: false
+    )
   end
 end

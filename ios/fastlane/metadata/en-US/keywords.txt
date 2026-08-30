@@ -1,1 +1,1 @@
-football,soccer,abu 3meer,predictions,fan card,leaderboard,live scores,sports
+football,soccer,predictions,fan cards,video challenges,leaderboard,scores,rewards

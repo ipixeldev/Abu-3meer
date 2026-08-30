@@ -6537,115 +6537,129 @@ class _ProductionAdminTools extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: _surface2,
+                  Material(
+                    color: _surface2,
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: _line),
+                      side: BorderSide(color: _line),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          abuText(
-                            context,
-                            'SCHEDULE & DELIVERY',
-                            'الجدولة والعرض',
-                          ),
-                          style: TextStyle(
-                            color: _productionPrimary(context),
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.1,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: frequency,
-                          decoration: InputDecoration(
-                            labelText: abuText(
+                    clipBehavior: Clip.antiAlias,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            abuText(
                               context,
-                              'How often should each user see it?',
-                              'كم مرة يراها كل مستخدم؟',
+                              'SCHEDULE & DELIVERY',
+                              'الجدولة والعرض',
+                            ),
+                            style: TextStyle(
+                              color: _productionPrimary(context),
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.1,
                             ),
                           ),
-                          items: [
-                            DropdownMenuItem(
-                              value: 'once',
-                              child: Text(
-                                abuText(
-                                  context,
-                                  'Once for this campaign',
-                                  'مرة واحدة لهذه الحملة',
-                                ),
-                              ),
-                            ),
-                            DropdownMenuItem(
-                              value: 'daily',
-                              child: Text(
-                                abuText(context, 'Once per day', 'مرة يومياً'),
-                              ),
-                            ),
-                            DropdownMenuItem(
-                              value: 'session',
-                              child: Text(
-                                abuText(
-                                  context,
-                                  'Once per app session',
-                                  'مرة في كل جلسة',
-                                ),
-                              ),
-                            ),
-                            DropdownMenuItem(
-                              value: 'always',
-                              child: Text(
-                                abuText(
-                                  context,
-                                  'Every app launch',
-                                  'عند كل تشغيل',
-                                ),
-                              ),
-                            ),
-                          ],
-                          onChanged: (value) =>
-                              setDialogState(() => frequency = value ?? 'once'),
-                        ),
-                        const SizedBox(height: 8),
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final start = _AdminDateTile(
-                              label: abuText(
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            initialValue: frequency,
+                            decoration: InputDecoration(
+                              labelText: abuText(
                                 context,
-                                'Starts (date & time)',
-                                'يبدأ (التاريخ والوقت)',
+                                'How often should each user see it?',
+                                'كم مرة يراها كل مستخدم؟',
                               ),
-                              value: startsAt,
-                              onChanged: (value) =>
-                                  setDialogState(() => startsAt = value),
-                            );
-                            final end = _AdminDateTile(
-                              label: abuText(
-                                context,
-                                'Expires (date & time)',
-                                'ينتهي (التاريخ والوقت)',
+                            ),
+                            items: [
+                              DropdownMenuItem(
+                                value: 'once',
+                                child: Text(
+                                  abuText(
+                                    context,
+                                    'Once for this campaign',
+                                    'مرة واحدة لهذه الحملة',
+                                  ),
+                                ),
                               ),
-                              value: endsAt,
-                              onChanged: (value) =>
-                                  setDialogState(() => endsAt = value),
-                            );
-                            if (constraints.maxWidth < 560) {
-                              return Column(children: [start, end]);
-                            }
-                            return Row(
-                              children: [
-                                Expanded(child: start),
-                                const SizedBox(width: 10),
-                                Expanded(child: end),
-                              ],
-                            );
-                          },
-                        ),
-                      ],
+                              DropdownMenuItem(
+                                value: 'daily',
+                                child: Text(
+                                  abuText(
+                                    context,
+                                    'Once per day',
+                                    'مرة يومياً',
+                                  ),
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: 'session',
+                                child: Text(
+                                  abuText(
+                                    context,
+                                    'Once per app session',
+                                    'مرة في كل جلسة',
+                                  ),
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: 'always',
+                                child: Text(
+                                  abuText(
+                                    context,
+                                    'Every app launch',
+                                    'عند كل تشغيل',
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) => setDialogState(
+                              () => frequency = value ?? 'once',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Builder(
+                            builder: (context) {
+                              final start = _AdminDateTile(
+                                label: abuText(
+                                  context,
+                                  'Starts (date & time)',
+                                  'يبدأ (التاريخ والوقت)',
+                                ),
+                                value: startsAt,
+                                onChanged: (value) =>
+                                    setDialogState(() => startsAt = value),
+                              );
+                              final end = _AdminDateTile(
+                                label: abuText(
+                                  context,
+                                  'Expires (date & time)',
+                                  'ينتهي (التاريخ والوقت)',
+                                ),
+                                value: endsAt,
+                                onChanged: (value) =>
+                                    setDialogState(() => endsAt = value),
+                              );
+                              // AlertDialog measures its content intrinsically.
+                              // LayoutBuilder cannot answer intrinsic-size
+                              // requests, which left only the modal barrier on
+                              // Android and made the popup editor look blank.
+                              final compact =
+                                  MediaQuery.sizeOf(context).width < 720;
+                              if (compact) {
+                                return Column(children: [start, end]);
+                              }
+                              return Row(
+                                children: [
+                                  Expanded(child: start),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: end),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),

@@ -2,7 +2,7 @@ name: abu_3meer
 description: "Abu 3meer — predict exact scores, answer video questions, find Player Cards, and climb the leaderboard."
 publish_to: 'none'
 
-version: 1.1.0+3
+version: 1.1.0+4
 
 environment:
   sdk: ^3.13.0
@@ -56,5 +56,6 @@ flutter:
   assets:
     - assets/images/
     - assets/animations/
+    - assets/branding/
 
   # Brand and editorial assets are bundled for reliable mobile/PWA rendering.
