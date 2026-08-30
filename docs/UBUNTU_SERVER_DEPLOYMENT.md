@@ -40,15 +40,14 @@ connections on UDP/TCP 7844 with TCP 443 fallback. Do not open ports 3001, 5432,
 ## 3. Prepare Git and the Ubuntu host
 
 The Flutter app has a path dependency at `packages/liquid_glass_widgets`. It is
-declared as a Git submodule, so clone recursively. On the new server, replace
-The deployment branch for this release is `agent/production-backend`:
+declared as a Git submodule, so clone recursively. The deployment branch for
+this release is `agent/production-backend`:
 
 ```bash
 sudo mkdir -p /opt/abu3meer
 sudo chown "$USER:$USER" /opt/abu3meer
-git clone --recurse-submodules git@github.com:ipixeldev/Abu-3meer.git /opt/abu3meer
+git clone --recurse-submodules --branch agent/production-backend git@github.com:ipixeldev/Abu-3meer.git /opt/abu3meer
 cd /opt/abu3meer
-git checkout agent/production-backend
 git submodule update --init --recursive
 ```
 
