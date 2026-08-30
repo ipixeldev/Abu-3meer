@@ -64,15 +64,16 @@ test('normalizes API-Football fixtures into the stable mobile match shape', () =
   assert.equal(matches[1]?.home_score, 1);
 });
 
-test('uses a date range that retains live fixtures in the weekly feed', () => {
+test('uses a date range that retains recent completed fixtures in the weekly feed', () => {
   const window = apiFootballWeekWindow(
     new Date('2026-08-30T15:53:00Z'),
     7,
   );
-  assert.equal(window.from, '2026-08-30');
+  assert.equal(window.from, '2026-08-23');
   assert.equal(window.to, '2026-09-07');
   assert.equal(window.season, '2026');
   assert.ok(Date.parse('2026-08-30T15:00:00Z') >= window.earliest);
+  assert.ok(Date.parse('2026-08-24T15:00:00Z') >= window.earliest);
   assert.ok(Date.parse('2026-09-06T14:15:00Z') <= window.latest);
 
   assert.equal(
@@ -85,12 +86,13 @@ test('maps API-Football details, standings, teams and player catalogs', () => {
   const details = normalizeApiFootballMatchDetailsPayload({
     fixture: [
       {
-        fixture: { venue: { name: 'Bernabéu' } },
+        fixture: { venue: { name: 'Bernabéu' }, status: { short: 'FT' } },
         league: { id: 140, season: 2026 },
         teams: {
           home: { id: 541, name: 'Real Madrid' },
           away: { id: 548, name: 'Real Sociedad' },
         },
+        goals: { home: 2, away: 1 },
       },
     ],
     events: [
@@ -142,6 +144,9 @@ test('maps API-Football details, standings, teams and player catalogs', () => {
   assert.equal(details.isProviderLimited, false);
   assert.equal(details.venue, 'Bernabéu');
   assert.equal(details.season, '2026');
+  assert.equal(details.status, 'completed');
+  assert.equal(details.homeScore, 2);
+  assert.equal(details.awayScore, 1);
   assert.equal(details.timeline[0]?.minute, '45+2');
   assert.equal(details.timeline[0]?.type, 'goal');
   assert.equal(details.timeline[0]?.isHome, true);
@@ -176,6 +181,8 @@ test('maps API-Football details, standings, teams and player catalogs', () => {
 test('normalizes provider cards, goals, assists and substitutions', () => {
   assert.equal(normalizeTimelineType('Card', 'Yellow Card'), 'yellow_card');
   assert.equal(normalizeTimelineType('Card', 'Red Card'), 'red_card');
+  assert.equal(normalizeTimelineType('Goal', 'Missed Penalty'), 'missed_penalty');
+  assert.equal(normalizeTimelineType('Goal', 'Penalty Saved'), 'missed_penalty');
   assert.equal(normalizeTimelineType('Goal', 'Penalty'), 'penalty_goal');
   assert.equal(normalizeTimelineType('Substitution', ''), 'sub');
 
@@ -187,6 +194,8 @@ test('normalizes provider cards, goals, assists and substitutions', () => {
             strHomeTeam: 'Real Madrid',
             strVenue: 'Santiago Bernabéu',
             strSeason: '2026-2027',
+            intHomeScore: '3',
+            intAwayScore: '0',
           },
         ],
       },
@@ -259,6 +268,9 @@ test('normalizes provider cards, goals, assists and substitutions', () => {
   assert.equal(details.venue, 'Santiago Bernabéu');
   assert.equal(details.season, '2026-2027');
   assert.equal(details.isProviderLimited, true);
+  assert.equal(details.status, 'completed');
+  assert.equal(details.homeScore, 3);
+  assert.equal(details.awayScore, 0);
 });
 
 test('uses short live-data TTLs and longer stable-section TTLs', () => {

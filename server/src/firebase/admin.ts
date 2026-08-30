@@ -1,9 +1,8 @@
 import admin from 'firebase-admin';
 import { config } from '../config.js';
-import { isUnclassifiedPushTransportFailure } from '../services/notificationDomain.js';
 
 let initialized = false;
-let legacyMessagingTransportEnabled = false;
+let messagingTransportConfigured = false;
 
 export function firebaseMessagingIsConfigured(): boolean {
   return Boolean(config.firebase.clientEmail && config.firebase.privateKey);
@@ -96,40 +95,13 @@ export async function sendPushNotification(
   };
 
   const messaging = admin.messaging();
-  let response: PushBatchResponse;
-  try {
-    response = await messaging.sendEachForMulticast(message);
-  } catch (error) {
-    if (legacyMessagingTransportEnabled || !isUnclassifiedPushTransportFailure(error)) {
-      throw error;
-    }
-    legacyMessagingTransportEnabled = true;
+  if (!messagingTransportConfigured) {
+    // Configure the stable HTTP/1.1 transport before the only provider call.
+    // Retrying an HTTP/2 batch after an ambiguous socket/session failure can
+    // deliver the same logical notification twice even though the first call
+    // did not return an acknowledgement to this process.
     messaging.enableLegacyHttpTransport();
-    console.warn(
-      '[Firebase Admin] FCM HTTP/2 session failed before a provider response; retrying over HTTP/1.1.',
-    );
-    return await messaging.sendEachForMulticast(message);
+    messagingTransportConfigured = true;
   }
-
-  // Firebase Admin's HTTP/2 batch transport can reject every request with a
-  // plain Error (no Firebase/APNs code), especially after a session/socket
-  // failure. Retry exactly once using the SDK's stable HTTP/1.1 transport.
-  // Provider-coded failures are never retried here, so invalid tokens and
-  // APNs credential errors continue through the normal recovery path.
-  const unclassifiedTotalFailure =
-    !legacyMessagingTransportEnabled &&
-    response.successCount === 0 &&
-    response.failureCount === tokens.length &&
-    response.responses.every(
-      result => !result.success && isUnclassifiedPushTransportFailure(result.error)
-    );
-  if (unclassifiedTotalFailure) {
-    legacyMessagingTransportEnabled = true;
-    messaging.enableLegacyHttpTransport();
-    console.warn(
-      '[Firebase Admin] FCM HTTP/2 transport failed without a provider code; retrying over HTTP/1.1.',
-    );
-    response = await messaging.sendEachForMulticast(message);
-  }
-  return response;
+  return await messaging.sendEachForMulticast(message);
 }

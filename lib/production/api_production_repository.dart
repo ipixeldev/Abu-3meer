@@ -19,6 +19,47 @@ double parseApiDouble(dynamic value, [double fallback = 0]) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
+class RewardRedemptionReceipt {
+  const RewardRedemptionReceipt({
+    required this.redemptionId,
+    required this.remainingBalance,
+    required this.claimCount,
+    required this.duplicate,
+    this.stockRemaining,
+  });
+
+  final String redemptionId;
+  final int remainingBalance;
+  final int? stockRemaining;
+  final int claimCount;
+  final bool duplicate;
+}
+
+@visibleForTesting
+RewardRedemptionReceipt parseRewardRedemptionReceipt(dynamic value) {
+  if (value is! Map || value['ok'] != true) {
+    throw const FormatException('Invalid reward-redemption response.');
+  }
+  final response = Map<String, dynamic>.from(value);
+  final redemptionId = (response['redemptionId'] ?? '').toString().trim();
+  final remainingBalance = response['remainingBalance'];
+  final claimCount = response['claimCount'];
+  final stockRemaining = response['stockRemaining'];
+  if (redemptionId.isEmpty ||
+      remainingBalance is! num ||
+      claimCount is! num ||
+      (stockRemaining != null && stockRemaining is! num)) {
+    throw const FormatException('Invalid reward-redemption response.');
+  }
+  return RewardRedemptionReceipt(
+    redemptionId: redemptionId,
+    remainingBalance: remainingBalance.toInt(),
+    stockRemaining: (stockRemaining as num?)?.toInt(),
+    claimCount: claimCount.toInt(),
+    duplicate: response['duplicate'] == true,
+  );
+}
+
 @visibleForTesting
 MatchEvent parseApiMatchEvent(dynamic value) {
   if (value is! Map) {
@@ -70,7 +111,13 @@ MatchEvent parseApiMatchEvent(dynamic value) {
               .toString(),
         )?.toLocal() ??
         kickoff.toLocal(),
-    status: (match['status'] ?? 'upcoming').toString(),
+    status: switch ((match['status'] ?? 'upcoming').toString()) {
+      'scheduled' => 'draft',
+      'closed' => 'locked',
+      'finished' => 'completed',
+      'cancelled' || 'postponed' => 'disabled',
+      _ => (match['status'] ?? 'upcoming').toString(),
+    },
     homeScore: optionalInt(match['home_score'] ?? match['homeScore']),
     awayScore: optionalInt(match['away_score'] ?? match['awayScore']),
     firstScorer: (match['first_scorer'] ?? match['firstScorer'] ?? '')
@@ -83,6 +130,67 @@ MatchEvent parseApiMatchEvent(dynamic value) {
               .where((item) => item.isNotEmpty)
               .toList(growable: false)
         : const <String>[],
+  );
+}
+
+@visibleForTesting
+SavedPrediction parseApiSavedPrediction(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid prediction response.');
+  }
+  final prediction = Map<String, dynamic>.from(value);
+  final matchStatus = (prediction['match_status'] ?? '').toString();
+  final actualHomeScore = prediction['actual_home_score'];
+  final actualAwayScore = prediction['actual_away_score'];
+  final hasMatch =
+      matchStatus.isNotEmpty ||
+      actualHomeScore != null ||
+      actualAwayScore != null;
+  return SavedPrediction(
+    id: prediction['id']?.toString() ?? '',
+    userId: prediction['user_id']?.toString() ?? '',
+    matchId: prediction['match_id']?.toString() ?? '',
+    homeScore: parseApiInt(prediction['home_score']),
+    awayScore: parseApiInt(prediction['away_score']),
+    firstScorer: prediction['first_scorer']?.toString() ?? '',
+    submittedAt:
+        DateTime.tryParse(prediction['submitted_at']?.toString() ?? '') ??
+        DateTime.now(),
+    updatedAt:
+        DateTime.tryParse(prediction['updated_at']?.toString() ?? '') ??
+        DateTime.now(),
+    rewarded: prediction['rewarded'] == true,
+    pointsAwarded: parseApiInt(prediction['points_awarded']),
+    seenResult: prediction['seen_result'] == true,
+    exactMatchResult: prediction['is_exact_match'] is bool
+        ? prediction['is_exact_match'] as bool
+        : null,
+    firstScorerMatchResult: prediction['is_first_scorer_match'] is bool
+        ? prediction['is_first_scorer_match'] as bool
+        : null,
+    winnerMatchResult: prediction['is_winner_match'] is bool
+        ? prediction['is_winner_match'] as bool
+        : null,
+    homeTeam: prediction['home_team']?.toString() ?? '',
+    awayTeam: prediction['away_team']?.toString() ?? '',
+    match: hasMatch
+        ? parseApiMatchEvent(<String, dynamic>{
+            'id': prediction['match_id'],
+            'competition_name': prediction['competition_name'],
+            'home_team': prediction['home_team'],
+            'away_team': prediction['away_team'],
+            'home_logo_url': prediction['home_logo_url'],
+            'away_logo_url': prediction['away_logo_url'],
+            'kickoff_at': prediction['kickoff_at'],
+            'predictions_open_at': prediction['predictions_open_at'],
+            'predictions_close_at': prediction['predictions_close_at'],
+            'first_scorer_options': prediction['first_scorer_options'],
+            'status': matchStatus,
+            'home_score': actualHomeScore,
+            'away_score': actualAwayScore,
+            'first_scorer': prediction['actual_first_scorer'],
+          })
+        : null,
   );
 }
 
@@ -297,6 +405,98 @@ class ApiProductionRepository {
     );
   }
 
+  Future<List<MatchEvent>> fetchManagedMatches() async {
+    final response = await api.get('/admin/matches', requireAuth: true);
+    if (response is List) {
+      return response.map(parseApiMatchEvent).toList(growable: false);
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server returned an invalid managed-match list.',
+      details: response,
+    );
+  }
+
+  Future<MatchEvent> fetchMatch(String matchId) async {
+    final response = await api.get('/matches/${Uri.encodeComponent(matchId)}');
+    if (response is Map && response['match'] is Map) {
+      return parseApiMatchEvent(response['match']);
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server returned an invalid match.',
+      details: response,
+    );
+  }
+
+  Future<MatchEvent> createAdminMatch({
+    required String id,
+    required String homeTeam,
+    required String awayTeam,
+    required String competition,
+    required DateTime kickoffAt,
+    required DateTime predictionsOpenAt,
+    required DateTime predictionsCloseAt,
+    required List<String> firstScorerOptions,
+    String? homeLogoUrl,
+    String? awayLogoUrl,
+  }) async {
+    final response = await api.post(
+      '/admin/matches',
+      requireAuth: true,
+      body: <String, dynamic>{
+        'id': id,
+        'competitionName': competition.trim(),
+        'homeTeam': homeTeam.trim(),
+        'awayTeam': awayTeam.trim(),
+        'kickoffAt': kickoffAt.toUtc().toIso8601String(),
+        'predictionsOpenAt': predictionsOpenAt.toUtc().toIso8601String(),
+        'predictionsCloseAt': predictionsCloseAt.toUtc().toIso8601String(),
+        'firstScorerOptions': firstScorerOptions,
+        if (homeLogoUrl != null && homeLogoUrl.isNotEmpty)
+          'homeLogoUrl': homeLogoUrl,
+        if (awayLogoUrl != null && awayLogoUrl.isNotEmpty)
+          'awayLogoUrl': awayLogoUrl,
+      },
+    );
+    if (response is Map && response['match'] is Map) {
+      return parseApiMatchEvent(response['match']);
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server did not confirm the match.',
+      details: response,
+    );
+  }
+
+  Future<void> setAdminMatchStatus({
+    required String matchId,
+    required String status,
+  }) async {
+    await api.put(
+      '/admin/matches/${Uri.encodeComponent(matchId)}/status',
+      requireAuth: true,
+      body: {'status': status},
+    );
+  }
+
+  Future<void> settleAdminMatch({
+    required String matchId,
+    required int homeScore,
+    required int awayScore,
+    required String firstScorer,
+  }) async {
+    await api.post(
+      '/admin/matches/${Uri.encodeComponent(matchId)}/settle',
+      requireAuth: true,
+      body: <String, dynamic>{
+        'homeScore': homeScore,
+        'awayScore': awayScore,
+        'firstScorer': firstScorer.trim(),
+      },
+    );
+  }
+
   /// Shared provider-backed match cards. The server coalesces provider calls
   /// and stores the result in Redis, so every device reads the same snapshot.
   Future<List<MatchEvent>> fetchFootballWeekMatches({int days = 7}) async {
@@ -429,6 +629,7 @@ class ApiProductionRepository {
     required bool memberOnly,
     required bool notifyOnLive,
     required List<Map<String, dynamic>> questions,
+    String playerCardId = '',
   }) async {
     final response = await api.post(
       '/admin/challenges',
@@ -446,6 +647,7 @@ class ApiProductionRepository {
         'maximumAttempts': maximumAttempts,
         'memberOnly': memberOnly,
         'notifyOnLive': notifyOnLive,
+        if (playerCardId.trim().isNotEmpty) 'playerCardId': playerCardId.trim(),
         'questions': questions,
       },
     );
@@ -466,6 +668,13 @@ class ApiProductionRepository {
     await api.put(
       '/admin/challenges/${Uri.encodeComponent(challengeId)}/status',
       body: {'status': status},
+      requireAuth: true,
+    );
+  }
+
+  Future<void> deleteAdminChallenge(String challengeId) async {
+    await api.delete(
+      '/admin/challenges/${Uri.encodeComponent(challengeId)}',
       requireAuth: true,
     );
   }
@@ -506,7 +715,6 @@ class ApiProductionRepository {
         'description': card.description,
         'descriptionAr': card.descriptionAr,
         'enabled': card.enabled,
-        'sourceChallengeId': card.sourceChallengeId,
       },
     );
     if (response is Map && response['id'] != null) {
@@ -530,8 +738,20 @@ class ApiProductionRepository {
     );
   }
 
+  Future<void> deleteAdminPlayerCard(String cardId) async {
+    await api.delete(
+      '/admin/player-cards/${Uri.encodeComponent(cardId)}',
+      requireAuth: true,
+    );
+  }
+
   Future<LaunchAnnouncement?> fetchLaunchAnnouncement() async {
-    final response = await api.get('/settings/launch-announcement');
+    // Launch popups are tiny mutable settings. Always revalidate so an admin
+    // reset cannot be replayed from the native client's public GET cache.
+    final response = await api.get(
+      '/settings/launch-announcement',
+      bypassCache: true,
+    );
     return parseApiLaunchAnnouncement(response);
   }
 
@@ -569,6 +789,22 @@ class ApiProductionRepository {
       message: 'The server did not confirm the launch popup.',
       details: response,
     );
+  }
+
+  Future<void> resetAdminLaunchAnnouncement() async {
+    await api.delete('/admin/settings/launch-announcement', requireAuth: true);
+  }
+
+  Future<RewardRedemptionReceipt> redeemLoyaltyReward({
+    required String rewardId,
+    required String idempotencyKey,
+  }) async {
+    final response = await api.post(
+      '/rewards/${Uri.encodeComponent(rewardId)}/redeem',
+      requireAuth: true,
+      body: {'idempotencyKey': idempotencyKey},
+    );
+    return parseRewardRedemptionReceipt(response);
   }
 
   Future<List<AbuRewardRedemption>> fetchAdminRedemptions() async {
@@ -711,12 +947,20 @@ class ApiProductionRepository {
   Future<List<SavedPrediction>> fetchMyPredictions() async {
     final res = await api.get('/predictions/my', requireAuth: true);
     if (res is List) {
-      return res.map((p) => _parsePrediction(p)).toList();
+      return res.map(parseApiSavedPrediction).toList();
     }
     throw AbuApiException(
       statusCode: 502,
       message: 'The server returned an invalid prediction history.',
       details: res,
+    );
+  }
+
+  Future<void> markPredictionResultSeen(String predictionId) async {
+    await api.post(
+      '/predictions/${Uri.encodeComponent(predictionId)}/seen',
+      requireAuth: true,
+      body: const <String, dynamic>{},
     );
   }
 
@@ -934,12 +1178,14 @@ class ApiProductionRepository {
   Future<void> registerFcmToken(
     String fcmToken,
     String platform, {
+    required String installationId,
     String? locale,
   }) async {
     await api.post(
       '/devices/register',
       body: {
         'fcmToken': fcmToken,
+        'installationId': installationId,
         'platform': platform,
         if (locale != null && locale.isNotEmpty) 'locale': locale,
       },
@@ -952,6 +1198,16 @@ class ApiProductionRepository {
       '/devices/unregister',
       body: {'fcmToken': fcmToken},
       requireAuth: true,
+    );
+  }
+
+  Future<void> revokeFcmInstallation({
+    required String fcmToken,
+    required String installationId,
+  }) async {
+    await api.post(
+      '/devices/revoke',
+      body: {'fcmToken': fcmToken, 'installationId': installationId},
     );
   }
 
@@ -1102,18 +1358,10 @@ class ApiProductionRepository {
     );
   }
 
-  Future<Map<String, dynamic>> sendPushNotificationTest() async {
-    final result = await api.post(
-      '/notifications/test',
-      body: const <String, dynamic>{},
-      requireAuth: true,
-    );
-    return Map<String, dynamic>.from(result as Map);
-  }
-
   Future<Map<String, dynamic>> createNotificationBroadcast({
     required String title,
     required String body,
+    required String idempotencyKey,
     String? imageUrl,
     DateTime? scheduledAt,
   }) async {
@@ -1122,6 +1370,7 @@ class ApiProductionRepository {
       body: <String, dynamic>{
         'title': title.trim(),
         'body': body.trim(),
+        'idempotencyKey': idempotencyKey,
         'category': 'general',
         'targetAudience': 'all',
         'data': const <String, String>{'route': '/home'},
@@ -1142,26 +1391,17 @@ class ApiProductionRepository {
     return Map<String, dynamic>.from(result);
   }
 
-  SavedPrediction _parsePrediction(dynamic p) {
-    return SavedPrediction(
-      id: p['id']?.toString() ?? '',
-      userId: p['user_id']?.toString() ?? '',
-      matchId: p['match_id'] ?? '',
-      homeScore: (p['home_score'] ?? 0).toInt(),
-      awayScore: (p['away_score'] ?? 0).toInt(),
-      firstScorer: p['first_scorer'] ?? '',
-      submittedAt: DateTime.tryParse(p['submitted_at'] ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse(p['updated_at'] ?? '') ?? DateTime.now(),
-      rewarded: p['rewarded'] == true,
-      pointsAwarded: (p['points_awarded'] ?? 0).toInt(),
-      seenResult: p['seen_result'] == true,
-      homeTeam: p['home_team'] ?? '',
-      awayTeam: p['away_team'] ?? '',
+  Future<List<ExclusiveVideo>> fetchExclusiveVideos({
+    bool managed = false,
+    bool forceRefresh = false,
+  }) async {
+    final res = await api.get(
+      managed ? '/admin/videos' : '/videos/exclusive',
+      // The fan feed is account-specific because Gold-only links are redacted
+      // by the server for non-members.
+      requireAuth: true,
+      bypassCache: forceRefresh,
     );
-  }
-
-  Future<List<ExclusiveVideo>> fetchExclusiveVideos() async {
-    final res = await api.get('/videos/exclusive');
     if (res is List) {
       return res.map((v) => ExclusiveVideo.fromJson(v)).toList(growable: false);
     }

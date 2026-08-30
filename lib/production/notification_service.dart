@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -9,9 +10,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../firebase_options.dart';
 import 'api_production_repository.dart';
-import 'api_client.dart';
 import 'app_preferences.dart';
 import 'notification_presentation.dart';
+
+@visibleForTesting
+String newNotificationInstallationId([Random? source]) {
+  final random = source ?? Random.secure();
+  return List<int>.generate(
+    16,
+    (_) => random.nextInt(256),
+  ).map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+}
 
 @pragma('vm:entry-point')
 Future<void> abuFirebaseMessagingBackgroundHandler(
@@ -32,6 +41,12 @@ class NotificationService {
   static const String channelId = 'abu_3meer_high_importance';
   static const String _prefKeyNotificationsEnabled =
       'pref_notifications_enabled';
+  static const String _prefKeyInstallationId =
+      'notification_installation_id_v1';
+  static const String _prefKeyPendingRevocationToken =
+      'notification_pending_revocation_token_v1';
+  static const String _prefKeyPendingRevocationInstallation =
+      'notification_pending_revocation_installation_v1';
   static bool _backgroundHandlerRegistered = false;
 
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
@@ -39,6 +54,10 @@ class NotificationService {
       FlutterLocalNotificationsPlugin();
   final StreamController<Map<String, dynamic>> _notificationTapController =
       StreamController<Map<String, dynamic>>.broadcast();
+  final StreamController<Map<String, dynamic>>
+  _foregroundNotificationController =
+      StreamController<Map<String, dynamic>>.broadcast();
+  Map<String, dynamic>? _pendingNotificationTap;
 
   ApiProductionRepository? _apiRepo;
   StreamSubscription<String>? _tokenRefreshSubscription;
@@ -48,12 +67,25 @@ class NotificationService {
   String? _registeredToken;
   String? _registeredUserId;
   final Set<String> _registeringTokens = <String>{};
+  Future<void> _tokenMutationTail = Future<void>.value();
   Future<void>? _initializationFuture;
   bool _initialized = false;
   bool _appleSystemForegroundPresentationEnabled = false;
+  Future<String>? _installationIdFuture;
+  Timer? _revocationRetryTimer;
 
   Stream<Map<String, dynamic>> get notificationTaps =>
       _notificationTapController.stream;
+  Stream<Map<String, dynamic>> get foregroundNotifications =>
+      _foregroundNotificationController.stream;
+
+  /// Cold-start messages can arrive before the authenticated shell subscribes.
+  /// Keep the latest tap once so its destination can still be opened.
+  Map<String, dynamic>? takePendingNotificationTap() {
+    final pending = _pendingNotificationTap;
+    _pendingNotificationTap = null;
+    return pending;
+  }
 
   static void registerBackgroundHandler() {
     if (_backgroundHandlerRegistered || kIsWeb) return;
@@ -155,6 +187,11 @@ class NotificationService {
     // local notification. Background payloads are displayed by FCM/APNs.
     _foregroundSubscription ??= FirebaseMessaging.onMessage.listen((message) {
       final notification = message.notification;
+      if (!_foregroundNotificationController.isClosed) {
+        _foregroundNotificationController.add(
+          Map<String, dynamic>.from(message.data),
+        );
+      }
       final useLocalPresentation = shouldPresentForegroundNotificationLocally(
         isApplePlatform: isApplePlatform,
         appleSystemPresentationEnabled:
@@ -191,6 +228,7 @@ class NotificationService {
     });
 
     final preferences = await SharedPreferences.getInstance();
+    unawaited(_retryPendingDeviceRevocation());
     final enabled = preferences.getBool(_prefKeyNotificationsEnabled) ?? true;
     if (enabled && _apiRepo != null) {
       unawaited(_syncTokenSafely(_apiRepo!));
@@ -202,6 +240,7 @@ class NotificationService {
   Future<void> attachRepository(ApiProductionRepository apiRepo) async {
     if (identical(_apiRepo, apiRepo) && _authSubscription != null) return;
     _apiRepo = apiRepo;
+    unawaited(_retryPendingDeviceRevocation());
     await _authSubscription?.cancel();
     _authSubscription = apiRepo.authChanges.listen((user) {
       if (user != null) {
@@ -315,7 +354,34 @@ class NotificationService {
     }
   }
 
-  Future<void> _registerToken(String token, {bool force = false}) async {
+  Future<T> _serializeTokenMutation<T>(Future<T> Function() operation) {
+    final previous = _tokenMutationTail;
+    final completer = Completer<T>();
+    _tokenMutationTail = () async {
+      try {
+        await previous;
+      } catch (_) {
+        // Each caller receives its own error; a failed operation must not
+        // poison the queue for logout or a later token refresh.
+      }
+      try {
+        completer.complete(await operation());
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    }();
+    return completer.future;
+  }
+
+  Future<void> _registerToken(String token, {bool force = false}) =>
+      _serializeTokenMutation(
+        () => _registerTokenUnlocked(token, force: force),
+      );
+
+  Future<void> _registerTokenUnlocked(
+    String token, {
+    bool force = false,
+  }) async {
     final repository = _apiRepo;
     final currentUser = repository?.auth.currentUser;
     if (repository == null || currentUser == null) return;
@@ -331,17 +397,40 @@ class NotificationService {
         ? 'ios'
         : 'android';
     try {
+      final installationId = await _installationId();
       await repository.registerFcmToken(
         token,
         platform,
+        installationId: installationId,
         locale: AbuAppPreferences.instance.locale.toLanguageTag(),
       );
       _registeredToken = token;
       _registeredUserId = currentUser.uid;
+      await _clearPendingRevocationForInstallation(installationId);
       debugPrint('[FCM] Device token registered with the self-hosted API.');
     } finally {
       _registeringTokens.remove(token);
     }
+  }
+
+  Future<String> _installationId() {
+    final pending = _installationIdFuture;
+    if (pending != null) return pending;
+    final operation = _loadOrCreateInstallationId();
+    _installationIdFuture = operation;
+    return operation;
+  }
+
+  Future<String> _loadOrCreateInstallationId() async {
+    final preferences = await SharedPreferences.getInstance();
+    final existing = preferences.getString(_prefKeyInstallationId)?.trim();
+    if (existing != null &&
+        RegExp(r'^[A-Za-z0-9_-]{16,128}$').hasMatch(existing)) {
+      return existing;
+    }
+    final created = newNotificationInstallationId();
+    await preferences.setString(_prefKeyInstallationId, created);
+    return created;
   }
 
   Future<void> _syncTokenSafely(ApiProductionRepository repository) async {
@@ -383,76 +472,97 @@ class NotificationService {
     }
   }
 
-  Future<Map<String, dynamic>> sendRemoteTest() async {
-    final repository = _apiRepo;
-    if (repository == null || repository.auth.currentUser == null) {
-      throw StateError('Sign in before testing push notifications.');
-    }
-    // Always upsert before a test. This repairs an inactive migrated row and
-    // re-associates the token if the person changed Firebase accounts.
-    await syncTokenWithBackend(repository, forceRegistration: true);
-    var result = await repository.sendPushNotificationTest();
+  Future<void> unregisterCurrentDevice() =>
+      _serializeTokenMutation(_unregisterCurrentDeviceUnlocked);
 
-    // FCM explicitly told us the token is permanently unusable (stale,
-    // unregistered, or minted by another Firebase sender). Rotate it once,
-    // register the replacement, and retry without requiring a reinstall.
-    final firstFailureCodes =
-        (result['failureCodes'] as List?)?.whereType<String>().toList(
-          growable: false,
-        ) ??
-        const <String>[];
-    final legacyUnknownFailure =
-        (result['failedCount'] as num? ?? 0) > 0 && firstFailureCodes.isEmpty;
-    if (result['requiresTokenRefresh'] == true || legacyUnknownFailure) {
-      await _replaceMessagingToken(repository);
-      result = await repository.sendPushNotificationTest();
-    }
-
-    if (result['providerConfigurationError'] == true) {
-      throw AbuApiException(
-        statusCode: 502,
-        message: 'Firebase could not authenticate with Apple Push Notification service. Verify the APNs authentication key for com.abu3meer.app in the abu-3meer-9fd70 Firebase project.',
-        details: result['failureCodes'],
-      );
-    }
-    if ((result['failedCount'] as num? ?? 0) > 0) {
-      final codes =
-          (result['failureCodes'] as List?)?.whereType<String>().join(', ') ??
-          'unknown';
-      if (codes.isEmpty || codes == 'unknown') {
-        throw AbuApiException(
-          statusCode: 502,
-          message: 'The Ubuntu push API did not return Firebase diagnostics. Pull the current backend build, rebuild the API container, and try again.',
-          details: result,
-        );
-      }
-      throw AbuApiException(
-        statusCode: 502,
-        message: 'Firebase rejected the push notification ($codes).',
-        details: result['failureCodes'],
-      );
-    }
-    return result;
-  }
-
-  Future<void> _replaceMessagingToken(
-    ApiProductionRepository repository,
-  ) async {
-    _registeredToken = null;
-    _registeredUserId = null;
-    await _fcm.deleteToken();
-    await Future<void>.delayed(const Duration(milliseconds: 500));
-    await syncTokenWithBackend(repository, forceRegistration: true);
-  }
-
-  Future<void> unregisterCurrentDevice() async {
+  Future<void> _unregisterCurrentDeviceUnlocked() async {
     final repository = _apiRepo;
     if (repository == null || repository.auth.currentUser == null) return;
     final token = _registeredToken ?? await _fcm.getToken();
     if (token == null || token.isEmpty) return;
-    await repository.unregisterFcmToken(token);
-    _registeredToken = null;
-    _registeredUserId = null;
+    final installationId = await _installationId();
+    await _persistPendingRevocation(token, installationId);
+    try {
+      await repository.unregisterFcmToken(token);
+      await _clearPendingRevocationForInstallation(installationId);
+    } catch (_) {
+      // If the API is unreachable, invalidate the Firebase registration as a
+      // second line of defense so this signed-out installation cannot keep
+      // receiving user-targeted notifications under the old token.
+      try {
+        await _fcm.deleteToken();
+      } catch (error) {
+        debugPrint('[FCM] Local token revocation also failed: $error');
+      }
+      _schedulePendingRevocationRetry();
+      rethrow;
+    } finally {
+      _registeredToken = null;
+      _registeredUserId = null;
+    }
+  }
+
+  Future<void> _persistPendingRevocation(
+    String token,
+    String installationId,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(_prefKeyPendingRevocationToken, token);
+    await preferences.setString(
+      _prefKeyPendingRevocationInstallation,
+      installationId,
+    );
+  }
+
+  Future<void> _clearPendingRevocationForInstallation(
+    String installationId,
+  ) async {
+    final preferences = await SharedPreferences.getInstance();
+    if (preferences.getString(_prefKeyPendingRevocationInstallation) !=
+        installationId) {
+      return;
+    }
+    await preferences.remove(_prefKeyPendingRevocationToken);
+    await preferences.remove(_prefKeyPendingRevocationInstallation);
+    _revocationRetryTimer?.cancel();
+    _revocationRetryTimer = null;
+  }
+
+  Future<void> _retryPendingDeviceRevocation() =>
+      _serializeTokenMutation(_retryPendingDeviceRevocationUnlocked);
+
+  Future<void> _retryPendingDeviceRevocationUnlocked() async {
+    final repository = _apiRepo;
+    if (repository == null) return;
+    final preferences = await SharedPreferences.getInstance();
+    final token = preferences.getString(_prefKeyPendingRevocationToken)?.trim();
+    final installationId = preferences
+        .getString(_prefKeyPendingRevocationInstallation)
+        ?.trim();
+    if (token == null ||
+        token.isEmpty ||
+        installationId == null ||
+        installationId.isEmpty) {
+      _revocationRetryTimer?.cancel();
+      _revocationRetryTimer = null;
+      return;
+    }
+    try {
+      await repository.revokeFcmInstallation(
+        fcmToken: token,
+        installationId: installationId,
+      );
+      await _clearPendingRevocationForInstallation(installationId);
+    } catch (error) {
+      debugPrint('[FCM] Pending device revocation deferred: $error');
+      _schedulePendingRevocationRetry();
+    }
+  }
+
+  void _schedulePendingRevocationRetry() {
+    _revocationRetryTimer ??= Timer.periodic(const Duration(minutes: 1), (_) {
+      unawaited(_retryPendingDeviceRevocation());
+    });
   }
 
   Future<void> _showLocalNotification({
@@ -503,7 +613,11 @@ class NotificationService {
 
   void _emitTap(Map<String, dynamic> data) {
     if (!_notificationTapController.isClosed) {
-      _notificationTapController.add(data);
+      if (_notificationTapController.hasListener) {
+        _notificationTapController.add(data);
+      } else {
+        _pendingNotificationTap = Map<String, dynamic>.from(data);
+      }
     }
   }
 

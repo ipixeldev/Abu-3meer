@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import { config } from './config.js';
 import { runMigrations } from './db/migrate.js';
+import { closeDatabasePools } from './db/pool.js';
 import { startWorkers } from './queues/workers.js';
 import { redis } from './redis/client.js';
 import { authRoutes } from './routes/authRoutes.js';
@@ -23,6 +24,7 @@ import { adminContentRoutes } from './routes/adminContentRoutes.js';
 import { healthRoutes } from './routes/healthRoutes.js';
 import { videoRoutes } from './routes/videoRoutes.js';
 import { publicMediaRoutes, uploadRoutes } from './routes/uploadRoutes.js';
+import { rewardRoutes } from './routes/rewardRoutes.js';
 
 const fastify = Fastify({
   genReqId: () => crypto.randomUUID(),
@@ -42,6 +44,9 @@ const fastify = Fastify({
   trustProxy: true,
   bodyLimit: 1048576, // 1MB maximum payload
 });
+
+let stopWorkers: (() => Promise<void>) | null = null;
+let shuttingDown = false;
 
 async function main() {
   console.log('=== Starting Abu 3meer Production Backend (Hardened) ===');
@@ -152,6 +157,7 @@ async function main() {
     await v1.register(adminRoutes);
     await v1.register(adminContentRoutes);
     await v1.register(videoRoutes);
+    await v1.register(rewardRoutes);
     await v1.register(uploadRoutes);
   }, { prefix: '/api/v1' });
 
@@ -161,7 +167,7 @@ async function main() {
   await runMigrations();
 
   // Start BullMQ background workers
-  await startWorkers();
+  stopWorkers = await startWorkers();
 
   // Listen
   try {
@@ -177,9 +183,13 @@ async function main() {
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
 for (const signal of signals) {
   process.on(signal, async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log(`[Process] Received ${signal}, shutting down gracefully...`);
     await fastify.close();
+    await stopWorkers?.();
     await redis.quit();
+    await closeDatabasePools();
     process.exit(0);
   });
 }

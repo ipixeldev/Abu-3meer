@@ -830,6 +830,9 @@ class MatchDetails {
     this.season = '',
     this.provider = '',
     this.isProviderLimited = false,
+    this.status = '',
+    this.homeScore,
+    this.awayScore,
   });
 
   final List<MatchTimelineEvent> timeline;
@@ -839,6 +842,9 @@ class MatchDetails {
   final String venue;
   final String season;
   final String provider;
+  final String status;
+  final int? homeScore;
+  final int? awayScore;
 
   /// TheSportsDB's public key deliberately caps timeline, lineup, statistics,
   /// and league-table responses at five records.
@@ -859,6 +865,9 @@ class MatchDetails {
     String? season,
     String? provider,
     bool? isProviderLimited,
+    String? status,
+    int? homeScore,
+    int? awayScore,
   }) => MatchDetails(
     timeline: timeline ?? this.timeline,
     lineup: lineup ?? this.lineup,
@@ -868,6 +877,9 @@ class MatchDetails {
     season: season ?? this.season,
     provider: provider ?? this.provider,
     isProviderLimited: isProviderLimited ?? this.isProviderLimited,
+    status: status ?? this.status,
+    homeScore: homeScore ?? this.homeScore,
+    awayScore: awayScore ?? this.awayScore,
   );
 
   factory MatchDetails.fromMap(Map<String, dynamic> map) => MatchDetails(
@@ -898,6 +910,9 @@ class MatchDetails {
     venue: map['venue']?.toString() ?? '',
     season: map['season']?.toString() ?? '',
     provider: map['provider']?.toString() ?? '',
+    status: map['status']?.toString() ?? '',
+    homeScore: ((map['homeScore'] ?? map['home_score']) as num?)?.toInt(),
+    awayScore: ((map['awayScore'] ?? map['away_score']) as num?)?.toInt(),
     isProviderLimited: map['isProviderLimited'] == true,
   );
 }
@@ -1041,6 +1056,9 @@ class SavedPrediction {
     required this.rewarded,
     this.pointsAwarded = 0,
     this.seenResult = false,
+    this.exactMatchResult,
+    this.firstScorerMatchResult,
+    this.winnerMatchResult,
     this.homeTeam = '',
     this.awayTeam = '',
     this.match,
@@ -1057,23 +1075,34 @@ class SavedPrediction {
   final bool rewarded;
   final int pointsAwarded;
   final bool seenResult;
+  final bool? exactMatchResult;
+  final bool? firstScorerMatchResult;
+  final bool? winnerMatchResult;
   final String homeTeam;
   final String awayTeam;
   final MatchEvent? match;
 
-  bool get isPending =>
-      match == null ||
-      match!.homeScore == null ||
-      match!.awayScore == null ||
-      !const {'completed', 'archived'}.contains(match!.status);
+  /// Settlement is authoritative. A provider can publish a final score before
+  /// the reward transaction has completed, so match status alone must never
+  /// move a saved prediction out of the pending state.
+  bool get isPending => !rewarded;
   bool get exactScoreCorrect =>
-      !isPending &&
-      match!.homeScore == homeScore &&
-      match!.awayScore == awayScore;
+      exactMatchResult ??
+      (!isPending &&
+          match!.homeScore == homeScore &&
+          match!.awayScore == awayScore);
   bool get firstScorerCorrect =>
-      !isPending &&
-      match!.firstScorer.trim().toLowerCase() ==
-          firstScorer.trim().toLowerCase();
+      firstScorerMatchResult ??
+      (!isPending &&
+          match!.firstScorer.trim().toLowerCase() ==
+              firstScorer.trim().toLowerCase());
+  bool get winnerCorrect {
+    if (winnerMatchResult case final persisted?) return persisted;
+    if (isPending) return false;
+    return homeScore.compareTo(awayScore) ==
+        match!.homeScore!.compareTo(match!.awayScore!);
+  }
+
   factory SavedPrediction.fromDocument(
     DocumentSnapshot<Map<String, dynamic>> doc, {
     MatchEvent? match,
@@ -1109,6 +1138,9 @@ class SavedPrediction {
     bool? rewarded,
     int? pointsAwarded,
     bool? seenResult,
+    bool? exactMatchResult,
+    bool? firstScorerMatchResult,
+    bool? winnerMatchResult,
     String? homeTeam,
     String? awayTeam,
     MatchEvent? match,
@@ -1124,6 +1156,10 @@ class SavedPrediction {
     rewarded: rewarded ?? this.rewarded,
     pointsAwarded: pointsAwarded ?? this.pointsAwarded,
     seenResult: seenResult ?? this.seenResult,
+    exactMatchResult: exactMatchResult ?? this.exactMatchResult,
+    firstScorerMatchResult:
+        firstScorerMatchResult ?? this.firstScorerMatchResult,
+    winnerMatchResult: winnerMatchResult ?? this.winnerMatchResult,
     homeTeam: homeTeam ?? this.homeTeam,
     awayTeam: awayTeam ?? this.awayTeam,
     match: match ?? this.match,

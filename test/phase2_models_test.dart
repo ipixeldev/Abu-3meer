@@ -80,35 +80,38 @@ void main() {
       expect(prediction.pointsAwarded, 500);
     });
 
-    test('keeps archived matches resolved when scores are present', () {
-      final now = DateTime.utc(2026, 8, 20);
-      final prediction = SavedPrediction(
-        id: 'prediction-archived',
-        userId: 'user-1',
-        matchId: 'match-archived',
-        homeScore: 1,
-        awayScore: 0,
-        firstScorer: 'Player',
-        submittedAt: now,
-        updatedAt: now,
-        rewarded: false,
-        match: MatchEvent(
-          id: 'match-archived',
-          homeTeam: 'Home',
-          awayTeam: 'Away',
-          competition: 'League',
-          kickoffAt: now,
-          predictionOpensAt: now,
-          predictionClosesAt: now,
-          status: 'archived',
+    test(
+      'keeps provider-final matches pending until settlement is persisted',
+      () {
+        final now = DateTime.utc(2026, 8, 20);
+        final prediction = SavedPrediction(
+          id: 'prediction-archived',
+          userId: 'user-1',
+          matchId: 'match-archived',
           homeScore: 1,
           awayScore: 0,
-        ),
-      );
+          firstScorer: 'Player',
+          submittedAt: now,
+          updatedAt: now,
+          rewarded: false,
+          match: MatchEvent(
+            id: 'match-archived',
+            homeTeam: 'Home',
+            awayTeam: 'Away',
+            competition: 'League',
+            kickoffAt: now,
+            predictionOpensAt: now,
+            predictionClosesAt: now,
+            status: 'archived',
+            homeScore: 1,
+            awayScore: 0,
+          ),
+        );
 
-      expect(prediction.isPending, isFalse);
-      expect(prediction.exactScoreCorrect, isTrue);
-    });
+        expect(prediction.isPending, isTrue);
+        expect(prediction.exactScoreCorrect, isFalse);
+      },
+    );
   });
 
   group('configurable progression and rewards', () {

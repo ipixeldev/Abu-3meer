@@ -8,6 +8,152 @@ import '../../../production/production_repository.dart';
 /// Stable order shared by the match-centre navigation and regression tests.
 const matchCenterTabOrder = <String>['facts', 'lineup', 'table'];
 
+String _matchDetailIdentityPart(String value) =>
+    value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+/// Keeps every provider section monotonic while a live match is refreshing.
+///
+/// Providers occasionally return a shorter snapshot while an upstream feed is
+/// rebuilding. The newest values still win for matching rows, but a temporary
+/// partial response can no longer make already-published events, players,
+/// statistics, or table rows disappear from the screen.
+MatchDetails retainPublishedMatchDetailSections(
+  MatchDetails current,
+  MatchDetails incoming,
+) {
+  final timeline = <String, MatchTimelineEvent>{};
+  for (final event in current.timeline) {
+    final key = [
+      event.minute,
+      event.type,
+      event.player,
+      event.team,
+      event.isHome,
+    ].map((value) => _matchDetailIdentityPart(value.toString())).join('|');
+    timeline[key] = event;
+  }
+  for (final event in incoming.timeline) {
+    final key = [
+      event.minute,
+      event.type,
+      event.player,
+      event.team,
+      event.isHome,
+    ].map((value) => _matchDetailIdentityPart(value.toString())).join('|');
+    final previous = timeline[key];
+    timeline[key] = previous == null
+        ? event
+        : MatchTimelineEvent(
+            minute: event.minute.isEmpty ? previous.minute : event.minute,
+            type: event.type.isEmpty ? previous.type : event.type,
+            player: event.player.isEmpty ? previous.player : event.player,
+            assist: event.assist.isEmpty ? previous.assist : event.assist,
+            detail: event.detail.isEmpty ? previous.detail : event.detail,
+            team: event.team.isEmpty ? previous.team : event.team,
+            isHome: event.isHome,
+          );
+  }
+
+  final lineup = <String, MatchLineupPlayer>{};
+  for (final player in current.lineup) {
+    final key = [
+      player.team,
+      player.player,
+      player.isHome,
+    ].map((value) => _matchDetailIdentityPart(value.toString())).join('|');
+    lineup[key] = player;
+  }
+  for (final player in incoming.lineup) {
+    final key = [
+      player.team,
+      player.player,
+      player.isHome,
+    ].map((value) => _matchDetailIdentityPart(value.toString())).join('|');
+    final previous = lineup[key];
+    lineup[key] = previous == null
+        ? player
+        : MatchLineupPlayer(
+            player: player.player.isEmpty ? previous.player : player.player,
+            team: player.team.isEmpty ? previous.team : player.team,
+            position: player.position.isEmpty
+                ? previous.position
+                : player.position,
+            isHome: player.isHome,
+            isSubstitute: player.isSubstitute,
+            squadNumber: player.squadNumber.isEmpty
+                ? previous.squadNumber
+                : player.squadNumber,
+            playerImageUrl: player.playerImageUrl.isEmpty
+                ? previous.playerImageUrl
+                : player.playerImageUrl,
+          );
+  }
+
+  final statistics = <String, MatchStatistic>{};
+  for (final statistic in current.statistics) {
+    statistics[_matchDetailIdentityPart(statistic.label)] = statistic;
+  }
+  for (final statistic in incoming.statistics) {
+    final key = _matchDetailIdentityPart(statistic.label);
+    final previous = statistics[key];
+    statistics[key] = previous == null
+        ? statistic
+        : MatchStatistic(
+            label: statistic.label.isEmpty ? previous.label : statistic.label,
+            homeValue: statistic.homeValue.isEmpty
+                ? previous.homeValue
+                : statistic.homeValue,
+            awayValue: statistic.awayValue.isEmpty
+                ? previous.awayValue
+                : statistic.awayValue,
+          );
+  }
+
+  final standings = <String, MatchStanding>{};
+  String standingKey(MatchStanding standing) => _matchDetailIdentityPart(
+    standing.teamId.isEmpty ? standing.team : standing.teamId,
+  );
+  for (final standing in current.standings) {
+    standings[standingKey(standing)] = standing;
+  }
+  for (final standing in incoming.standings) {
+    final key = standingKey(standing);
+    final previous = standings[key];
+    standings[key] = previous == null
+        ? standing
+        : MatchStanding(
+            rank: standing.rank,
+            team: standing.team.isEmpty ? previous.team : standing.team,
+            played: standing.played,
+            won: standing.won,
+            drawn: standing.drawn,
+            lost: standing.lost,
+            goalDifference: standing.goalDifference,
+            points: standing.points,
+            goalsFor: standing.goalsFor ?? previous.goalsFor,
+            goalsAgainst: standing.goalsAgainst ?? previous.goalsAgainst,
+            teamId: standing.teamId.isEmpty ? previous.teamId : standing.teamId,
+            badgeUrl: standing.badgeUrl.isEmpty
+                ? previous.badgeUrl
+                : standing.badgeUrl,
+            form: standing.form.isEmpty ? previous.form : standing.form,
+          );
+  }
+
+  return incoming.copyWith(
+    timeline: timeline.values.toList(growable: false),
+    lineup: lineup.values.toList(growable: false),
+    statistics: statistics.values.toList(growable: false),
+    standings: standings.values.toList(growable: false),
+    venue: incoming.venue.isEmpty ? current.venue : incoming.venue,
+    season: incoming.season.isEmpty ? current.season : incoming.season,
+    provider: incoming.provider.isEmpty ? current.provider : incoming.provider,
+    status: incoming.status.isEmpty ? current.status : incoming.status,
+    homeScore: incoming.homeScore ?? current.homeScore,
+    awayScore: incoming.awayScore ?? current.awayScore,
+  );
+}
+
 /// Provider-backed match centre. Empty provider sections remain honest empty
 /// states; the UI never invents scorers, cards, players, or statistics.
 class MatchFactsScreen extends StatefulWidget {
@@ -48,6 +194,11 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
       _light ? const Color(0xFF285FD8) : const Color(0xFFC8FF38);
 
   String _t(String english, String arabic) => _arabic ? arabic : english;
+  int? get _homeScore => _details.homeScore ?? widget.event.homeScore;
+  int? get _awayScore => _details.awayScore ?? widget.event.awayScore;
+  String get _matchStatus => _details.status.isNotEmpty
+      ? _details.status.toLowerCase()
+      : widget.event.status.toLowerCase();
 
   @override
   void initState() {
@@ -109,7 +260,7 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
       );
       if (!mounted) return;
       setState(() {
-        _details = _retainPublishedSections(_details, details);
+        _details = retainPublishedMatchDetailSections(_details, details);
         _loading = false;
         _error = null;
       });
@@ -124,23 +275,6 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
       });
     }
   }
-
-  MatchDetails _retainPublishedSections(
-    MatchDetails current,
-    MatchDetails incoming,
-  ) => incoming.copyWith(
-    timeline: incoming.timeline.isEmpty ? current.timeline : incoming.timeline,
-    lineup: incoming.lineup.isEmpty ? current.lineup : incoming.lineup,
-    statistics: incoming.statistics.isEmpty
-        ? current.statistics
-        : incoming.statistics,
-    standings: incoming.standings.isEmpty
-        ? current.standings
-        : incoming.standings,
-    venue: incoming.venue.isEmpty ? current.venue : incoming.venue,
-    season: incoming.season.isEmpty ? current.season : incoming.season,
-    provider: incoming.provider.isEmpty ? current.provider : incoming.provider,
-  );
 
   @override
   Widget build(BuildContext context) {
@@ -162,9 +296,9 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
             _teamBadge(event.homeTeam, event.homeLogoUrl, size: 34),
             const SizedBox(width: 10),
             Text(
-              event.homeScore == null || event.awayScore == null
+              _homeScore == null || _awayScore == null
                   ? 'VS'
-                  : '${event.homeScore}  –  ${event.awayScore}',
+                  : '$_homeScore  –  $_awayScore',
               style: TextStyle(
                 color: _text,
                 fontWeight: FontWeight.w900,
@@ -385,9 +519,9 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
                 child: Column(
                   children: [
                     Text(
-                      event.homeScore == null || event.awayScore == null
+                      _homeScore == null || _awayScore == null
                           ? 'VS'
-                          : '${event.homeScore} – ${event.awayScore}',
+                          : '$_homeScore – $_awayScore',
                       style: TextStyle(
                         color: _text,
                         fontSize: 34,
@@ -431,7 +565,7 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
   );
 
   Widget _statusPill() {
-    final status = widget.event.status.toLowerCase();
+    final status = _matchStatus;
     final label = switch (status) {
       'live' => _t('LIVE', 'مباشر'),
       'completed' || 'finished' => _t('FULL TIME', 'انتهت'),

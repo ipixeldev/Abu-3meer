@@ -56,6 +56,9 @@ export interface ExternalMatchDetails {
   season: string;
   provider: string;
   isProviderLimited: boolean;
+  status: ExternalFootballMatch['status'] | '';
+  homeScore: number | null;
+  awayScore: number | null;
 }
 
 export interface ExternalFootballMatch {
@@ -430,6 +433,15 @@ export function normalizeTimelineType(type: unknown, detail?: unknown): string {
   if (combined.includes('yellow')) return 'yellow_card';
   if (combined.includes('red')) return 'red_card';
   if (combined.includes('substitut') || combined.includes('player change')) return 'sub';
+  // API-Football reports a saved/missed penalty with type "Goal" and the
+  // outcome in detail. Classify the negative outcome before the generic
+  // penalty-goal branch so it can never be selected as the first scorer.
+  if (
+    combined.includes('penalty') &&
+    (combined.includes('miss') || combined.includes('saved'))
+  ) {
+    return 'missed_penalty';
+  }
   if (combined.includes('own goal')) return 'own_goal';
   if (combined.includes('penalty') && combined.includes('goal')) return 'penalty_goal';
   if (combined.includes('goal')) return 'goal';
@@ -450,6 +462,8 @@ export function normalizeExternalMatchDetailsPayload(
 ): ExternalMatchDetails {
   const event = firstRow(payload.event?.events);
   const homeTeam = text(event?.strHomeTeam).toLowerCase();
+  const homeScore = optionalNumberValue(event?.intHomeScore);
+  const awayScore = optionalNumberValue(event?.intAwayScore);
 
   const timeline = rows(payload.timeline).map((item) => {
     const timelineDetail = text(item.strTimelineDetail);
@@ -511,6 +525,9 @@ export function normalizeExternalMatchDetailsPayload(
     season: text(event?.strSeason),
     provider: 'TheSportsDB',
     isProviderLimited: providerLimited,
+    status: event ? providerEventStatus(event, homeScore, awayScore) : '',
+    homeScore,
+    awayScore,
   };
 }
 
@@ -581,6 +598,9 @@ export function normalizeApiFootballMatchDetailsPayload(payload: {
   const teams = record(fixtureItem?.teams);
   const homeTeam = record(teams?.home);
   const homeTeamId = text(homeTeam?.id);
+  const goals = record(fixtureItem?.goals);
+  const homeScore = optionalNumberValue(goals?.home);
+  const awayScore = optionalNumberValue(goals?.away);
 
   const timeline = rows(payload.events)
     .map((item) => {
@@ -658,6 +678,11 @@ export function normalizeApiFootballMatchDetailsPayload(payload: {
     season: text(league?.season),
     provider: 'API-Football',
     isProviderLimited: false,
+    status: fixtureItem
+      ? apiFootballFixtureStatus(fixtureItem, homeScore, awayScore)
+      : '',
+    homeScore,
+    awayScore,
   };
 }
 
@@ -1313,7 +1338,10 @@ export function apiFootballWeekWindow(now: Date, days: number): {
   season: string;
 } {
   const boundedDays = Math.max(1, Math.min(days, 14));
-  const earliest = now.getTime() - 4 * 60 * 60 * 1000;
+  // Keep one week of completed fixtures in the same shared feed. Dropping a
+  // match four hours after kickoff severed prediction history from its match
+  // centre and made the final score appear to vanish on the next refresh.
+  const earliest = now.getTime() - 7 * 24 * 60 * 60 * 1000;
   const latest = now.getTime() + (boundedDays * 24 + 12) * 60 * 60 * 1000;
   return {
     earliest,

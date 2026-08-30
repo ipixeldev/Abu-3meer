@@ -28,7 +28,7 @@ export function challengeNotificationCampaign(
   if (!shouldScheduleChallengeNotification(true, input.status)) {
     throw new Error(`Challenge status ${input.status} cannot create a notification campaign.`);
   }
-  const scheduledFor = input.status === 'scheduled' && input.startsAt.getTime() > now.getTime()
+  const scheduledFor = input.startsAt.getTime() > now.getTime()
     ? input.startsAt
     : now;
   return {

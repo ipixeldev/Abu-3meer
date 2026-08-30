@@ -3,10 +3,17 @@ import { z } from 'zod';
 import { requirePermission, requireSuperAdmin } from '../middleware/auth.js';
 import { getClient, query } from '../db/pool.js';
 import { awardPoints } from '../services/pointsService.js';
-import { enqueueNotificationCampaign, matchSettlementQueue } from '../queues/workers.js';
+import {
+  enqueueMatchSettlement,
+  enqueueNotificationCampaign,
+} from '../queues/workers.js';
 import { notificationCategories } from '../services/notificationDomain.js';
-import { createNotificationCampaign } from '../services/notificationService.js';
+import {
+  createNotificationCampaign,
+  MAX_NOTIFICATION_DELIVERY_ATTEMPTS,
+} from '../services/notificationService.js';
 import { config } from '../config.js';
+import { redis } from '../redis/client.js';
 
 const manageableRoles = ['fan', 'member', 'moderator', 'admin', 'super_admin'] as const;
 
@@ -123,6 +130,22 @@ export async function adminRoutes(fastify: FastifyInstance) {
   });
 
   // 1. Matches & Settlement (Permission: matches.manage)
+  // Admin Studio needs terminal and locked rows too. The public upcoming feed
+  // intentionally excludes those statuses and must not be reused here.
+  fastify.get('/admin/matches', { preHandler: [requirePermission('matches.manage')] }, async () => {
+    const result = await query(
+      `SELECT *
+       FROM matches
+       WHERE kickoff_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'
+          OR status IN ('scheduled', 'open', 'closed', 'live', 'postponed')
+       ORDER BY (kickoff_at < CURRENT_TIMESTAMP) ASC,
+                CASE WHEN kickoff_at >= CURRENT_TIMESTAMP THEN kickoff_at END ASC,
+                kickoff_at DESC
+       LIMIT 200`,
+    );
+    return result.rows;
+  });
+
   fastify.post('/admin/matches', { preHandler: [requirePermission('matches.manage')] }, async (request, reply) => {
     const schema = z.object({
       id: z.string().trim().min(1).max(100),
@@ -157,6 +180,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
          predictions_close_at = EXCLUDED.predictions_close_at,
          first_scorer_options = EXCLUDED.first_scorer_options,
          updated_at = CURRENT_TIMESTAMP
+       WHERE matches.status <> 'finished'
+         AND matches.reward_processed = false
        RETURNING *`,
       [
         b.id,
@@ -171,6 +196,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
         JSON.stringify(b.firstScorerOptions),
       ]
     );
+    if (res.rowCount === 0) {
+      return reply.status(409).send({
+        error: 'MatchAlreadySettled',
+        message: 'A settled match cannot be edited without an audited reward reversal.',
+      });
+    }
 
     // Audit log
     await query(
@@ -179,6 +210,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
       [request.user!.id, b.id, JSON.stringify(res.rows[0])]
     );
 
+    await redis.del('cache:matches:upcoming').catch(() => undefined);
     return { success: true, match: res.rows[0] };
   });
 
@@ -187,8 +219,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const schema = z.object({
       homeScore: z.number().int().min(0).max(30),
       awayScore: z.number().int().min(0).max(30),
-      firstScorer: z.string().trim().max(150).default('No scorer'),
-    });
+      firstScorer: z.string().trim().min(1).max(150).default('No scorer'),
+    }).refine(
+      value =>
+        (value.homeScore === 0 && value.awayScore === 0) ||
+        value.firstScorer.toLowerCase() !== 'no scorer',
+      {
+        path: ['firstScorer'],
+        message: 'First scorer is required for a match with goals.',
+      },
+    );
 
     const parsed = schema.safeParse(request.body);
     if (!parsed.success) {
@@ -197,12 +237,37 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     const { homeScore, awayScore, firstScorer } = parsed.data;
 
-    await query(
+    const updated = await query(
       `UPDATE matches
        SET home_score = $1, away_score = $2, first_scorer = $3, status = 'finished', updated_at = CURRENT_TIMESTAMP
-       WHERE id = $4`,
+       WHERE id = $4
+         AND status <> 'finished'
+         AND status NOT IN ('cancelled', 'postponed')
+         AND reward_processed = false
+       RETURNING id`,
       [homeScore, awayScore, firstScorer, id]
     );
+    if (updated.rowCount === 0) {
+      const existing = await query<{ status: string; reward_processed: boolean }>(
+        `SELECT status, reward_processed
+         FROM matches
+         WHERE id = $1`,
+        [id],
+      );
+      if (existing.rowCount === 0) {
+        return reply.status(404).send({ error: 'NotFound', message: 'Match not found.' });
+      }
+      if (['cancelled', 'postponed'].includes(existing.rows[0].status)) {
+        return reply.status(409).send({
+          error: 'MatchUnavailable',
+          message: 'Reopen this disabled match before publishing a result.',
+        });
+      }
+      return reply.status(409).send({
+        error: 'MatchAlreadySettled',
+        message: 'This result is already final. Settled scores cannot be changed without an audited reward reversal.',
+      });
+    }
 
     // Audit log
     await query(
@@ -212,8 +277,83 @@ export async function adminRoutes(fastify: FastifyInstance) {
     );
 
     // Queue settlement worker
-    await matchSettlementQueue.add('settle', { matchId: id });
+    await enqueueMatchSettlement(id);
+    await redis.del(
+      'cache:matches:upcoming',
+      `cache:matches:v3:${id}:details`,
+    ).catch(() => undefined);
     return { success: true, message: 'Match settlement job queued.' };
+  });
+
+  fastify.put('/admin/matches/:id/status', { preHandler: [requirePermission('matches.manage')] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = z.object({
+      // Terminal completion must go through /settle so an official score,
+      // prediction settlement job, and audit receipt are created together.
+      status: z.enum(['draft', 'open', 'locked', 'disabled']),
+    }).safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
+    }
+    const databaseStatus = {
+      draft: 'scheduled',
+      open: 'open',
+      locked: 'closed',
+      disabled: 'cancelled',
+    }[parsed.data.status];
+    const result = await query(
+      `UPDATE matches
+       SET status = $2,
+           predictions_open_at = CASE
+             WHEN $2 = 'open' THEN LEAST(predictions_open_at, CURRENT_TIMESTAMP)
+             ELSE predictions_open_at
+           END,
+           predictions_close_at = CASE
+             WHEN $2 = 'open' THEN GREATEST(
+               predictions_close_at,
+               kickoff_at - INTERVAL '5 minutes'
+             )
+             WHEN $2 = 'closed' THEN LEAST(predictions_close_at, CURRENT_TIMESTAMP)
+             ELSE predictions_close_at
+           END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+         AND status <> 'finished'
+         AND reward_processed = false
+       RETURNING *`,
+      [id, databaseStatus],
+    );
+    if (result.rowCount === 0) {
+      const existing = await query<{ status: string; reward_processed: boolean }>(
+        'SELECT status, reward_processed FROM matches WHERE id = $1',
+        [id],
+      );
+      if (
+        existing.rows[0]?.status === 'finished' ||
+        existing.rows[0]?.reward_processed === true
+      ) {
+        return reply.status(409).send({
+          error: 'MatchAlreadySettled',
+          message: 'A settled match cannot be reopened or changed through the status control.',
+        });
+      }
+      return reply.status(404).send({ error: 'NotFound', message: 'Match not found.' });
+    }
+    await query(
+      `INSERT INTO admin_audit_logs
+         (admin_user_id, action, target_entity, target_id, after_state)
+       VALUES ($1, 'matches.status_update', 'match', $2, $3)`,
+      [
+        request.user!.id,
+        id,
+        JSON.stringify({ status: parsed.data.status, databaseStatus }),
+      ],
+    );
+    await redis.del(
+      'cache:matches:upcoming',
+      `cache:matches:v3:${id}:details`,
+    ).catch(() => undefined);
+    return { success: true, match: result.rows[0] };
   });
 
   // 2. Manual Point Adjustments (Permission: points.adjust) - Requires Mandatory Reason & Audit Trail
@@ -527,6 +667,8 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const schema = z.object({
       title: z.string().trim().min(2).max(100),
       body: z.string().trim().min(2).max(500),
+      idempotencyKey: z.string().trim().min(16).max(128)
+        .regex(/^[A-Za-z0-9:_-]+$/),
       data: z.record(z.string(), z.string()).optional(),
       category: z.enum(notificationCategories).default('general'),
       targetAudience: z.enum(['all', 'members_only', 'team_specific', 'inactive_users']).default('all'),
@@ -565,48 +707,106 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const scheduledFor = parsed.data.scheduledAt
       ? new Date(parsed.data.scheduledAt)
       : new Date();
-    const campaign = await createNotificationCampaign({
-      title: parsed.data.title,
-      body: parsed.data.body,
-      targetAudience: parsed.data.targetAudience,
-      targetTeam: parsed.data.targetTeam,
-      category: parsed.data.category,
-      data: parsed.data.data,
-      imageUrl: parsed.data.imageUrl,
-      scheduledFor,
-      createdBy: request.user!.id,
-    });
-    const campaignId = campaign.campaignId!;
-    let notificationQueued = false;
+    const sourceType = 'admin_broadcast';
+    const sourceId = `${request.user!.id}:${parsed.data.idempotencyKey}`;
+    const client = await getClient();
+    let campaignId = '';
+    let persistedScheduledFor = scheduledFor;
+    let persistedStatus = 'pending';
+    let persistedAttemptCount = 0;
     try {
-      await enqueueNotificationCampaign(campaignId, campaign.scheduledFor);
-      notificationQueued = true;
-    } catch (error) {
-      fastify.log.error(
-        { err: error, campaignId },
-        'Broadcast notification left pending for outbox recovery',
+      await client.query('BEGIN');
+      const campaign = await createNotificationCampaign(
+        {
+          title: parsed.data.title,
+          body: parsed.data.body,
+          targetAudience: parsed.data.targetAudience,
+          targetTeam: parsed.data.targetTeam,
+          category: parsed.data.category,
+          data: parsed.data.data,
+          imageUrl: parsed.data.imageUrl,
+          scheduledFor,
+          createdBy: request.user!.id,
+          sourceType,
+          sourceId,
+        },
+        (text, params) => client.query(text, params),
+        { rearmCancelled: false },
       );
+      const existing = await client.query(
+        `SELECT id, scheduled_for, status, attempt_count
+         FROM notification_campaigns
+         WHERE source_type = $1 AND source_id = $2
+         FOR UPDATE`,
+        [sourceType, sourceId],
+      );
+      if (existing.rowCount === 0) {
+        throw new Error('The idempotent notification campaign could not be persisted.');
+      }
+      campaignId = String(existing.rows[0].id);
+      persistedScheduledFor = new Date(existing.rows[0].scheduled_for);
+      persistedStatus = String(existing.rows[0].status);
+      persistedAttemptCount = Number(existing.rows[0].attempt_count ?? 0);
+
+      // Only the transaction that inserted the logical campaign writes its
+      // audit event. Replaying the client key returns the original campaign.
+      if (campaign.created) {
+        await client.query(
+          `INSERT INTO admin_audit_logs
+             (admin_user_id, action, target_entity, target_id, after_state)
+           VALUES ($1, 'notifications.broadcast', 'campaign', $2, $3)`,
+          [
+            request.user!.id,
+            campaignId,
+            JSON.stringify({ campaignId, ...parsed.data }),
+          ],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
     }
 
-    // Audit log
-    await query(
-      `INSERT INTO admin_audit_logs (admin_user_id, action, target_entity, target_id, after_state)
-       VALUES ($1, 'notifications.broadcast', 'campaign', 'broadcast', $2)`,
-      [request.user!.id, JSON.stringify({ campaignId, ...parsed.data })]
-    );
+    let notificationQueued = false;
+    const shouldQueue =
+      (persistedStatus === 'pending' || persistedStatus === 'failed') &&
+      persistedAttemptCount < MAX_NOTIFICATION_DELIVERY_ATTEMPTS;
+    if (shouldQueue) {
+      try {
+        await enqueueNotificationCampaign(campaignId, persistedScheduledFor);
+        notificationQueued = true;
+      } catch (error) {
+        fastify.log.error(
+          { err: error, campaignId },
+          'Broadcast notification left pending for outbox recovery',
+        );
+      }
+    }
+
+    const replayedPersistedStatus =
+      ['completed', 'cancelled', 'processing'].includes(persistedStatus) ||
+      (persistedStatus === 'failed' &&
+        persistedAttemptCount >= MAX_NOTIFICATION_DELIVERY_ATTEMPTS);
 
     return {
       success: true,
       campaignId,
-      scheduledAt: campaign.scheduledFor.toISOString(),
-      status: !notificationQueued
+      scheduledAt: persistedScheduledFor.toISOString(),
+      status: replayedPersistedStatus
+        ? persistedStatus
+        : !notificationQueued
         ? 'pending_recovery'
-        : campaign.scheduledFor.getTime() > Date.now() + 1000
+        : persistedScheduledFor.getTime() > Date.now() + 1000
           ? 'scheduled'
           : 'queued',
-      message: !notificationQueued
+      message: replayedPersistedStatus
+        ? `Broadcast already ${persistedStatus}.`
+        : !notificationQueued
         ? 'Broadcast saved and awaiting queue recovery.'
-        : campaign.scheduledFor.getTime() > Date.now() + 1000
+        : persistedScheduledFor.getTime() > Date.now() + 1000
         ? 'Broadcast notification scheduled.'
         : 'Broadcast notification queued.',
     };

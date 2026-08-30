@@ -95,6 +95,31 @@ void main() {
     expect(card.sourceChallengeId, 'challenge_hidden');
   });
 
+  test('a claimed Player Card stays representable after admins disable it', () {
+    final card = parseApiPlayerCard({
+      'id': 'card_collected',
+      'player_name': 'Collected Player',
+      'player_name_ar': '',
+      'card_image_url': 'https://api.abu3meer.com/media/card.jpg',
+      'team': 'RMA',
+      'team_logo_url': '',
+      'position': 'CM',
+      'rating': 88,
+      'rarity': 'rare',
+      'stats': {'passing': 90},
+      'description': '',
+      'description_ar': '',
+      'enabled': false,
+      'source_challenge_id': 'challenge_closed',
+      'unlocked': true,
+      'unlocked_at': '2026-08-30T13:00:00.000Z',
+    });
+
+    expect(card.enabled, isFalse);
+    expect(card.unlocked, isTrue);
+    expect(card.playerName, 'Collected Player');
+  });
+
   test('launch popup and redemption parse API timestamps', () {
     final popup = parseApiLaunchAnnouncement({
       'enabled': true,
@@ -126,5 +151,33 @@ void main() {
     expect(redemption.rewardTitle, 'Signed shirt');
     expect(redemption.userDisplayName, 'Omar');
     expect(redemption.createdAt.year, 2026);
+  });
+
+  test('self-hosted reward redemption receipt keeps retry metadata', () {
+    final receipt = parseRewardRedemptionReceipt({
+      'ok': true,
+      'duplicate': true,
+      'redemptionId': 'redemption_user_reward_attempt',
+      'remainingBalance': 350,
+      'stockRemaining': 4,
+      'claimCount': 2,
+    });
+
+    expect(receipt.redemptionId, 'redemption_user_reward_attempt');
+    expect(receipt.remainingBalance, 350);
+    expect(receipt.stockRemaining, 4);
+    expect(receipt.claimCount, 2);
+    expect(receipt.duplicate, isTrue);
+  });
+
+  test('malformed self-hosted reward redemption receipt is rejected', () {
+    expect(
+      () => parseRewardRedemptionReceipt({
+        'ok': true,
+        'redemptionId': '',
+        'remainingBalance': '350',
+      }),
+      throwsFormatException,
+    );
   });
 }

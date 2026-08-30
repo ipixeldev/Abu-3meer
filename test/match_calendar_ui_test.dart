@@ -67,5 +67,31 @@ void main() {
       expect(days, contains(DateTime(2026, 9, 25)));
       expect(days.last, DateTime(2026, 9, 26));
     });
+
+    test(
+      'home preview skips a completed result and selects the next fixture',
+      () {
+        final completed = fixture(
+          'completed',
+          DateTime(2026, 8, 27, 14),
+        ).copyWith(status: 'completed', homeScore: 2, awayScore: 1);
+        final later = fixture('later', DateTime(2026, 8, 30, 21));
+        final next = fixture('next', DateTime(2026, 8, 28, 18));
+
+        expect(
+          nextHomePredictionMatch([completed, later, next], now: now)?.id,
+          'next',
+        );
+      },
+    );
+
+    test('home preview is empty when no future match remains', () {
+      final completed = fixture(
+        'completed',
+        DateTime(2026, 8, 27, 14),
+      ).copyWith(status: 'finished', homeScore: 2, awayScore: 1);
+
+      expect(nextHomePredictionMatch([completed], now: now), isNull);
+    });
   });
 }

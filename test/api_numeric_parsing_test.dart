@@ -40,6 +40,70 @@ void main() {
       expect(match.kickoffAt.toUtc(), DateTime.utc(2026, 8, 30, 17));
     });
 
+    test('maps every managed database status into an Admin Studio state', () {
+      Map<String, dynamic> matchWithStatus(String status) => <String, dynamic>{
+        'id': 'admin_status',
+        'home_team': 'Real Madrid',
+        'away_team': 'Malaga',
+        'kickoff_at': '2026-08-30T17:00:00.000Z',
+        'predictions_open_at': '2026-08-29T17:00:00.000Z',
+        'predictions_close_at': '2026-08-30T16:55:00.000Z',
+        'status': status,
+      };
+
+      expect(parseApiMatchEvent(matchWithStatus('closed')).status, 'locked');
+      expect(
+        parseApiMatchEvent(matchWithStatus('cancelled')).status,
+        'disabled',
+      );
+      expect(
+        parseApiMatchEvent(matchWithStatus('postponed')).status,
+        'disabled',
+      );
+      expect(
+        parseApiMatchEvent(matchWithStatus('finished')).status,
+        'completed',
+      );
+    });
+
+    test('embeds PostgreSQL final results in prediction history', () {
+      final prediction = parseApiSavedPrediction(<String, dynamic>{
+        'id': 'prediction-1',
+        'user_id': 'user-1',
+        'match_id': 'external_1234',
+        'home_score': 2,
+        'away_score': 1,
+        'first_scorer': 'Kylian Mbappe',
+        'points_awarded': 60,
+        'rewarded': true,
+        'seen_result': false,
+        'is_exact_match': true,
+        'is_first_scorer_match': true,
+        'is_winner_match': true,
+        'submitted_at': '2026-08-29T17:00:00.000Z',
+        'updated_at': '2026-08-30T19:00:00.000Z',
+        'home_team': 'Real Madrid',
+        'away_team': 'Malaga',
+        'kickoff_at': '2026-08-30T17:00:00.000Z',
+        'match_status': 'finished',
+        'actual_home_score': 2,
+        'actual_away_score': 1,
+        'actual_first_scorer': 'Kylian Mbappe',
+      });
+
+      expect(prediction.rewarded, isTrue);
+      expect(prediction.pointsAwarded, 60);
+      expect(prediction.match, isNotNull);
+      expect(prediction.match!.status, 'completed');
+      expect(prediction.match!.homeScore, 2);
+      expect(prediction.match!.awayScore, 1);
+      expect(prediction.match!.firstScorer, 'Kylian Mbappe');
+      expect(prediction.isPending, isFalse);
+      expect(prediction.exactScoreCorrect, isTrue);
+      expect(prediction.firstScorerCorrect, isTrue);
+      expect(prediction.winnerCorrect, isTrue);
+    });
+
     test('parses server-normalized football team search results', () {
       final team = parseApiFootballTeam(<String, dynamic>{
         'teamId': '133739',

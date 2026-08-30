@@ -9,11 +9,16 @@ import {
   adminChallengeStatuses,
   calculateLoyaltyRefund,
   canTransitionRedemptionStatus,
+  deletePlayerCardDefinition,
   finiteInteger,
   loyaltyRefundTransactionId,
   loyaltyRewardClaimId,
   redemptionStatuses,
+  resetLaunchAnnouncementSetting,
+  retireChallengeDefinition,
   safeDocumentId,
+  setPlayerCardEnabledState,
+  upsertPlayerCardDefinition,
 } from '../services/adminContentDomain.js';
 import { normalizeChallengeAnswer } from '../services/challengeService.js';
 import {
@@ -25,6 +30,7 @@ import {
   challengeNotificationCampaign,
   shouldScheduleChallengeNotification,
 } from '../services/challengeNotification.js';
+import { refundPostgresLoyaltyRedemption } from '../services/rewardRedemptionService.js';
 import {
   cancelNotificationCampaignJob,
   enqueueNotificationCampaign,
@@ -49,7 +55,9 @@ const challengeQuestionSchema = z.object({
   acceptedAnswers: z.array(z.string().trim().min(1).max(300)).max(20).default([]),
 });
 
-const challengeCreateSchema = z.object({
+const challengeIdSchema = z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/);
+
+export const challengeCreateSchema = z.object({
   id: z.string().trim().min(1).max(100).regex(/^[A-Za-z0-9_-]+$/).optional(),
   kind: z.enum(['videoPhrase', 'playerCard']),
   title: z.string().trim().min(1).max(255),
@@ -63,6 +71,7 @@ const challengeCreateSchema = z.object({
   maximumAttempts: z.number().int().min(1).max(20).default(3),
   memberOnly: z.boolean().default(false),
   notifyOnLive: z.boolean().default(false),
+  playerCardId: z.union([z.literal(''), challengeIdSchema]).default(''),
   // The current app presents one answer field and the submission endpoint
   // validates one answer. Reject hidden/legacy multi-question payloads rather
   // than publishing questions that cannot be scored correctly.
@@ -73,6 +82,13 @@ const challengeCreateSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['availableUntil'],
       message: 'Challenge end time must be after its start time.',
+    });
+  }
+  if (value.kind === 'playerCard' && !value.playerCardId) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['playerCardId'],
+      message: 'Choose an enabled Player Card for this challenge.',
     });
   }
   value.questions.forEach((question, index) => {
@@ -107,7 +123,6 @@ const playerCardSchema = z.object({
   description: z.string().trim().max(5000).default(''),
   descriptionAr: z.string().trim().max(5000).default(''),
   enabled: z.boolean().default(true),
-  sourceChallengeId: z.string().trim().max(100).default(''),
 });
 
 const playerCardStatusSchema = z.object({ enabled: z.boolean() });
@@ -253,8 +268,9 @@ async function audit(
   targetEntity: string,
   targetId: string,
   afterState: unknown,
+  execute: (text: string, params?: any[]) => Promise<any> = query,
 ) {
-  await query(
+  await execute(
     `INSERT INTO admin_audit_logs
        (admin_user_id, action, target_entity, target_id, after_state)
      VALUES ($1, $2, $3, $4, $5)`,
@@ -343,6 +359,25 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
             ],
           );
         }
+        if (body.kind === 'playerCard') {
+          const linkedCard = await client.query(
+            `UPDATE player_cards
+             SET source_challenge_id = $1, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $2
+               AND enabled = TRUE
+               AND COALESCE(source_challenge_id, '') = ''
+             RETURNING id`,
+            [id, body.playerCardId],
+          );
+          if (!linkedCard.rowCount) {
+            await client.query('ROLLBACK');
+            return reply.status(409).send({
+              error: 'PlayerCardUnavailable',
+              message:
+                'That Player Card is disabled, missing, or already linked to another challenge. Refresh and choose an unlinked card.',
+            });
+          }
+        }
         await client.query(
           `INSERT INTO admin_audit_logs
              (admin_user_id, action, target_entity, target_id, after_state)
@@ -356,6 +391,7 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
               status: body.status,
               rewardPoints: body.rewardPoints,
               questionCount: body.questions.length,
+              playerCardId: body.playerCardId || null,
             }),
           ],
         );
@@ -410,6 +446,7 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
         id,
         notificationScheduled: Boolean(notificationCampaign?.campaignId),
         notificationQueued,
+        linkedPlayerCardId: body.playerCardId || null,
       });
     },
   );
@@ -429,6 +466,50 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
       const client = await getClient();
       try {
         await client.query('BEGIN');
+        const currentChallenge = await client.query(
+          `SELECT id, kind
+           FROM challenges
+           WHERE id = $1
+           FOR UPDATE`,
+          [id],
+        );
+        if (!currentChallenge.rowCount) {
+          await client.query('ROLLBACK');
+          return reply.status(404).send({
+            error: 'NotFound',
+            message: 'Challenge not found.',
+          });
+        }
+
+        const activatesChallenge = ['open', 'scheduled'].includes(
+          parsed.data.status,
+        );
+        if (
+          activatesChallenge &&
+          String(currentChallenge.rows[0].kind) === 'playerCard'
+        ) {
+          // Lock the linked card in the same transaction. A concurrent card
+          // lifecycle request cannot invalidate the reward between this check
+          // and publishing the challenge.
+          const linkedCard = await client.query(
+            `SELECT id, enabled
+             FROM player_cards
+             WHERE source_challenge_id = $1
+                OR challenge_id = $1
+             ORDER BY updated_at DESC
+             LIMIT 1
+             FOR UPDATE`,
+            [id],
+          );
+          if (!linkedCard.rowCount || linkedCard.rows[0].enabled !== true) {
+            await client.query('ROLLBACK');
+            return reply.status(409).send({
+              error: 'PlayerCardUnavailable',
+              message:
+                'This Player Card challenge cannot go live because its linked card is missing or disabled.',
+            });
+          }
+        }
         const result = await client.query(
           `UPDATE challenges
            SET status = $1, updated_at = CURRENT_TIMESTAMP
@@ -437,10 +518,9 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
                      member_only, notify_on_live`,
           [parsed.data.status, id],
         );
-        if (!result.rowCount) {
-          await client.query('ROLLBACK');
-          return reply.status(404).send({ error: 'NotFound', message: 'Challenge not found.' });
-        }
+        // The row is locked above, so this update can only miss if the
+        // transaction itself is no longer valid.
+        if (!result.rowCount) throw new Error('Challenge status update was lost.');
         const row = result.rows[0] as Record<string, unknown>;
         updated = row;
         if (shouldScheduleChallengeNotification(
@@ -530,6 +610,92 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
     },
   );
 
+  fastify.delete(
+    '/admin/challenges/:id',
+    { preHandler: [requirePermission('challenges.manage')] },
+    async (request, reply) => {
+      const id = safeDocumentId(
+        (request.params as { id: string }).id,
+        'Challenge',
+      );
+      let cancelledCampaignIds: string[] = [];
+      let linkedPlayerCardIds: string[] = [];
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        const retirement = await retireChallengeDefinition(
+          (text, params) => client.query(text, params),
+          id,
+        );
+        if (retirement.status !== 'retired') {
+          await client.query('ROLLBACK');
+          if (retirement.status === 'missing') {
+            return reply.status(404).send({
+              error: 'NotFound',
+              message: 'Challenge not found.',
+            });
+          }
+          return reply.status(409).send({
+            error: 'ChallengeHasActivity',
+            message:
+              'This challenge already has fan activity and cannot be deleted. Archive it to preserve points and collection history.',
+            submissionCount: retirement.submissionCount,
+            claimCount: retirement.claimCount,
+          });
+        }
+        linkedPlayerCardIds = retirement.playerCardIds;
+        cancelledCampaignIds = await cancelNotificationCampaignBySource(
+          'challenge',
+          id,
+          (text, params) => client.query(text, params),
+        );
+        await audit(
+          request.user!.id,
+          'challenges.retire',
+          'challenge',
+          id,
+          {
+            ...retirement.challenge,
+            linkedPlayerCardIds,
+            notificationsCancelled: cancelledCampaignIds.length,
+          },
+          (text, params) => client.query(text, params),
+        );
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+
+      await redis.del(
+        'cache:challenges:active',
+        'cache:challenges:active:public',
+        'cache:challenges:active:member',
+      ).catch((error) => {
+        fastify.log.warn(
+          { err: error, challengeId: id },
+          'Challenge cache invalidation deferred',
+        );
+      });
+      for (const campaignId of cancelledCampaignIds) {
+        await cancelNotificationCampaignJob(campaignId).catch((error) => {
+          fastify.log.warn(
+            { err: error, campaignId },
+            'Cancelled challenge notification job will no-op if it reaches a worker',
+          );
+        });
+      }
+      return {
+        success: true,
+        id,
+        linkedPlayerCardIds,
+        notificationsCancelled: cancelledCampaignIds.length,
+      };
+    },
+  );
+
   fastify.get(
     '/admin/player-cards',
     { preHandler: [requirePermission('player_cards.manage')] },
@@ -560,56 +726,42 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
       }
       const body = parsed.data;
       const id = body.id ?? `card_${crypto.randomUUID().replaceAll('-', '')}`;
-      await query(
-        `INSERT INTO player_cards
-           (id, challenge_id, player_name, normalized_player_name, team,
-            position, card_tier, card_image_url, player_name_ar, team_logo_url,
-            rating, rarity, stats, description, description_ar, enabled,
-            source_challenge_id, updated_at)
-         VALUES
-           ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $6, $11, $12,
-            $13, $14, $15, CURRENT_TIMESTAMP)
-         ON CONFLICT (id) DO UPDATE SET
-           player_name = EXCLUDED.player_name,
-           normalized_player_name = EXCLUDED.normalized_player_name,
-           team = EXCLUDED.team,
-           position = EXCLUDED.position,
-           card_tier = EXCLUDED.card_tier,
-           card_image_url = EXCLUDED.card_image_url,
-           player_name_ar = EXCLUDED.player_name_ar,
-           team_logo_url = EXCLUDED.team_logo_url,
-           rating = EXCLUDED.rating,
-           rarity = EXCLUDED.rarity,
-           stats = EXCLUDED.stats,
-           description = EXCLUDED.description,
-           description_ar = EXCLUDED.description_ar,
-           enabled = EXCLUDED.enabled,
-           source_challenge_id = EXCLUDED.source_challenge_id,
-           updated_at = CURRENT_TIMESTAMP`,
-        [
-          id,
-          body.playerName,
-          normalizeChallengeAnswer(body.playerName),
-          body.teamName,
-          body.position,
-          body.rarity,
-          body.imageUrl,
-          body.playerNameAr,
-          body.teamLogoUrl,
-          body.rating,
-          JSON.stringify(body.stats),
-          body.description,
-          body.descriptionAr,
-          body.enabled,
-          body.sourceChallengeId,
-        ],
-      );
-      await audit(request.user!.id, 'player_cards.upsert', 'player_card', id, {
-        playerName: body.playerName,
-        enabled: body.enabled,
-        rating: body.rating,
-        rarity: body.rarity,
-      });
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        const saved = await upsertPlayerCardDefinition(
+          (text, params) => client.query(text, params),
+          {
+            id,
+            playerName: body.playerName,
+            normalizedPlayerName: normalizeChallengeAnswer(body.playerName),
+            playerNameAr: body.playerNameAr,
+            imageUrl: body.imageUrl,
+            teamName: body.teamName,
+            teamLogoUrl: body.teamLogoUrl,
+            position: body.position,
+            rating: body.rating,
+            rarity: body.rarity,
+            stats: body.stats,
+            description: body.description,
+            descriptionAr: body.descriptionAr,
+            enabled: body.enabled,
+          },
+        );
+        await audit(request.user!.id, 'player_cards.upsert', 'player_card', id, {
+          playerName: body.playerName,
+          enabled: saved.enabled,
+          rating: body.rating,
+          rarity: body.rarity,
+          sourceChallengeId: saved.source_challenge_id,
+        }, (text, params) => client.query(text, params));
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
       return reply.status(body.id ? 200 : 201).send({ success: true, id });
     },
   );
@@ -623,22 +775,106 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
       }
       const id = safeDocumentId((request.params as { id: string }).id, 'Player Card');
-      const result = await query(
-        `UPDATE player_cards
-         SET enabled = $1, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
-         RETURNING id, enabled`,
-        [parsed.data.enabled, id],
-      );
-      if (!result.rowCount) {
-        return reply.status(404).send({ error: 'NotFound', message: 'Player Card not found.' });
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        const update = await setPlayerCardEnabledState(
+          (text, params) => client.query(text, params),
+          id,
+          parsed.data.enabled,
+        );
+        if (update.status !== 'updated') {
+          await client.query('ROLLBACK');
+          if (update.status === 'missing') {
+            return reply.status(404).send({ error: 'NotFound', message: 'Player Card not found.' });
+          }
+          return reply.status(409).send({
+            error: 'PlayerCardChallengeLinked',
+            message:
+              'This Player Card is assigned to a challenge and must remain enabled while linked.',
+            challengeId: update.challengeId,
+            challengeStatus: update.challengeStatus,
+          });
+        }
+        await audit(
+          request.user!.id,
+          'player_cards.status_update',
+          'player_card',
+          id,
+          parsed.data,
+          (text, params) => client.query(text, params),
+        );
+        await client.query('COMMIT');
+        return { success: true, ...update.card };
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
       }
-      await audit(request.user!.id, 'player_cards.status_update', 'player_card', id, parsed.data);
-      return { success: true, ...result.rows[0] };
+    },
+  );
+
+  fastify.delete(
+    '/admin/player-cards/:id',
+    { preHandler: [requirePermission('player_cards.manage')] },
+    async (request, reply) => {
+      const id = safeDocumentId(
+        (request.params as { id: string }).id,
+        'Player Card',
+      );
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        const deletion = await deletePlayerCardDefinition(
+          (text, params) => client.query(text, params),
+          id,
+        );
+        if (deletion.status !== 'deleted') {
+          await client.query('ROLLBACK');
+          if (deletion.status === 'missing') {
+            return reply.status(404).send({
+              error: 'NotFound',
+              message: 'Player Card not found.',
+            });
+          }
+          if (deletion.status === 'linked') {
+            return reply.status(409).send({
+              error: 'PlayerCardChallengeLinked',
+              message:
+                'This Player Card is assigned to a challenge and cannot be deleted while linked.',
+              challengeId: deletion.challengeId,
+              challengeStatus: deletion.challengeStatus,
+            });
+          }
+          return reply.status(409).send({
+            error: 'PlayerCardAlreadyClaimed',
+            message:
+              'This Player Card has already been collected. Disable it instead so existing collections and profile totals stay correct.',
+            claimCount: deletion.claimCount,
+          });
+        }
+        await audit(
+          request.user!.id,
+          'player_cards.delete',
+          'player_card',
+          id,
+          deletion.card,
+          (text, params) => client.query(text, params),
+        );
+        await client.query('COMMIT');
+        return { success: true, id };
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
     },
   );
 
   fastify.get('/settings/launch-announcement', async (_request, reply) => {
+    reply.header('Cache-Control', 'no-store');
     const result = await query(
       `SELECT value FROM platform_settings WHERE key = 'launchAnnouncement'`,
     );
@@ -663,23 +899,63 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
         revision: Date.now(),
         updatedAt: new Date().toISOString(),
       };
-      await query(
-        `INSERT INTO platform_settings (key, value, description, updated_by)
-         VALUES ('launchAnnouncement', $1, 'Home-screen launch popup', $2)
-         ON CONFLICT (key) DO UPDATE SET
-           value = EXCLUDED.value,
-           updated_at = CURRENT_TIMESTAMP,
-           updated_by = EXCLUDED.updated_by`,
-        [JSON.stringify(value), request.user!.id],
-      );
-      await audit(
-        request.user!.id,
-        'settings.launch_announcement_update',
-        'platform_setting',
-        'launchAnnouncement',
-        value,
-      );
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          `INSERT INTO platform_settings (key, value, description, updated_by)
+           VALUES ('launchAnnouncement', $1, 'Home-screen launch popup', $2)
+           ON CONFLICT (key) DO UPDATE SET
+             value = EXCLUDED.value,
+             updated_at = CURRENT_TIMESTAMP,
+             updated_by = EXCLUDED.updated_by`,
+          [JSON.stringify(value), request.user!.id],
+        );
+        await audit(
+          request.user!.id,
+          'settings.launch_announcement_update',
+          'platform_setting',
+          'launchAnnouncement',
+          value,
+          (text, params) => client.query(text, params),
+        );
+        await client.query('COMMIT');
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
       return { success: true, announcement: value };
+    },
+  );
+
+  fastify.delete(
+    '/admin/settings/launch-announcement',
+    { preHandler: [requirePermission('settings.manage')] },
+    async (request) => {
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        const deleted = await resetLaunchAnnouncementSetting((text, params) =>
+          client.query(text, params),
+        );
+        await audit(
+          request.user!.id,
+          'settings.launch_announcement_reset',
+          'platform_setting',
+          'launchAnnouncement',
+          { deleted: deleted !== null },
+          (text, params) => client.query(text, params),
+        );
+        await client.query('COMMIT');
+        return { success: true, deleted: deleted !== null };
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
     },
   );
 
@@ -907,6 +1183,8 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
       const redemptionRef = db.collection('loyaltyRedemptions').doc(redemptionId);
       let previousStatus = '';
       let refunded = false;
+      let redemptionUserId = '';
+      let redemptionCost = 0;
       try {
         await db.runTransaction(async (transaction) => {
           const redemptionDoc = await transaction.get(redemptionRef);
@@ -917,6 +1195,19 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
             throw new Error('Stored redemption status is invalid.');
           }
           previousStatus = current;
+          if (status === 'cancelled') {
+            redemptionUserId = safeDocumentId(
+              String(redemption.userId ?? ''),
+              'Redemption user',
+            );
+            redemptionCost = finiteInteger(
+              redemption.cost,
+              'Redemption cost',
+              1,
+              1_000_000,
+            );
+            refunded = redemption.refunded === true;
+          }
           if (!canTransitionRedemptionStatus(
             current as (typeof redemptionStatuses)[number],
             status,
@@ -938,7 +1229,7 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
           };
 
           if (status === 'cancelled') {
-            const userId = safeDocumentId(String(redemption.userId ?? ''), 'Redemption user');
+            const userId = redemptionUserId;
             const rewardId = safeDocumentId(String(redemption.rewardId ?? ''), 'Redemption reward');
             const userRef = db.collection('users').doc(userId);
             const rewardRef = db.collection('loyaltyRewards').doc(rewardId);
@@ -957,7 +1248,7 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
             if (!userDoc.exists || !claimDoc.exists || refundDoc.exists) {
               throw new Error('The redemption cannot be refunded from its current state.');
             }
-            const cost = finiteInteger(redemption.cost, 'Redemption cost', 1, 1_000_000);
+            const cost = redemptionCost;
             const balance = finiteInteger(
               userDoc.data()?.loyaltyPoints,
               'Loyalty balance',
@@ -1024,6 +1315,14 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
           }
           transaction.update(redemptionRef, update);
         });
+        if (status === 'cancelled') {
+          const postgresRefund = await refundPostgresLoyaltyRedemption(
+            redemptionUserId,
+            redemptionId,
+            redemptionCost,
+          );
+          refunded = refunded || postgresRefund.refunded;
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Redemption update failed.';
         const clientError =

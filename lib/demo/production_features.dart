@@ -1,8 +1,12 @@
 part of 'fan_league_app.dart';
 
 class _ProductionChallenges extends StatelessWidget {
-  const _ProductionChallenges({required this.repository});
+  const _ProductionChallenges({
+    required this.repository,
+    required this.profile,
+  });
   final ProductionRepository repository;
+  final AbuUserProfile profile;
 
   @override
   Widget build(BuildContext context) => _PageFrame(
@@ -12,43 +16,53 @@ class _ProductionChallenges extends StatelessWidget {
       'شاهد · أجب · اجمع النقاط',
     ),
     title: abuText(context, 'Challenges', 'التحديات'),
-    child: StreamBuilder<List<AbuChallenge>>(
-      stream: repository.watchChallenges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const _ProductionSkeleton(height: 220);
-        }
-        if (snapshot.hasError) {
-          return _ProductionEmpty(
-            icon: Icons.cloud_off_rounded,
-            title: abuText(
-              context,
-              'Challenges unavailable',
-              'التحديات غير متاحة',
-            ),
-            body: productionErrorMessage(snapshot.error!),
-          );
-        }
-        final challenges = snapshot.data ?? const [];
-        if (challenges.isEmpty) {
-          return const _ProductionChallengeEmptyState();
-        }
-        final uid = repository.auth.currentUser?.uid;
-        if (uid == null) {
-          return _ProductionChallengeGrid(
-            challenges: challenges,
-            repository: repository,
-          );
-        }
-        return StreamBuilder<AbuUserProfile?>(
-          stream: repository.watchProfile(uid),
-          builder: (context, profileSnapshot) => _ProductionChallengeGrid(
-            challenges: challenges,
-            repository: repository,
-            isMember: profileSnapshot.data?.isYouTubeMember ?? false,
-          ),
-        );
-      },
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        StreamBuilder<List<AbuChallenge>>(
+          stream: repository.watchChallenges(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const _ProductionSkeleton(height: 220);
+            }
+            if (snapshot.hasError) {
+              return _ProductionEmpty(
+                icon: Icons.cloud_off_rounded,
+                title: abuText(
+                  context,
+                  'Challenges unavailable',
+                  'التحديات غير متاحة',
+                ),
+                body: productionErrorMessage(snapshot.error!),
+              );
+            }
+            final challenges = snapshot.data ?? const [];
+            if (challenges.isEmpty) {
+              return const _ProductionChallengeEmptyState();
+            }
+            final uid = repository.auth.currentUser?.uid;
+            if (uid == null) {
+              return _ProductionChallengeGrid(
+                challenges: challenges,
+                repository: repository,
+              );
+            }
+            return StreamBuilder<AbuUserProfile?>(
+              stream: repository.watchProfile(uid),
+              builder: (context, profileSnapshot) => _ProductionChallengeGrid(
+                challenges: challenges,
+                repository: repository,
+                isMember: profileSnapshot.data?.isYouTubeMember ?? false,
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 28),
+        _ProductionPlayerCardCollection(
+          repository: repository,
+          profile: profile,
+        ),
+      ],
     ),
   );
 }
@@ -689,72 +703,8 @@ class _ChallengePlayDialogState extends State<_ChallengePlayDialog> {
   );
 }
 
-class _ProductionHomeActivityFeed extends StatelessWidget {
-  const _ProductionHomeActivityFeed({required this.repository});
-  final ProductionRepository repository;
-
-  @override
-  Widget build(BuildContext context) => StreamBuilder<List<AbuChallenge>>(
-    stream: repository.watchChallenges(),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting) {
-        return const _ProductionSkeleton(height: 210);
-      }
-      if (snapshot.hasError) {
-        return _ProductionEmpty(
-          icon: Icons.cloud_off_rounded,
-          title: abuText(context, 'Activity unavailable', 'النشاط غير متاح'),
-          body: productionErrorMessage(snapshot.error!),
-        );
-      }
-      final active = (snapshot.data ?? const <AbuChallenge>[])
-          .where((event) => event.isOpen)
-          .take(3)
-          .toList();
-      if (active.isEmpty) {
-        return const SizedBox.shrink();
-      }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text(
-                abuText(context, 'YOUR NEXT MOVES', 'خطواتك القادمة'),
-                style: _display(22),
-              ),
-              const Spacer(),
-              Text(
-                abuText(
-                  context,
-                  '${active.length} LIVE',
-                  '${active.length} متاح',
-                ),
-                style: TextStyle(
-                  color: _productionPrimary(context),
-                  fontWeight: FontWeight.w900,
-                  fontSize: 11,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _ResponsiveGrid(
-            children: active
-                .map(
-                  (event) => _ProductionChallengeCard(
-                    challenge: event,
-                    repository: repository,
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-      );
-    },
-  );
-}
-
+// Kept dormant while Community/Posts are outside the current product scope.
+// ignore: unused_element
 class _ProductionCommunity extends StatelessWidget {
   const _ProductionCommunity({required this.repository, required this.profile});
   final ProductionRepository repository;
@@ -1924,9 +1874,9 @@ class _ProductionPlayerCardCollection extends StatelessWidget {
           body: productionErrorMessage(snapshot.error!),
         );
       }
-      final cards = (snapshot.data ?? const <AbuPlayerCard>[])
-          .where((card) => card.enabled)
-          .toList();
+      // The server hides disabled unclaimed cards but deliberately retains a
+      // disabled card for a fan who already collected it.
+      final cards = snapshot.data ?? const <AbuPlayerCard>[];
       if (cards.isEmpty) {
         return const SizedBox.shrink();
       }
@@ -2077,6 +2027,12 @@ class _PlayerCollectionCard extends StatelessWidget {
                   Text(
                     card.unlocked
                         ? '${card.teamName} · ${card.position}'
+                        : card.sourceChallengeId.trim().isEmpty
+                        ? abuText(
+                            context,
+                            'Awaiting an unlock challenge',
+                            'في انتظار ربط تحدٍ لفتحها',
+                          )
                         : abuText(
                             context,
                             'Complete the linked challenge to unlock',
@@ -2692,6 +2648,8 @@ class _InteractiveFanCard extends StatefulWidget {
   State<_InteractiveFanCard> createState() => _InteractiveFanCardState();
 }
 
+// Kept dormant for a future Fan War release.
+// ignore: unused_element
 class _ProductionFanWar extends StatelessWidget {
   const _ProductionFanWar({required this.repository});
   final ProductionRepository repository;
@@ -3167,6 +3125,8 @@ class _FanWarContributorCard extends StatelessWidget {
   );
 }
 
+// Kept dormant until the achievements surface returns to navigation.
+// ignore: unused_element
 class _ProductionAchievements extends StatelessWidget {
   const _ProductionAchievements({
     required this.repository,
@@ -4811,6 +4771,8 @@ class _FanCardBorderPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+// Kept dormant while all fixtures live in Predict.
+// ignore: unused_element
 class _ProductionCalendar extends StatelessWidget {
   const _ProductionCalendar({required this.repository, required this.profile});
   final ProductionRepository repository;
@@ -5540,17 +5502,21 @@ class _AdminQuestionDraft {
       .where((value) => value.isNotEmpty)
       .toList(growable: false);
 
-  AbuChallengeQuestion toModel(int index) => AbuChallengeQuestion(
-    id: 'question_${index + 1}',
-    prompt: prompt.text.trim(),
-    type: type,
-    options: type == 'trueFalse'
-        ? const <String>['true', 'false']
-        : parsedOptions,
-    correctAnswer: type == 'trueFalse'
-        ? answer.text.trim().toLowerCase()
-        : answer.text.trim(),
-  );
+  AbuChallengeQuestion toModel(int index, {String fallbackPrompt = ''}) =>
+      AbuChallengeQuestion(
+        id: 'question_${index + 1}',
+        prompt: effectiveChallengePrompt(
+          title: fallbackPrompt,
+          prompt: prompt.text,
+        ),
+        type: type,
+        options: type == 'trueFalse'
+            ? const <String>['true', 'false']
+            : parsedOptions,
+        correctAnswer: type == 'trueFalse'
+            ? answer.text.trim().toLowerCase()
+            : answer.text.trim(),
+      );
 
   void updateType(String value) {
     type = value;
@@ -5598,17 +5564,6 @@ class _ProductionAdminTools extends StatelessWidget {
           color: _productionPrimary(context),
           primary: true,
           onTap: () => createChallenge(context),
-        ),
-        _AdminQuickAction(
-          icon: Icons.sports_esports_rounded,
-          label: abuText(context, 'GAMES ARENA', 'ساحة الألعاب'),
-          detail: abuText(
-            context,
-            'Show or hide the interactive games arena for fans.',
-            'إظهار أو إخفاء ساحة الألعاب التفاعلية للمشجعين.',
-          ),
-          color: _gold,
-          onTap: () => _toggleGamesArena(context),
         ),
         _AdminQuickAction(
           icon: Icons.workspace_premium_rounded,
@@ -5895,60 +5850,24 @@ class _ProductionAdminTools extends StatelessWidget {
     ),
   );
 
-  Future<void> _toggleGamesArena(BuildContext context) async {
-    showDialog<void>(
-      context: context,
-      builder: (context) => StreamBuilder<bool>(
-        stream: repository.watchGamesEnabled(),
-        builder: (context, snapshot) {
-          final enabled = snapshot.data ?? false;
-          return AlertDialog(
-            title: Text(
-              abuText(context, 'GAMES ARENA SETTING', 'إعداد ساحة الألعاب'),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SwitchListTile(
-                  title: Text(
-                    abuText(
-                      context,
-                      'Enable Games for Users',
-                      'تفعيل الألعاب للمستخدمين',
-                    ),
-                  ),
-                  subtitle: Text(
-                    abuText(
-                      context,
-                      'When enabled, fans will see the Games tab in their navigation.',
-                      'عند التفعيل، سيظهر تبويب الألعاب للمشجعين في القائمة.',
-                    ),
-                  ),
-                  value: enabled,
-                  onChanged: (val) async {
-                    await repository.setGamesEnabled(val);
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(abuText(context, 'DONE', 'تم')),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   Future<void> _manageYouTubeMembers(BuildContext context) => showDialog<void>(
     context: context,
     builder: (_) => _AdminMembershipDialog(repository: repository),
   );
 
   Future<void> createChallenge(BuildContext context) async {
+    List<AbuPlayerCard> availablePlayerCards = const <AbuPlayerCard>[];
+    try {
+      availablePlayerCards = (await repository.fetchManagedPlayerCards())
+          .where(
+            (card) => card.enabled && card.sourceChallengeId.trim().isEmpty,
+          )
+          .toList(growable: false);
+    } catch (_) {
+      // Video challenges remain available if the optional card catalog cannot
+      // be loaded. A Player Card challenge will show a clear validation hint.
+    }
+    if (!context.mounted) return;
     final title = TextEditingController();
     final description = TextEditingController();
     final video = TextEditingController();
@@ -5959,6 +5878,7 @@ class _ProductionAdminTools extends StatelessWidget {
     var maximumAttempts = 3;
     var memberOnly = false;
     var notifyOnLive = true;
+    var playerCardId = '';
     var startsAt = DateTime.now();
     var endsAt = DateTime.now().add(const Duration(days: 7));
     XFile? selectedImage;
@@ -6021,6 +5941,11 @@ class _ProductionAdminTools extends StatelessWidget {
                       if (value == null || value == kind) return;
                       setDialogState(() {
                         kind = value;
+                        playerCardId =
+                            value == 'playerCard' &&
+                                availablePlayerCards.isNotEmpty
+                            ? availablePlayerCards.first.id
+                            : '';
                         resetQuestions(value);
                         points.text = switch (value) {
                           'playerCard' => '300',
@@ -6029,6 +5954,53 @@ class _ProductionAdminTools extends StatelessWidget {
                       });
                     },
                   ),
+                  if (kind == 'playerCard') ...[
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: playerCardId,
+                      decoration: InputDecoration(
+                        labelText: abuText(
+                          context,
+                          'Card unlocked by this challenge',
+                          'البطاقة التي يفتحها هذا التحدي',
+                        ),
+                        helperText: availablePlayerCards.isEmpty
+                            ? abuText(
+                                context,
+                                'Create an enabled card in Player Card Studio first.',
+                                'أنشئ بطاقة مفعّلة في استوديو بطاقات اللاعبين أولاً.',
+                              )
+                            : abuText(
+                                context,
+                                'A correct answer will add this card to the fan collection.',
+                                'ستضيف الإجابة الصحيحة هذه البطاقة إلى مجموعة المشجع.',
+                              ),
+                      ),
+                      items: <DropdownMenuItem<String>>[
+                        DropdownMenuItem<String>(
+                          value: '',
+                          child: Text(
+                            abuText(
+                              context,
+                              'Choose a Player Card',
+                              'اختر بطاقة لاعب',
+                            ),
+                          ),
+                        ),
+                        ...availablePlayerCards.map(
+                          (card) => DropdownMenuItem<String>(
+                            value: card.id,
+                            child: Text(
+                              '${card.playerName} · ${card.rating} ${card.position}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) =>
+                          setDialogState(() => playerCardId = value ?? ''),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: status,
@@ -6295,8 +6267,13 @@ class _ProductionAdminTools extends StatelessWidget {
                               decoration: InputDecoration(
                                 labelText: abuText(
                                   context,
-                                  'Question prompt',
-                                  'نص السؤال',
+                                  'Question prompt (optional)',
+                                  'نص السؤال (اختياري)',
+                                ),
+                                helperText: abuText(
+                                  context,
+                                  'The challenge title is used when this is empty.',
+                                  'يُستخدم عنوان التحدي عند تركه فارغاً.',
                                 ),
                               ),
                             ),
@@ -6390,7 +6367,12 @@ class _ProductionAdminTools extends StatelessWidget {
                 questions: questions
                     .asMap()
                     .entries
-                    .map((entry) => entry.value.toModel(entry.key))
+                    .map(
+                      (entry) => entry.value.toModel(
+                        entry.key,
+                        fallbackPrompt: title.text,
+                      ),
+                    )
                     .toList(),
               ),
               icon: Icon(Icons.visibility_rounded),
@@ -6418,15 +6400,20 @@ class _ProductionAdminTools extends StatelessWidget {
                     'End time must be after the start time.',
                     'يجب أن يكون وقت الانتهاء بعد وقت البدء.',
                   );
+                } else if (kind == 'playerCard' && playerCardId.isEmpty) {
+                  validationError = abuText(
+                    context,
+                    'Choose the Player Card this challenge should unlock.',
+                    'اختر بطاقة اللاعب التي سيفتحها هذا التحدي.',
+                  );
                 }
                 for (final draft in questions) {
                   if (validationError != null) break;
-                  if (draft.prompt.text.trim().isEmpty ||
-                      draft.answer.text.trim().isEmpty) {
+                  if (draft.answer.text.trim().isEmpty) {
                     validationError = abuText(
                       context,
-                      'Every question needs a prompt and private correct answer.',
-                      'يحتاج كل سؤال إلى نص وإجابة صحيحة خاصة.',
+                      'Enter the private correct answer so responses can be scored.',
+                      'أدخل الإجابة الصحيحة الخاصة حتى يمكن تقييم الإجابات.',
                     );
                   } else if (draft.type == 'multipleChoice' &&
                       draft.parsedOptions.length < 2) {
@@ -6464,14 +6451,16 @@ class _ProductionAdminTools extends StatelessWidget {
     final questionModels = questions
         .asMap()
         .entries
-        .map((entry) => entry.value.toModel(entry.key))
+        .map(
+          (entry) => entry.value.toModel(entry.key, fallbackPrompt: title.text),
+        )
         .toList(growable: false);
     if (submit == true && context.mounted) {
       await _adminAction(context, () async {
         final uploadedImageUrl = selectedImage == null
             ? ''
             : await repository.uploadChallengeImage(selectedImage!);
-        return repository.createAdvancedChallenge(
+        await repository.createAdvancedChallenge(
           kind: kind,
           title: title.text,
           description: description.text,
@@ -6484,6 +6473,7 @@ class _ProductionAdminTools extends StatelessWidget {
           maximumAttempts: maximumAttempts,
           memberOnly: memberOnly,
           notifyOnLive: notifyOnLive,
+          playerCardId: playerCardId,
           questions: questionModels,
         );
       }, abuText(context, 'Challenge published.', 'تم نشر التحدي.'));
@@ -6522,7 +6512,7 @@ class _ProductionAdminTools extends StatelessWidget {
     String? imageValidationError;
     String? uploadError;
     var uploading = false;
-    final submission = await showDialog<({String imageUrl})?>(
+    final submission = await showDialog<({String imageUrl, bool reset})?>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -6803,6 +6793,65 @@ class _ProductionAdminTools extends StatelessWidget {
             ),
           ),
           actions: [
+            if (existing != null)
+              TextButton.icon(
+                onPressed: uploading
+                    ? null
+                    : () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (confirmationContext) => AlertDialog(
+                            title: Text(
+                              abuText(
+                                confirmationContext,
+                                'Reset launch popup?',
+                                'إعادة ضبط نافذة البدء؟',
+                              ),
+                            ),
+                            content: Text(
+                              abuText(
+                                confirmationContext,
+                                'This removes the popup campaign from every device. You can create a new one later.',
+                                'سيؤدي هذا إلى إزالة حملة النافذة من جميع الأجهزة. يمكنك إنشاء حملة جديدة لاحقاً.',
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(confirmationContext, false),
+                                child: Text(
+                                  abuText(
+                                    confirmationContext,
+                                    'CANCEL',
+                                    'إلغاء',
+                                  ),
+                                ),
+                              ),
+                              FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: _red,
+                                ),
+                                onPressed: () =>
+                                    Navigator.pop(confirmationContext, true),
+                                icon: const Icon(Icons.delete_forever_rounded),
+                                label: Text(
+                                  abuText(
+                                    confirmationContext,
+                                    'RESET',
+                                    'إعادة ضبط',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true && context.mounted) {
+                          Navigator.pop(context, (imageUrl: '', reset: true));
+                        }
+                      },
+                icon: const Icon(Icons.delete_forever_rounded),
+                label: Text(abuText(context, 'RESET', 'إعادة ضبط')),
+              ),
             TextButton(
               onPressed: uploading ? null : () => Navigator.pop(context),
               child: Text(abuText(context, 'CANCEL', 'إلغاء')),
@@ -6871,7 +6920,10 @@ class _ProductionAdminTools extends StatelessWidget {
                         }
                       }
                       if (context.mounted) {
-                        Navigator.pop(context, (imageUrl: finalImageUrl));
+                        Navigator.pop(context, (
+                          imageUrl: finalImageUrl,
+                          reset: false,
+                        ));
                       }
                     },
               child: uploading
@@ -6887,6 +6939,14 @@ class _ProductionAdminTools extends StatelessWidget {
       ),
     );
     if (submission == null || !context.mounted) return;
+    if (submission.reset) {
+      await _adminAction(
+        context,
+        repository.resetAnnouncement,
+        abuText(context, 'Launch popup reset.', 'تمت إعادة ضبط نافذة البدء.'),
+      );
+      return;
+    }
     await _adminAction(
       context,
       () => repository.saveAnnouncement(
@@ -6996,39 +7056,36 @@ class _ProductionAdminTools extends StatelessWidget {
   Future<void> manageRedemptions(BuildContext context) =>
       _showAdminRedemptionManager(context, repository);
 
-  Future<void> managePlayerCards(BuildContext context) =>
-      _showAdminDefinitionManager<AbuPlayerCard>(
-        context: context,
-        title: abuText(
-          context,
-          'Player Card studio',
-          'استوديو بطاقات اللاعبين',
-        ),
-        emptyTitle: abuText(
-          context,
-          'No Player Cards configured',
-          'لم يتم إعداد بطاقات لاعبين',
-        ),
-        emptyBody: abuText(
-          context,
-          'Publish the first collectible card.',
-          'انشر أول بطاقة قابلة للجمع.',
-        ),
-        stream: repository.watchManagedPlayerCards(),
-        enabled: (item) => item.enabled,
-        icon: (_) => Icons.style_rounded,
-        label: (item) => item.playerName,
-        detail: (item) => abuText(
-          context,
-          '${item.rating} ${item.position} · ${item.teamName} · ${item.rarity}',
-          '${item.rating} ${item.position} · ${item.teamName} · ${item.rarity}',
-        ),
-        onToggle: (item, value) =>
-            repository.setPlayerCardEnabled(item.id, value),
-        onEdit: (item) =>
-            _editPlayerCardDefinition(context, repository, existing: item),
-        onCreate: () => _editPlayerCardDefinition(context, repository),
-      );
+  Future<void> managePlayerCards(
+    BuildContext context,
+  ) => _showAdminDefinitionManager<AbuPlayerCard>(
+    context: context,
+    title: abuText(context, 'Player Card studio', 'استوديو بطاقات اللاعبين'),
+    emptyTitle: abuText(
+      context,
+      'No Player Cards configured',
+      'لم يتم إعداد بطاقات لاعبين',
+    ),
+    emptyBody: abuText(
+      context,
+      'Publish the first collectible card.',
+      'انشر أول بطاقة قابلة للجمع.',
+    ),
+    stream: repository.watchManagedPlayerCards(),
+    enabled: (item) => item.enabled,
+    icon: (_) => Icons.style_rounded,
+    label: (item) => item.playerName,
+    detail: (item) => abuText(
+      context,
+      '${item.rating} ${item.position} · ${item.teamName} · ${item.rarity} · ${item.sourceChallengeId.trim().isEmpty ? 'not linked to a challenge' : 'linked to ${item.sourceChallengeId}'}',
+      '${item.rating} ${item.position} · ${item.teamName} · ${item.rarity} · ${item.sourceChallengeId.trim().isEmpty ? 'غير مرتبط بتحدٍ' : 'مرتبط بـ ${item.sourceChallengeId}'}',
+    ),
+    onToggle: (item, value) => repository.setPlayerCardEnabled(item.id, value),
+    onEdit: (item) =>
+        _editPlayerCardDefinition(context, repository, existing: item),
+    onDelete: (item) => repository.deletePlayerCard(item.id),
+    onCreate: () => _editPlayerCardDefinition(context, repository),
+  );
 
   Future<void> manageRoles(BuildContext context) => showDialog<void>(
     context: context,
@@ -7932,6 +7989,7 @@ Future<void> _showAdminDefinitionManager<T>({
   required Future<void> Function(T item, bool value) onToggle,
   required Future<void> Function(T item) onEdit,
   required Future<void> Function() onCreate,
+  Future<void> Function(T item)? onDelete,
 }) => showDialog<void>(
   context: context,
   builder: (dialogContext) => AlertDialog(
@@ -7969,6 +8027,7 @@ Future<void> _showAdminDefinitionManager<T>({
             separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final item = items[index];
+              final deleteItem = onDelete;
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor: _productionPrimary(context)
@@ -8004,6 +8063,72 @@ Future<void> _showAdminDefinitionManager<T>({
                       onPressed: () => onEdit(item),
                       icon: Icon(Icons.edit_rounded),
                     ),
+                    if (deleteItem != null)
+                      IconButton(
+                        tooltip: abuText(context, 'Delete', 'حذف'),
+                        color: _red,
+                        onPressed: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: dialogContext,
+                            builder: (confirmationContext) => AlertDialog(
+                              title: Text(
+                                abuText(
+                                  confirmationContext,
+                                  'Delete ${label(item)}?',
+                                  'حذف ${label(item)}؟',
+                                ),
+                              ),
+                              content: Text(
+                                abuText(
+                                  confirmationContext,
+                                  'This permanently removes an unclaimed Player Card. Cards already collected by fans must be disabled instead.',
+                                  'يحذف هذا بطاقة اللاعب غير المُطالَب بها نهائياً. يجب تعطيل البطاقات التي جمعها المشجعون بدلاً من حذفها.',
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(confirmationContext, false),
+                                  child: Text(
+                                    abuText(
+                                      confirmationContext,
+                                      'CANCEL',
+                                      'إلغاء',
+                                    ),
+                                  ),
+                                ),
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: _red,
+                                  ),
+                                  onPressed: () =>
+                                      Navigator.pop(confirmationContext, true),
+                                  icon: const Icon(Icons.delete_rounded),
+                                  label: Text(
+                                    abuText(
+                                      confirmationContext,
+                                      'DELETE',
+                                      'حذف',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed != true) return;
+                          try {
+                            await deleteItem(item);
+                          } catch (error) {
+                            if (!dialogContext.mounted) return;
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(
+                                content: Text(productionErrorMessage(error)),
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.delete_outline_rounded),
+                      ),
                   ],
                 ),
               );
@@ -8965,9 +9090,6 @@ Future<void> _editPlayerCardDefinition(
   final teamLogo = TextEditingController(text: existing?.teamLogoUrl ?? '');
   final position = TextEditingController(text: existing?.position ?? '');
   final rating = TextEditingController(text: '${existing?.rating ?? 80}');
-  final sourceChallenge = TextEditingController(
-    text: existing?.sourceChallengeId ?? '',
-  );
   final stats = TextEditingController(
     text:
         existing?.stats.entries
@@ -9162,23 +9284,13 @@ Future<void> _editPlayerCardDefinition(
                     ),
                   ),
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: sourceChallenge,
-                  decoration: InputDecoration(
-                    labelText: abuText(
-                      context,
-                      'Source challenge ID',
-                      'معرّف التحدي المصدر',
-                    ),
+                if (existing == null)
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: enabled,
+                    onChanged: (value) => setDialogState(() => enabled = value),
+                    title: Text(abuText(context, 'Enabled', 'مفعّل')),
                   ),
-                ),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: enabled,
-                  onChanged: (value) => setDialogState(() => enabled = value),
-                  title: Text(abuText(context, 'Enabled', 'مفعّل')),
-                ),
               ],
             ),
           ),
@@ -9208,7 +9320,7 @@ Future<void> _editPlayerCardDefinition(
                 descriptionAr: descriptionAr.text,
                 unlocked: true,
                 enabled: true,
-                sourceChallengeId: sourceChallenge.text,
+                sourceChallengeId: existing?.sourceChallengeId ?? '',
               ),
             ),
             icon: Icon(Icons.visibility_rounded),
@@ -9267,7 +9379,7 @@ Future<void> _editPlayerCardDefinition(
         descriptionAr: descriptionAr.text,
         unlocked: false,
         enabled: enabled,
-        sourceChallengeId: sourceChallenge.text,
+        sourceChallengeId: existing?.sourceChallengeId ?? '',
       );
       await repository.savePlayerCard(model);
     }, abuText(context, 'Player Card saved.', 'تم حفظ بطاقة اللاعب.'));
@@ -9282,7 +9394,6 @@ Future<void> _editPlayerCardDefinition(
     teamLogo,
     position,
     rating,
-    sourceChallenge,
     stats,
   ]) {
     controller.dispose();
@@ -9530,8 +9641,15 @@ class _AdminEventManager extends StatelessWidget {
                               ),
                             ),
                             SizedBox(
-                              width: 130,
-                              child: _statusPicker(context, event),
+                              width: 180,
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: _statusPicker(context, event),
+                                  ),
+                                  _deleteButton(context, event),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -9551,7 +9669,15 @@ class _AdminEventManager extends StatelessWidget {
                             '${event.rewardPoints} نقطة · ${_productionDate(event.availableUntil)}',
                           ),
                         ),
-                        trailing: _statusPicker(context, event),
+                        trailing: SizedBox(
+                          width: 180,
+                          child: Row(
+                            children: [
+                              Expanded(child: _statusPicker(context, event)),
+                              _deleteButton(context, event),
+                            ],
+                          ),
+                        ),
                       ),
               ),
             ],
@@ -9568,6 +9694,7 @@ class _AdminEventManager extends StatelessWidget {
       'open',
       'disabled',
       'ended',
+      'closed',
       'archived',
     ];
     return DropdownButton<String>(
@@ -9595,6 +9722,10 @@ class _AdminEventManager extends StatelessWidget {
           child: Text(abuText(context, 'Ended', 'منتهٍ')),
         ),
         DropdownMenuItem(
+          value: 'closed',
+          child: Text(abuText(context, 'Closed', 'مغلق')),
+        ),
+        DropdownMenuItem(
           value: 'archived',
           child: Text(abuText(context, 'Archived', 'مؤرشف')),
         ),
@@ -9613,6 +9744,62 @@ class _AdminEventManager extends StatelessWidget {
       },
     );
   }
+
+  Widget _deleteButton(BuildContext context, AbuChallenge event) => IconButton(
+    tooltip: abuText(
+      context,
+      'Delete unused challenge',
+      'حذف التحدي غير المستخدم',
+    ),
+    icon: const Icon(Icons.delete_outline_rounded),
+    color: _red,
+    onPressed: () async {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            abuText(dialogContext, 'Delete challenge?', 'حذف التحدي؟'),
+          ),
+          content: Text(
+            abuText(
+              dialogContext,
+              'This permanently removes “${event.title}”, releases its linked Player Card, and cancels its pending notification. Challenges with fan answers must be archived instead.',
+              'سيؤدي هذا إلى حذف «${event.title}» نهائياً، وتحرير بطاقة اللاعب المرتبطة، وإلغاء الإشعار المعلّق. يجب أرشفة التحديات التي تحتوي على إجابات.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(abuText(dialogContext, 'CANCEL', 'إلغاء')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(abuText(dialogContext, 'DELETE', 'حذف')),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !context.mounted) return;
+      try {
+        await repository.deleteChallenge(event);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                abuText(context, 'Challenge deleted.', 'تم حذف التحدي.'),
+              ),
+            ),
+          );
+        }
+      } catch (error) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(productionErrorMessage(error))),
+          );
+        }
+      }
+    },
+  );
 }
 
 final Set<int> _shownAnnouncementRevisions = <int>{};

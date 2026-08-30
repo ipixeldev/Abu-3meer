@@ -14,12 +14,16 @@ import {
 import { exclusiveVideoNotificationCampaign } from '../services/exclusiveVideoNotification.js';
 import {
   cancelNotificationCampaignBySource,
+  claimNotificationDeliveryDevices,
   createNotificationCampaign,
+  lockNotificationCampaignForDispatch,
+  revokeDeviceInstallation,
 } from '../services/notificationService.js';
 import {
   challengeNotificationCampaign,
   shouldScheduleChallengeNotification,
 } from '../services/challengeNotification.js';
+import { predictionResultNotificationCampaign } from '../services/predictionResultNotification.js';
 
 describe('push notification domain', () => {
   it('normalizes every FCM data value to a string and omits nulls', () => {
@@ -246,18 +250,19 @@ describe('push notification domain', () => {
     );
   });
 
-  it('queues an explicitly open challenge immediately even if its start time is future', () => {
+  it('does not announce an explicitly open challenge before its future start time', () => {
     const now = new Date('2026-08-30T12:00:00.000Z');
+    const startsAt = new Date('2026-08-31T12:00:00.000Z');
     const campaign = challengeNotificationCampaign({
       challengeId: 'challenge_open',
       title: 'Open now',
       imageUrl: '',
-      startsAt: new Date('2026-08-31T12:00:00.000Z'),
+      startsAt,
       status: 'open',
       memberOnly: false,
       createdBy: 'admin-id',
     }, now);
-    assert.equal(campaign.scheduledFor, now);
+    assert.equal(campaign.scheduledFor, startsAt);
   });
 
   it('re-arms a cancelled source campaign instead of duplicating it', async () => {
@@ -283,7 +288,99 @@ describe('push notification domain', () => {
     );
     assert.equal(result.campaignId, 'campaign_1');
     assert.equal(result.created, false);
-    assert.match(statements[1], /status IN \('pending', 'failed', 'cancelled'\)/);
+    assert.match(statements[1], /status = 'cancelled'/);
+  });
+
+  it('never re-arms a cancelled manual broadcast during idempotent replay', async () => {
+    const statements: string[] = [];
+    const scheduledFor = new Date('2026-08-31T12:00:00.000Z');
+    const result = await createNotificationCampaign(
+      {
+        title: 'Manual announcement',
+        body: 'One logical send',
+        category: 'general',
+        scheduledFor,
+        sourceType: 'admin_broadcast',
+        sourceId: 'admin_1:attempt_1',
+      },
+      async (text) => {
+        statements.push(text);
+        if (statements.length === 1) return { rowCount: 0, rows: [] };
+        return { rowCount: 0, rows: [] };
+      },
+      { rearmCancelled: false },
+    );
+
+    assert.equal(result.campaignId, null);
+    assert.equal(result.scheduledFor, scheduledFor);
+    assert.equal(statements.length, 2);
+    assert.equal(statements.some(statement => /status = 'cancelled'/.test(statement)), false);
+  });
+
+  it('reuses a failed source only while its persisted retry budget remains', async () => {
+    const statements: string[] = [];
+    const scheduledFor = new Date('2026-08-31T12:00:00.000Z');
+    const result = await createNotificationCampaign(
+      {
+        title: 'Prediction result',
+        body: 'Result ready',
+        category: 'match',
+        sourceType: 'prediction_result',
+        sourceId: 'prediction_1',
+      },
+      async (text) => {
+        statements.push(text);
+        if (statements.length < 3) return { rowCount: 0, rows: [] };
+        return {
+          rowCount: 1,
+          rows: [{ id: 'campaign_1', scheduled_for: scheduledFor }],
+        };
+      },
+    );
+    assert.equal(result.campaignId, 'campaign_1');
+    assert.equal(statements.length, 3);
+    assert.match(statements[2], /attempt_count < \$3/);
+  });
+
+  it('does not re-arm an exhausted failed source campaign', async () => {
+    let statements = 0;
+    const result = await createNotificationCampaign(
+      {
+        title: 'Prediction result',
+        body: 'Result ready',
+        category: 'match',
+        sourceType: 'prediction_result',
+        sourceId: 'prediction_1',
+      },
+      async () => {
+        statements += 1;
+        return { rowCount: 0, rows: [] };
+      },
+    );
+    assert.equal(statements, 3);
+    assert.equal(result.campaignId, null);
+  });
+
+  it('targets one prediction owner with a source-deduplicated result alert', () => {
+    const campaign = predictionResultNotificationCampaign({
+      predictionId: 'prediction_1',
+      userId: 'user_1',
+      matchId: 'external_123',
+      homeTeam: 'Real Madrid',
+      awayTeam: 'Malaga',
+      homeScore: 2,
+      awayScore: 1,
+      pointsAwarded: 60,
+    });
+    assert.equal(campaign.targetAudience, 'user_specific');
+    assert.equal(campaign.targetUserId, 'user_1');
+    assert.equal(campaign.sourceType, 'prediction_result');
+    assert.equal(campaign.sourceId, 'prediction_1');
+    assert.deepEqual(campaign.data, {
+      route: '/predict',
+      matchId: 'external_123',
+      predictionId: 'prediction_1',
+    });
   });
 
   it('cancels only unsent source campaigns', async () => {
@@ -299,5 +396,67 @@ describe('push notification domain', () => {
     assert.deepEqual(ids, ['campaign_1']);
     assert.match(statement, /status = 'cancelled'/);
     assert.match(statement, /status IN \('pending', 'failed', 'processing'\)/);
+  });
+
+  it('reserves deliveries before FCM and never reclaims sent or processing rows', async () => {
+    let statement = '';
+    let parameters: any[] = [];
+    const devices = [
+      { id: '00000000-0000-0000-0000-000000000001', fcm_token: 'token-1' },
+      { id: '00000000-0000-0000-0000-000000000002', fcm_token: 'token-2' },
+    ];
+    const claimed = await claimNotificationDeliveryDevices(
+      '00000000-0000-0000-0000-000000000010',
+      devices,
+      async (text, params) => {
+        statement = text;
+        parameters = params ?? [];
+        return {
+          rowCount: 1,
+          rows: [{ device_id: devices[1].id }],
+        };
+      },
+    );
+
+    assert.deepEqual(claimed, [devices[1]]);
+    assert.deepEqual(parameters[1], devices.map(device => device.id));
+    assert.match(statement, /'processing'/);
+    assert.match(statement, /campaign\.status = 'processing'/);
+    assert.match(statement, /notification_deliveries\.status = 'failed'/);
+    assert.match(statement, /RETURNING device_id/);
+  });
+
+  it('leases the campaign row before dispatch so cancellation cannot commit mid-send', async () => {
+    let statement = '';
+    const allowed = await lockNotificationCampaignForDispatch(
+      '00000000-0000-0000-0000-000000000010',
+      async (text) => {
+        statement = text;
+        return { rowCount: 1, rows: [{ status: 'processing' }] };
+      },
+    );
+    assert.equal(allowed, true);
+    assert.match(statement, /FOR UPDATE/);
+    assert.match(statement, /WHERE id = \$1/);
+  });
+
+  it('durable sign-out revocation requires both opaque installation secrets', async () => {
+    let statement = '';
+    let parameters: any[] = [];
+    await revokeDeviceInstallation(
+      'fcm-token-value',
+      '0123456789abcdef0123456789abcdef',
+      async (text, params) => {
+        statement = text;
+        parameters = params ?? [];
+        return { rowCount: 1, rows: [] };
+      },
+    );
+    assert.match(statement, /fcm_token = \$1/);
+    assert.match(statement, /installation_id = \$2/);
+    assert.deepEqual(parameters, [
+      'fcm-token-value',
+      '0123456789abcdef0123456789abcdef',
+    ]);
   });
 });

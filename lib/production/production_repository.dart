@@ -1,6 +1,7 @@
 import 'point_rules.dart';
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -9,11 +10,13 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_production_repository.dart';
 import 'api_client.dart';
 import 'external_content_service.dart';
 import 'models.dart';
+import 'notification_service.dart';
 
 @visibleForTesting
 String footballTeamKeyForMatching(String value) {
@@ -60,14 +63,85 @@ bool sameFootballMatchForMatching(MatchEvent left, MatchEvent right) {
   final sameAway =
       footballTeamKeyForMatching(left.awayTeam) ==
       footballTeamKeyForMatching(right.awayTeam);
-  if (sameHome && sameAway) return true;
-
-  // Provider and manually managed names can include suffixes or diacritics.
-  // A matching side plus the same kickoff identifies the same real fixture
-  // without collapsing unrelated matches between those clubs.
+  // Provider and manually managed names can include suffixes or diacritics,
+  // but the same clubs can meet repeatedly. Team names alone must never merge
+  // a later fixture with an earlier prediction/result.
   final kickoffDifference = left.kickoffAt.difference(right.kickoffAt).abs();
-  return (sameHome || sameAway) &&
+  return sameHome &&
+      sameAway &&
       kickoffDifference <= const Duration(minutes: 5);
+}
+
+@visibleForTesting
+bool footballTimelineEventIsScoredGoal(MatchTimelineEvent event) {
+  final type = event.type
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_|_$'), '');
+  return const {'goal', 'penalty_goal', 'own_goal'}.contains(type);
+}
+
+int _footballTimelineMinute(MatchTimelineEvent event) {
+  final parts = event.minute.trim().split('+');
+  final regulation =
+      int.tryParse(parts.first.replaceAll(RegExp(r'\D'), '')) ?? 1 << 20;
+  final added = parts.length > 1
+      ? int.tryParse(parts[1].replaceAll(RegExp(r'\D'), '')) ?? 0
+      : 0;
+  return regulation * 100 + added;
+}
+
+@visibleForTesting
+String firstScorerFromFootballTimeline(List<MatchTimelineEvent> timeline) {
+  final goals = timeline.where(footballTimelineEventIsScoredGoal).toList()
+    ..sort(
+      (left, right) =>
+          _footballTimelineMinute(left)
+              .compareTo(_footballTimelineMinute(right)),
+    );
+  return goals.firstOrNull?.player.trim() ?? '';
+}
+
+String _providerFootballIdentity(MatchEvent event) {
+  final providerId = event.providerMatchId.trim().toLowerCase();
+  return providerId.isNotEmpty ? providerId : event.id.trim().toLowerCase();
+}
+
+/// Provider replicas can briefly regress a completed/live fixture to an
+/// earlier `upcoming` envelope. Keep official result state monotonic while
+/// still accepting a newer terminal correction from the provider.
+@visibleForTesting
+MatchEvent retainPublishedFootballResult(
+  MatchEvent previous,
+  MatchEvent incoming,
+) {
+  final previousStatus = previous.status.trim().toLowerCase();
+  final incomingStatus = incoming.status.trim().toLowerCase();
+  final previousCompleted = const {
+    'completed',
+    'finished',
+  }.contains(previousStatus);
+  final incomingCompleted = const {
+    'completed',
+    'finished',
+  }.contains(incomingStatus);
+  final regressedFromCompleted =
+      previousCompleted &&
+      !incomingCompleted &&
+      !const {'cancelled', 'postponed'}.contains(incomingStatus);
+  final regressedFromLive =
+      previousStatus == 'live' && incomingStatus == 'upcoming';
+  if (!regressedFromCompleted && !regressedFromLive) return incoming;
+
+  return incoming.copyWith(
+    status: previous.status,
+    homeScore: previous.homeScore,
+    awayScore: previous.awayScore,
+    firstScorer: previous.firstScorer.isNotEmpty
+        ? previous.firstScorer
+        : incoming.firstScorer,
+  );
 }
 
 /// Applies Abu 3meer's prediction controls to a provider fixture without
@@ -77,12 +151,17 @@ MatchEvent mergeManagedFootballMatch(MatchEvent provider, MatchEvent managed) {
   final providerMatchId = provider.providerMatchId.trim().isNotEmpty
       ? provider.providerMatchId
       : provider.id;
+  final providerStatus = provider.status.toLowerCase();
+  final providerHasResult =
+      provider.homeScore != null ||
+      provider.awayScore != null ||
+      const {'live', 'completed', 'finished'}.contains(providerStatus);
   return provider.copyWith(
     id: managed.id,
     providerMatchId: providerMatchId,
-    status: managed.status,
-    homeScore: managed.homeScore ?? provider.homeScore,
-    awayScore: managed.awayScore ?? provider.awayScore,
+    status: providerHasResult ? provider.status : managed.status,
+    homeScore: provider.homeScore ?? managed.homeScore,
+    awayScore: provider.awayScore ?? managed.awayScore,
     firstScorer: managed.firstScorer.isNotEmpty
         ? managed.firstScorer
         : provider.firstScorer,
@@ -93,6 +172,28 @@ MatchEvent mergeManagedFootballMatch(MatchEvent provider, MatchEvent managed) {
     predictionClosesAt: managed.predictionClosesAt,
     kickoffAt: managed.kickoffAt,
   );
+}
+
+/// Uses a small, provider-only replay window during a genuine network error.
+/// A successful empty response remains authoritative, while stale managed
+/// matches and months-old fixtures can never live forever in the app cache.
+@visibleForTesting
+List<MatchEvent> retainedProviderMatchesAfterFetchFailure(
+  List<MatchEvent> cached, {
+  DateTime? now,
+}) {
+  final current = now ?? DateTime.now();
+  final earliest = current.subtract(const Duration(days: 7));
+  final latest = current.add(const Duration(days: 14));
+  return cached.where((event) {
+    final providerId = event.providerMatchId.trim().toLowerCase();
+    final eventId = event.id.trim().toLowerCase();
+    final providerBacked =
+        providerId.startsWith('external_') || eventId.startsWith('external_');
+    return providerBacked &&
+        !event.kickoffAt.isBefore(earliest) &&
+        !event.kickoffAt.isAfter(latest);
+  }).toList()..sort((a, b) => a.kickoffAt.compareTo(b.kickoffAt));
 }
 
 @visibleForTesting
@@ -130,6 +231,57 @@ String _normalizedOptionalUrl(String raw, String field) {
     throw ArgumentError('$field must be a valid http or https URL.');
   }
   return uri.toString();
+}
+
+String effectiveChallengePrompt({
+  required String title,
+  required String prompt,
+}) {
+  final explicitPrompt = prompt.trim();
+  return explicitPrompt.isEmpty ? title.trim() : explicitPrompt;
+}
+
+/// Accepts a YouTube watch/share/embed/short URL or a canonical video ID.
+/// YouTube video IDs are exactly 11 URL-safe characters; arbitrary hostnames
+/// must never be stored as IDs (for example the old `iamr.dev` test row).
+String? extractYoutubeVideoId(String raw) {
+  final value = raw.trim();
+  final idPattern = RegExp(r'^[A-Za-z0-9_-]{11}$');
+  if (idPattern.hasMatch(value)) return value;
+
+  Uri? uri = Uri.tryParse(value);
+  if (uri == null || uri.host.isEmpty) {
+    uri = Uri.tryParse('https://$value');
+  }
+  if (uri == null || uri.host.isEmpty) return null;
+  final host = uri.host.toLowerCase();
+  String? candidate;
+  if (host == 'youtu.be' || host == 'www.youtu.be') {
+    if (uri.pathSegments.isNotEmpty) candidate = uri.pathSegments.first;
+  } else if (host == 'youtube.com' ||
+      host == 'www.youtube.com' ||
+      host == 'm.youtube.com' ||
+      host == 'music.youtube.com' ||
+      host == 'youtube-nocookie.com' ||
+      host == 'www.youtube-nocookie.com') {
+    candidate = uri.queryParameters['v'];
+    if (candidate == null && uri.pathSegments.length >= 2) {
+      if (const {'shorts', 'embed', 'live'}.contains(uri.pathSegments.first)) {
+        candidate = uri.pathSegments[1];
+      }
+    }
+  }
+  final normalized = candidate?.trim() ?? '';
+  return idPattern.hasMatch(normalized) ? normalized : null;
+}
+
+@visibleForTesting
+Future<void> runMutationAndForceRefresh({
+  required Future<void> Function() mutation,
+  required Iterable<Future<void> Function()> refreshers,
+}) async {
+  await mutation();
+  await Future.wait(refreshers.map((refresh) => refresh()));
 }
 
 String? supportedAdminImageContentType({
@@ -184,6 +336,7 @@ class _ReplayResource<T> {
   StackTrace? _lastStackTrace;
   DateTime? _loadedAt;
   Future<void>? _inFlight;
+  Completer<void>? _queuedForcedRefresh;
   Stream<T>? _stream;
   bool _disposed = false;
 
@@ -201,14 +354,30 @@ class _ReplayResource<T> {
     } else if (_lastError != null) {
       listener.addError(_lastError!, _lastStackTrace);
     }
-    unawaited(refresh());
+    // The stream receives the initial error through `_updates`. Consume the
+    // returned Future here so propagating refresh failures to explicit admin
+    // mutations does not also create an unhandled asynchronous exception.
+    unawaited(refresh().catchError((Object _) {}));
     listener.onCancel = subscription.cancel;
   }, isBroadcast: true);
 
   Future<void> refresh({bool force = false}) {
     if (_disposed) return Future<void>.value();
     final running = _inFlight;
-    if (running != null) return running;
+    if (running != null) {
+      if (!force) return running;
+
+      // A mutation may finish while an older GET is still in flight. Joining
+      // that request would let its pre-mutation response overwrite the new
+      // content and make a successful save appear to have vanished. Coalesce
+      // concurrent forced refreshes, but always run one new load immediately
+      // after the older request completes.
+      final queued = _queuedForcedRefresh;
+      if (queued != null) return queued.future;
+      final completer = Completer<void>();
+      _queuedForcedRefresh = completer;
+      return completer.future;
+    }
     final loadedAt = _loadedAt;
     if (!force &&
         _hasValue &&
@@ -217,6 +386,10 @@ class _ReplayResource<T> {
       return Future<void>.value();
     }
 
+    return _startLoad();
+  }
+
+  Future<void> _startLoad() {
     late final Future<void> operation;
     operation = () async {
       try {
@@ -234,13 +407,40 @@ class _ReplayResource<T> {
         _lastStackTrace = stackTrace;
         // A refresh failure must never erase a valid snapshot. Only an
         // initial failure is blocking; later failures retain the UI state.
+        // Still propagate the failure to an explicit mutation/refresh caller
+        // so Admin Studio cannot report "published" while showing stale data.
         if (!_hasValue) _updates.addError(error, stackTrace);
+        Error.throwWithStackTrace(error, stackTrace);
       } finally {
         if (identical(_inFlight, operation)) _inFlight = null;
+        _startQueuedForcedRefresh();
       }
     }();
     _inFlight = operation;
     return operation;
+  }
+
+  void _startQueuedForcedRefresh() {
+    final queued = _queuedForcedRefresh;
+    if (queued == null) return;
+
+    // Detach this waiter before starting the next load. A third mutation that
+    // arrives during that load gets a new waiter and therefore one more fresh
+    // request; it can never accidentally await its own completer.
+    _queuedForcedRefresh = null;
+    if (_disposed) {
+      if (!queued.isCompleted) queued.complete();
+      return;
+    }
+    final next = _startLoad();
+    unawaited(() async {
+      try {
+        await next;
+        if (!queued.isCompleted) queued.complete();
+      } catch (error, stackTrace) {
+        if (!queued.isCompleted) queued.completeError(error, stackTrace);
+      }
+    }());
   }
 
   void emit(T value) {
@@ -261,6 +461,13 @@ class _ReplayResource<T> {
 }
 
 class ProductionRepository {
+  static const String _pendingBroadcastKeyPreference =
+      'admin_notification_pending_key_v1';
+  static const String _pendingBroadcastSignaturePreference =
+      'admin_notification_pending_signature_v1';
+  static const String _pendingRewardRedemptionPreferencePrefix =
+      'loyalty_redemption_pending_v1:';
+
   ProductionRepository({
     FirebaseAuth? auth,
     FirebaseFirestore? firestore,
@@ -300,6 +507,8 @@ class ProductionRepository {
   _ReplayResource<LaunchAnnouncement?>? _launchAnnouncementResource;
   _ReplayResource<List<AbuRewardRedemption>>? _adminRedemptionsResource;
   _ReplayResource<List<ExclusiveVideo>>? _exclusiveVideosResource;
+  String? _exclusiveVideosResourceUserId;
+  _ReplayResource<List<ExclusiveVideo>>? _managedExclusiveVideosResource;
   final Map<bool, _ReplayResource<List<LeaderboardEntry>>>
   _leaderboardResources = {};
   final Map<String, _ReplayResource<LeaderboardSnapshot>>
@@ -310,6 +519,10 @@ class ProductionRepository {
       {};
   _ReplayResource<List<AdminPointAdjustment>>? _adminPointAdjustmentsResource;
   List<MatchEvent> _cachedMatches = const [];
+  String? _pendingNotificationBroadcastKey;
+  String? _pendingNotificationBroadcastSignature;
+  final Map<String, String> _pendingRewardRedemptionKeys = {};
+  Future<void> _notificationBroadcastMutationTail = Future<void>.value();
 
   Stream<User?> get authChanges => auth.userChanges();
 
@@ -368,6 +581,7 @@ class ProductionRepository {
     add(_launchAnnouncementResource);
     add(_adminRedemptionsResource);
     add(_exclusiveVideosResource);
+    add(_managedExclusiveVideosResource);
     for (final resource in _leaderboardResources.values) {
       add(resource);
     }
@@ -385,7 +599,7 @@ class ProductionRepository {
       (_managedMatchesResource ??= _ReplayResource<List<MatchEvent>>(
         maxAge: const Duration(minutes: 2),
         load: () =>
-            apiRepo.fetchUpcomingMatches().timeout(const Duration(seconds: 8)),
+            apiRepo.fetchManagedMatches().timeout(const Duration(seconds: 8)),
       )).stream;
 
   Stream<List<MatchEvent>> watchMatches() =>
@@ -433,7 +647,24 @@ class ProductionRepository {
     }
 
     final managedMatches = managed ?? const <MatchEvent>[];
-    final baseList = external ?? _cachedMatches;
+    // Only an actual fetch error receives a bounded replay fallback. A
+    // successful empty feed is authoritative and clears withdrawn fixtures.
+    final fetchedBaseList = external == null
+        ? retainedProviderMatchesAfterFetchFailure(_cachedMatches)
+        : external!;
+    final cachedByProviderId = <String, MatchEvent>{
+      for (final cached in _cachedMatches)
+        _providerFootballIdentity(cached): cached,
+    };
+    final baseList = fetchedBaseList
+        .map((incoming) {
+          final previous =
+              cachedByProviderId[_providerFootballIdentity(incoming)];
+          return previous == null
+              ? incoming
+              : retainPublishedFootballResult(previous, incoming);
+        })
+        .toList(growable: false);
     final result = <MatchEvent>[];
     for (final item in baseList) {
       final override = managedMatches
@@ -555,7 +786,10 @@ class ProductionRepository {
     } catch (_) {
       // A bundled timeline may still be shown, but provider calls always stay
       // behind the shared server cache.
-      return MatchDetails(timeline: event.timeline);
+      if (event.timeline.isNotEmpty) {
+        return MatchDetails(timeline: event.timeline);
+      }
+      rethrow;
     }
   }
 
@@ -627,21 +861,14 @@ class ProductionRepository {
   Future<double> fetchUserAccuracy(String uid) async {
     if (uid.isEmpty || uid == 'guest') return 100.0;
     try {
-      final snap = await firestore
-          .collection('predictions')
-          .where('userId', isEqualTo: uid)
-          .get();
-      if (snap.docs.isEmpty) return 100.0;
+      final predictions = await apiRepo.fetchMyPredictions();
+      if (predictions.isEmpty) return 100.0;
       var correctCount = 0;
       var completedCount = 0;
-      for (final doc in snap.docs) {
-        final data = doc.data();
-        final points = (data['pointsAwarded'] as num?)?.toInt() ?? 0;
-        final rewarded = data['rewarded'] == true;
-        final seen = data['seenResult'] == true;
-        if (rewarded || seen || points > 0) {
+      for (final prediction in predictions) {
+        if (prediction.rewarded) {
           completedCount++;
-          if (points > 0) correctCount++;
+          if (prediction.pointsAwarded > 0) correctCount++;
         }
       }
       if (completedCount == 0) return 100.0;
@@ -677,6 +904,13 @@ class ProductionRepository {
         .stream;
   }
 
+  Future<void> refreshChallenges({bool force = true}) async {
+    final uid = auth.currentUser?.uid ?? '';
+    if (uid.isEmpty) return;
+    watchChallenges();
+    await _challengeResources[uid]?.refresh(force: force);
+  }
+
   Stream<List<AbuChallenge>> watchManagedChallenges() =>
       (_managedChallengesResource ??= _ReplayResource<List<AbuChallenge>>(
         maxAge: const Duration(minutes: 2),
@@ -701,11 +935,17 @@ class ProductionRepository {
       .map((snapshot) => snapshot.docs.map(AbuComment.fromDocument).toList())
       .handleError((_) => const <AbuComment>[]);
 
-  Stream<LaunchAnnouncement?> watchLaunchAnnouncement() =>
-      (_launchAnnouncementResource ??= _ReplayResource<LaunchAnnouncement?>(
+  _ReplayResource<LaunchAnnouncement?> get _launchAnnouncementFeed =>
+      _launchAnnouncementResource ??= _ReplayResource<LaunchAnnouncement?>(
         maxAge: const Duration(minutes: 2),
         load: apiRepo.fetchLaunchAnnouncement,
-      )).stream;
+      );
+
+  Stream<LaunchAnnouncement?> watchLaunchAnnouncement() =>
+      _launchAnnouncementFeed.stream;
+
+  Future<void> refreshLaunchAnnouncement({bool force = false}) =>
+      _launchAnnouncementFeed.refresh(force: force);
 
   /// The self-hosted PostgreSQL database is the account source of truth.
   /// Firestore may not contain a document for Firebase users created after the
@@ -800,6 +1040,17 @@ class ProductionRepository {
 
   Future<void> signOut() async {
     final uid = auth.currentUser?.uid;
+    try {
+      // The API call needs the current Firebase credential, so retire this
+      // installation's active push token before ending the auth session.
+      await NotificationService.instance.unregisterCurrentDevice();
+    } catch (error) {
+      // A network outage must not trap someone in their account. The stable
+      // installation ID will retire the stale token on the next registration.
+      debugPrint(
+        '[Notifications] Device unregister before sign-out failed: $error',
+      );
+    }
     await auth.signOut();
     if (!kIsWeb && _googleInitialized) {
       await GoogleSignIn.instance.signOut();
@@ -818,6 +1069,10 @@ class ProductionRepository {
     _adminUserResources.clear();
     await _adminPointAdjustmentsResource?.dispose();
     _adminPointAdjustmentsResource = null;
+    await _exclusiveVideosResource?.dispose();
+    _exclusiveVideosResource = null;
+    _exclusiveVideosResourceUserId = null;
+    _pendingRewardRedemptionKeys.clear();
   }
 
   Future<void> completeOnboarding({
@@ -1032,6 +1287,7 @@ class ProductionRepository {
     required int maximumAttempts,
     required bool memberOnly,
     required bool notifyOnLive,
+    String playerCardId = '',
   }) async {
     if (!availableFrom.isBefore(availableUntil)) {
       throw ArgumentError('The event end time must be after its start time.');
@@ -1055,6 +1311,7 @@ class ProductionRepository {
       maximumAttempts: maximumAttempts,
       memberOnly: memberOnly,
       notifyOnLive: notifyOnLive,
+      playerCardId: playerCardId,
       questions: [
         {
           'id': 'main',
@@ -1087,6 +1344,20 @@ class ProductionRepository {
         (resource) => resource.refresh(force: true),
       ),
       _managedChallengesResource?.refresh(force: true) ?? Future<void>.value(),
+    ]);
+  }
+
+  Future<void> deleteChallenge(AbuChallenge challenge) async {
+    await apiRepo.deleteAdminChallenge(challenge.id);
+    await Future.wait([
+      ..._challengeResources.values.map(
+        (resource) => resource.refresh(force: true),
+      ),
+      ..._playerCardResources.values.map(
+        (resource) => resource.refresh(force: true),
+      ),
+      _managedChallengesResource?.refresh(force: true) ?? Future<void>.value(),
+      _managedPlayerCardsResource?.refresh(force: true) ?? Future<void>.value(),
     ]);
   }
 
@@ -1227,6 +1498,11 @@ class ProductionRepository {
     _launchAnnouncementResource?.emit(announcement);
   }
 
+  Future<void> resetAnnouncement() async {
+    await apiRepo.resetAdminLaunchAnnouncement();
+    _launchAnnouncementResource?.emit(null);
+  }
+
   Future<void> setUserRole({required String uid, required String role}) async {
     await apiRepo.setAdminUserRole(userId: uid, role: role);
   }
@@ -1351,39 +1627,36 @@ class ProductionRepository {
     String homeLogoUrl = '',
     String awayLogoUrl = '',
   }) async {
-    final matchRef = firestore.collection('matches').doc(matchId);
-    final matchSnap = await matchRef.get();
-    final timestamp = FieldValue.serverTimestamp();
-    if (!matchSnap.exists) {
-      final matchKickoff =
-          kickoffAt ?? DateTime.now().add(const Duration(days: 1));
-      await matchRef.set({
-        'homeTeam': homeTeam.isNotEmpty ? homeTeam : 'Home',
-        'awayTeam': awayTeam.isNotEmpty ? awayTeam : 'Away',
-        'competition': competition.isNotEmpty ? competition : 'La Liga',
-        'homeLogoUrl': homeLogoUrl,
-        'awayLogoUrl': awayLogoUrl,
-        'firstScorerOptions': const ['No scorer'],
-        'kickoffAt': Timestamp.fromDate(matchKickoff),
-        'predictionOpensAt': Timestamp.fromDate(
-          DateTime.now().subtract(const Duration(hours: 24)),
-        ),
-        'predictionClosesAt': open
-            ? Timestamp.fromDate(DateTime.now().add(const Duration(days: 7)))
-            : Timestamp.fromDate(DateTime.now()),
-        'status': open ? 'open' : 'locked',
-        'createdAt': timestamp,
-        'updatedAt': timestamp,
-      });
-    } else {
-      await matchRef.update({
-        'status': open ? 'open' : 'locked',
-        'predictionClosesAt': open
-            ? Timestamp.fromDate(DateTime.now().add(const Duration(days: 7)))
-            : Timestamp.fromDate(DateTime.now()),
-        'updatedAt': timestamp,
-      });
+    try {
+      await apiRepo.fetchMatch(matchId);
+    } on AbuApiException catch (error) {
+      if (error.statusCode != 404) rethrow;
+      final now = DateTime.now();
+      final matchKickoff = kickoffAt ?? now.add(const Duration(days: 1));
+      final closesAt = matchKickoff.subtract(const Duration(minutes: 5));
+      if (open && !closesAt.isAfter(now)) {
+        throw StateError('Predictions cannot open after the match has begun.');
+      }
+      await apiRepo.createAdminMatch(
+        id: matchId,
+        homeTeam: homeTeam.trim().isEmpty ? 'Home' : homeTeam.trim(),
+        awayTeam: awayTeam.trim().isEmpty ? 'Away' : awayTeam.trim(),
+        competition: competition.trim().isEmpty
+            ? 'La Liga'
+            : competition.trim(),
+        kickoffAt: matchKickoff,
+        predictionsOpenAt: now.subtract(const Duration(seconds: 1)),
+        predictionsCloseAt: closesAt,
+        firstScorerOptions: const <String>['No scorer'],
+        homeLogoUrl: _normalizedOptionalUrl(homeLogoUrl, 'Home logo URL'),
+        awayLogoUrl: _normalizedOptionalUrl(awayLogoUrl, 'Away logo URL'),
+      );
     }
+    await apiRepo.setAdminMatchStatus(
+      matchId: matchId,
+      status: open ? 'open' : 'locked',
+    );
+    await _refreshMatchMutationResources();
   }
 
   Future<List<PredictionOutcomeResult>> checkUnseenCompletedPredictions(
@@ -1391,223 +1664,45 @@ class ProductionRepository {
     bool isYouTubeMember = false,
   }) async {
     if (uid.isEmpty || uid == 'guest') return const [];
-
-    try {
-      final predSnap = await firestore
-          .collection('predictions')
-          .where('userId', isEqualTo: uid)
-          .get();
-
-      if (predSnap.docs.isEmpty) return const [];
-
-      final predictions = predSnap.docs
-          .map(SavedPrediction.fromDocument)
-          .toList();
-      final targetPreds = predictions
-          .where((p) => !p.rewarded || !p.seenResult)
-          .toList();
-      if (targetPreds.isEmpty) return const [];
-
-      final matchDocs = await firestore.collection('matches').get();
-      final firestoreMatches = matchDocs.docs
-          .map(MatchEvent.fromDocument)
-          .toList();
-      List<MatchEvent> recentExternalMatches = const [];
-      try {
-        recentExternalMatches = await apiRepo.fetchFootballRecentMatches();
-      } catch (_) {}
-
-      final allMatches = [...firestoreMatches, ...recentExternalMatches];
-
-      final pointRules = await loadPointRules();
-      final exactScorePoints = (pointRules['exactPrediction'] ?? 30).toInt();
-      final firstScorerPoints = (pointRules['firstScorer'] ?? 20).toInt();
-      final winnerPoints = (pointRules['winnerOutcome'] ?? 10).toInt();
-      final multiplier = isYouTubeMember ? 2 : 1;
-
-      final results = <PredictionOutcomeResult>[];
-
-      for (final pred in targetPreds) {
-        MatchEvent? match;
-        for (final m in allMatches) {
-          if (m.id == pred.matchId ||
-              (pred.homeTeam.isNotEmpty &&
-                  pred.awayTeam.isNotEmpty &&
-                  m.homeTeam.trim().toLowerCase() ==
-                      pred.homeTeam.trim().toLowerCase() &&
-                  m.awayTeam.trim().toLowerCase() ==
-                      pred.awayTeam.trim().toLowerCase())) {
-            match = m;
-            break;
-          }
-        }
-
-        final foundMatch = match;
-        if (foundMatch == null ||
-            foundMatch.homeScore == null ||
-            foundMatch.awayScore == null) {
-          continue;
-        }
-
-        var activeMatch = foundMatch;
-
-        // Fetch timeline if empty and from API
-        List<MatchTimelineEvent> timeline = activeMatch.timeline;
-        if (timeline.isEmpty && activeMatch.id.startsWith('external_')) {
-          try {
-            timeline = await apiRepo
-                .fetchMatchDetails(activeMatch.id)
-                .then((details) => details.timeline);
-            if (timeline.isNotEmpty) {
-              activeMatch = activeMatch.copyWith(timeline: timeline);
-            }
-          } catch (_) {}
-        }
-
-        // Determine effective first scorer
-        String effectiveFirstScorer = activeMatch.firstScorer.trim();
-        if (effectiveFirstScorer.isEmpty && timeline.isNotEmpty) {
-          final firstGoal = timeline
-              .where(
-                (t) =>
-                    t.type.toLowerCase().contains('goal') ||
-                    t.type.toLowerCase().contains('penalty'),
-              )
-              .firstOrNull;
-          if (firstGoal != null) {
-            effectiveFirstScorer = firstGoal.player;
-          }
-        }
-        if (effectiveFirstScorer.isEmpty &&
-            activeMatch.homeScore == 0 &&
-            activeMatch.awayScore == 0) {
-          effectiveFirstScorer = 'No scorer';
-        }
-
-        final bool exactMatch =
-            activeMatch.homeScore == pred.homeScore &&
-            activeMatch.awayScore == pred.awayScore;
-
-        final cleanEffScorer = effectiveFirstScorer
-            .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
-            .trim()
-            .toLowerCase();
-        final cleanPredScorer = pred.firstScorer
-            .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
-            .trim()
-            .toLowerCase();
-        final bool firstScorerMatch =
-            (cleanEffScorer.isNotEmpty &&
-                cleanPredScorer.isNotEmpty &&
-                (cleanEffScorer == cleanPredScorer ||
-                    cleanEffScorer.contains(cleanPredScorer) ||
-                    cleanPredScorer.contains(cleanEffScorer))) ||
-            (activeMatch.homeScore == 0 &&
-                activeMatch.awayScore == 0 &&
-                (cleanPredScorer == 'no scorer' || cleanPredScorer.isEmpty));
-
-        final bool winnerMatch =
-            ((pred.homeScore > pred.awayScore &&
-                activeMatch.homeScore! > activeMatch.awayScore!) ||
-            (pred.homeScore < pred.awayScore &&
-                activeMatch.homeScore! < activeMatch.awayScore!) ||
-            (pred.homeScore == pred.awayScore &&
-                activeMatch.homeScore! == activeMatch.awayScore!));
-
-        var pointsEarned = 0;
-        if (exactMatch) pointsEarned += exactScorePoints;
-        if (firstScorerMatch) pointsEarned += firstScorerPoints;
-        if (winnerMatch) pointsEarned += winnerPoints;
-        pointsEarned *= multiplier;
-
-        final isPerfect = exactMatch && firstScorerMatch && winnerMatch;
-        final hasSomeCorrect = pointsEarned > 0;
-
-        // Reward user or reconcile points if rules adjusted
-        final int pointDiff;
-        if (!pred.rewarded) {
-          pointDiff = pointsEarned;
-        } else if (pred.pointsAwarded != pointsEarned) {
-          pointDiff = pointsEarned - pred.pointsAwarded;
-        } else {
-          pointDiff = 0;
-        }
-
-        if (pointDiff != 0 || !pred.rewarded) {
-          try {
-            final userRef = firestore.collection('users').doc(uid);
-            final leaderboardRef = firestore
-                .collection('leaderboardEntries')
-                .doc(uid);
-            final txRef = firestore.collection('pointTransactions').doc();
-            final timestamp = FieldValue.serverTimestamp();
-
-            if (pointDiff != 0) {
-              await userRef.update({
-                'totalPoints': FieldValue.increment(pointDiff),
-                'monthlyPoints': FieldValue.increment(pointDiff),
-                'seasonPoints': FieldValue.increment(pointDiff),
-                'loyaltyPoints': FieldValue.increment(pointDiff),
-                'lastActivityAt': timestamp,
-                'updatedAt': timestamp,
-              });
-
-              await leaderboardRef.set({
-                'totalPoints': FieldValue.increment(pointDiff),
-                'monthlyPoints': FieldValue.increment(pointDiff),
-                'seasonPoints': FieldValue.increment(pointDiff),
-                'updatedAt': timestamp,
-              }, SetOptions(merge: true));
-
-              if (pointDiff > 0) {
-                await txRef.set({
-                  'userId': uid,
-                  'type': 'prediction_win',
-                  'points': pointDiff,
-                  'description':
-                      'Prediction outcome: ${activeMatch.homeTeam} vs ${activeMatch.awayTeam} (+$pointDiff pts)',
-                  'sourceId': activeMatch.id,
-                  'createdAt': timestamp,
-                });
-              }
-            }
-
-            await firestore.collection('predictions').doc(pred.id).update({
-              'rewarded': true,
-              'pointsAwarded': pointsEarned,
-              'seenResult': false,
-              'updatedAt': timestamp,
-            });
-          } catch (_) {}
-        }
-
-        results.add(
-          PredictionOutcomeResult(
-            event: activeMatch,
-            prediction: pred,
-            exactMatch: exactMatch,
-            firstScorerMatch: firstScorerMatch,
-            winnerMatch: winnerMatch,
-            pointsEarned: pointsEarned,
-            isPerfect: isPerfect,
-            hasSomeCorrect: hasSomeCorrect,
-          ),
-        );
+    final predictions = await apiRepo.fetchMyPredictions();
+    final results = <PredictionOutcomeResult>[];
+    for (final prediction in predictions) {
+      final match = prediction.match;
+      if (!prediction.rewarded || prediction.seenResult || match == null) {
+        continue;
       }
-
-      return results;
-    } catch (_) {
-      return const [];
+      if (match.homeScore == null || match.awayScore == null) continue;
+      final exact = prediction.exactScoreCorrect;
+      final scorer = prediction.firstScorerCorrect;
+      final winner = prediction.winnerCorrect;
+      results.add(
+        PredictionOutcomeResult(
+          event: match,
+          prediction: prediction,
+          exactMatch: exact,
+          firstScorerMatch: scorer,
+          winnerMatch: winner,
+          pointsEarned: prediction.pointsAwarded,
+          isPerfect: exact && scorer && winner,
+          hasSomeCorrect: prediction.pointsAwarded > 0,
+        ),
+      );
     }
+    return results;
   }
 
   Future<void> markPredictionResultSeen(String predictionId) async {
-    try {
-      await firestore.collection('predictions').doc(predictionId).update({
-        'seenResult': true,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    } catch (_) {}
+    await apiRepo.markPredictionResultSeen(predictionId);
+    final uid = auth.currentUser?.uid;
+    if (uid == null) return;
+    final predictions = _localPredictionsByUid[uid];
+    if (predictions == null) return;
+    for (final entry in predictions.entries.toList()) {
+      if (entry.value.id == predictionId) {
+        predictions[entry.key] = entry.value.copyWith(seenResult: true);
+      }
+    }
+    _predictionResources[uid]?.emit(_predictionSnapshot(uid));
   }
 
   Future<void> createMatch({
@@ -1635,21 +1730,24 @@ class ProductionRepository {
         !scorerOptions.any((value) => value.toLowerCase() == 'no scorer')) {
       scorerOptions.add('No scorer');
     }
-    await firestore.collection('matches').add({
-      'homeTeam': homeTeam.trim(),
-      'awayTeam': awayTeam.trim(),
-      'competition': competition.trim(),
-      'kickoffAt': Timestamp.fromDate(kickoffAt),
-      'predictionOpensAt': Timestamp.fromDate(predictionOpensAt),
-      'predictionClosesAt': Timestamp.fromDate(predictionClosesAt),
-      'homeLogoUrl': _normalizedOptionalUrl(homeLogoUrl, 'Home logo URL'),
-      'awayLogoUrl': _normalizedOptionalUrl(awayLogoUrl, 'Away logo URL'),
-      'firstScorerOptions': scorerOptions,
-      'status': 'open',
-      'createdBy': auth.currentUser!.uid,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    final id = 'admin_${DateTime.now().microsecondsSinceEpoch}';
+    await apiRepo.createAdminMatch(
+      id: id,
+      homeTeam: homeTeam,
+      awayTeam: awayTeam,
+      competition: competition,
+      kickoffAt: kickoffAt,
+      predictionsOpenAt: predictionOpensAt,
+      predictionsCloseAt: predictionClosesAt,
+      firstScorerOptions: scorerOptions,
+      homeLogoUrl: _normalizedOptionalUrl(homeLogoUrl, 'Home logo URL'),
+      awayLogoUrl: _normalizedOptionalUrl(awayLogoUrl, 'Away logo URL'),
+    );
+    final now = DateTime.now();
+    if (!now.isBefore(predictionOpensAt) && now.isBefore(predictionClosesAt)) {
+      await apiRepo.setAdminMatchStatus(matchId: id, status: 'open');
+    }
+    await _refreshMatchMutationResources();
   }
 
   Future<void> publishMatchResult({
@@ -1658,126 +1756,28 @@ class ProductionRepository {
     required int awayScore,
     required String firstScorer,
   }) async {
-    try {
-      await _call('adminPublishMatchResult', {
-        'matchId': matchId,
-        'homeScore': homeScore,
-        'awayScore': awayScore,
-        'firstScorer': firstScorer.trim(),
-      });
-    } catch (_) {}
-
-    // Ensure Firestore match doc and ALL fan predictions for this match are settled immediately
-    final timestamp = FieldValue.serverTimestamp();
-    await firestore.collection('matches').doc(matchId).update({
-      'homeScore': homeScore,
-      'awayScore': awayScore,
-      'firstScorer': firstScorer.trim(),
-      'status': 'completed',
-      'resultProcessed': true,
-      'updatedAt': timestamp,
-    });
-
-    try {
-      final pointRules = await loadPointRules();
-      final exactScorePoints = (pointRules['exactPrediction'] ?? 50).toInt();
-      final firstScorerPoints = (pointRules['firstScorer'] ?? 30).toInt();
-
-      final predsSnap = await firestore
-          .collection('predictions')
-          .where('matchId', isEqualTo: matchId)
-          .get();
-
-      final normalizedOfficialScorer = firstScorer
-          .trim()
-          .toLowerCase()
-          .replaceAll(RegExp(r'\s+'), ' ');
-
-      for (final doc in predsSnap.docs) {
-        final data = doc.data();
-        final rewarded = data['rewarded'] as bool? ?? false;
-        if (rewarded) continue;
-
-        final targetUid = data['userId'] as String? ?? '';
-        if (targetUid.isEmpty) continue;
-
-        final predHome = (data['homeScore'] as num? ?? -1).toInt();
-        final predAway = (data['awayScore'] as num? ?? -1).toInt();
-        final predScorer = (data['firstScorer'] as String? ?? '')
-            .trim()
-            .toLowerCase()
-            .replaceAll(RegExp(r'\s+'), ' ');
-
-        final exactMatch = predHome == homeScore && predAway == awayScore;
-        final scorerMatch =
-            (normalizedOfficialScorer.isNotEmpty &&
-                predScorer.isNotEmpty &&
-                normalizedOfficialScorer == predScorer) ||
-            (homeScore == 0 &&
-                awayScore == 0 &&
-                (predScorer == 'no scorer' || predScorer.isEmpty));
-        var points = 0;
-        if (exactMatch) points += exactScorePoints;
-        if (scorerMatch) points += firstScorerPoints;
-
-        // Check if member for multiplier
-        final userDoc = await firestore
-            .collection('users')
-            .doc(targetUid)
-            .get();
-        final isMember = userDoc.data()?['isYouTubeMember'] as bool? ?? false;
-        if (isMember) points *= 2;
-
-        if (points > 0) {
-          await firestore.collection('users').doc(targetUid).update({
-            'totalPoints': FieldValue.increment(points),
-            'monthlyPoints': FieldValue.increment(points),
-            'seasonPoints': FieldValue.increment(points),
-            'loyaltyPoints': FieldValue.increment(points),
-            'lastActivityAt': timestamp,
-            'updatedAt': timestamp,
-          });
-
-          await firestore.collection('leaderboardEntries').doc(targetUid).set({
-            'totalPoints': FieldValue.increment(points),
-            'monthlyPoints': FieldValue.increment(points),
-            'seasonPoints': FieldValue.increment(points),
-            'updatedAt': timestamp,
-          }, SetOptions(merge: true));
-
-          await firestore.collection('pointTransactions').add({
-            'userId': targetUid,
-            'type': 'prediction_win',
-            'points': points,
-            'description': 'Prediction result: match $matchId (+$points pts)',
-            'sourceId': matchId,
-            'createdAt': timestamp,
-          });
-        }
-
-        await doc.reference.update({
-          'rewarded': true,
-          'pointsAwarded': points,
-          'seenResult': false,
-          'updatedAt': timestamp,
-        });
-      }
-    } catch (_) {}
+    final scorer = firstScorer.trim();
+    if (scorer.isEmpty ||
+        ((homeScore > 0 || awayScore > 0) &&
+            scorer.toLowerCase() == 'no scorer')) {
+      throw ArgumentError('First scorer is required for a match with goals.');
+    }
+    await apiRepo.settleAdminMatch(
+      matchId: matchId,
+      homeScore: homeScore,
+      awayScore: awayScore,
+      firstScorer: scorer,
+    );
+    await _refreshMatchMutationResources(refreshPredictions: true);
   }
 
   Future<Map<String, dynamic>> autoFetchAndSettleMatch(String matchId) async {
-    final matchDoc = await firestore.collection('matches').doc(matchId).get();
-    if (!matchDoc.exists) throw StateError('Match not found.');
-    final match = MatchEvent.fromDocument(matchDoc);
+    final match = await apiRepo.fetchMatch(matchId);
 
     final finished = await apiRepo.fetchFootballRecentMatches();
     MatchEvent? target;
     for (final m in finished) {
-      if (m.id == match.id ||
-          (m.homeTeam.toLowerCase().contains(match.homeTeam.toLowerCase()) &&
-              m.awayTeam.toLowerCase().contains(
-                match.awayTeam.toLowerCase(),
-              ))) {
+      if (sameFootballMatchForMatching(m, match)) {
         target = m;
         break;
       }
@@ -1792,29 +1792,30 @@ class ProductionRepository {
     }
 
     List<MatchTimelineEvent> timeline = target.timeline;
-    if (timeline.isEmpty && target.id.startsWith('external_')) {
+    final detailsMatchId = footballDetailsMatchId(target);
+    if (timeline.isEmpty && detailsMatchId.startsWith('external_')) {
       try {
         timeline = await apiRepo
-            .fetchMatchDetails(target.id)
+            .fetchMatchDetails(detailsMatchId)
             .then((details) => details.timeline);
       } catch (_) {}
     }
 
     String firstScorer = target.firstScorer.trim();
     if (firstScorer.isEmpty && timeline.isNotEmpty) {
-      final firstGoal = timeline
-          .where(
-            (t) =>
-                t.type.toLowerCase().contains('goal') ||
-                t.type.toLowerCase().contains('penalty'),
-          )
-          .firstOrNull;
-      if (firstGoal != null) firstScorer = firstGoal.player;
+      firstScorer = firstScorerFromFootballTimeline(timeline);
     }
     if (firstScorer.isEmpty) {
-      firstScorer = (target.homeScore == 0 && target.awayScore == 0)
-          ? 'No scorer'
-          : 'Unknown';
+      if (target.homeScore == 0 && target.awayScore == 0) {
+        firstScorer = 'No scorer';
+      } else if (DateTime.now().difference(target.kickoffAt) >=
+          const Duration(hours: 4)) {
+        firstScorer = 'Unknown';
+      } else {
+        throw StateError(
+          'API has not published the first scorer for this match yet.',
+        );
+      }
     }
 
     await publishMatchResult(
@@ -1834,10 +1835,28 @@ class ProductionRepository {
   Future<void> setMatchStatus({
     required String matchId,
     required String status,
-  }) => firestore.collection('matches').doc(matchId).update({
-    'status': status,
-    'updatedAt': FieldValue.serverTimestamp(),
-  });
+  }) async {
+    await apiRepo.setAdminMatchStatus(matchId: matchId, status: status);
+    await _refreshMatchMutationResources();
+  }
+
+  Future<void> _refreshMatchMutationResources({
+    bool refreshPredictions = false,
+  }) async {
+    final tasks = <Future<void>>[];
+    if (_managedMatchesResource != null) {
+      tasks.add(_managedMatchesResource!.refresh(force: true));
+    }
+    if (_matchesResource != null) {
+      tasks.add(_matchesResource!.refresh(force: true));
+    }
+    if (refreshPredictions) {
+      final uid = auth.currentUser?.uid;
+      final resource = uid == null ? null : _predictionResources[uid];
+      if (resource != null) tasks.add(resource.refresh(force: true));
+    }
+    await Future.wait(tasks);
+  }
 
   Future<void> updatePointRules({
     required int exactPrediction,
@@ -1885,12 +1904,96 @@ class ProductionRepository {
     required String body,
     String? imageUrl,
     DateTime? scheduledAt,
-  }) => apiRepo.createNotificationBroadcast(
-    title: title,
-    body: body,
-    imageUrl: imageUrl,
-    scheduledAt: scheduledAt,
-  );
+  }) {
+    final previous = _notificationBroadcastMutationTail;
+    final completer = Completer<Map<String, dynamic>>();
+    _notificationBroadcastMutationTail = () async {
+      try {
+        await previous;
+      } catch (_) {
+        // A failed request retains its persisted key for a safe replay, but it
+        // must not prevent a later admin action from entering the queue.
+      }
+      try {
+        completer.complete(
+          await _createNotificationBroadcastUnlocked(
+            title: title,
+            body: body,
+            imageUrl: imageUrl,
+            scheduledAt: scheduledAt,
+          ),
+        );
+      } catch (error, stackTrace) {
+        completer.completeError(error, stackTrace);
+      }
+    }();
+    return completer.future;
+  }
+
+  Future<Map<String, dynamic>> _createNotificationBroadcastUnlocked({
+    required String title,
+    required String body,
+    String? imageUrl,
+    DateTime? scheduledAt,
+  }) async {
+    final normalizedTitle = title.trim();
+    final normalizedBody = body.trim();
+    final normalizedImage = imageUrl?.trim() ?? '';
+    final normalizedSchedule = scheduledAt?.toUtc().toIso8601String() ?? '';
+    final signature = jsonEncode([
+      normalizedTitle,
+      normalizedBody,
+      normalizedImage,
+      normalizedSchedule,
+    ]);
+    final preferences = await SharedPreferences.getInstance();
+    if (_pendingNotificationBroadcastKey == null &&
+        preferences.getString(_pendingBroadcastSignaturePreference) ==
+            signature) {
+      final persistedKey = preferences
+          .getString(_pendingBroadcastKeyPreference)
+          ?.trim();
+      if (persistedKey != null &&
+          RegExp(r'^[A-Za-z0-9:_-]{16,128}$').hasMatch(persistedKey)) {
+        _pendingNotificationBroadcastSignature = signature;
+        _pendingNotificationBroadcastKey = persistedKey;
+      }
+    }
+    if (_pendingNotificationBroadcastSignature != signature ||
+        _pendingNotificationBroadcastKey == null) {
+      _pendingNotificationBroadcastSignature = signature;
+      _pendingNotificationBroadcastKey = firestore
+          .collection('notificationBroadcastAttempts')
+          .doc()
+          .id;
+      await preferences.setString(
+        _pendingBroadcastSignaturePreference,
+        signature,
+      );
+      await preferences.setString(
+        _pendingBroadcastKeyPreference,
+        _pendingNotificationBroadcastKey!,
+      );
+    }
+    final idempotencyKey = _pendingNotificationBroadcastKey!;
+    final result = await apiRepo.createNotificationBroadcast(
+      title: normalizedTitle,
+      body: normalizedBody,
+      idempotencyKey: idempotencyKey,
+      imageUrl: normalizedImage.isEmpty ? null : normalizedImage,
+      scheduledAt: scheduledAt,
+    );
+    if (_pendingNotificationBroadcastKey == idempotencyKey) {
+      _pendingNotificationBroadcastKey = null;
+      _pendingNotificationBroadcastSignature = null;
+      if (preferences.getString(_pendingBroadcastKeyPreference) ==
+          idempotencyKey) {
+        await preferences.remove(_pendingBroadcastKeyPreference);
+        await preferences.remove(_pendingBroadcastSignaturePreference);
+      }
+    }
+    return result;
+  }
 
   Future<void> _call(String name, Map<String, Object?> data) async {
     await functions.httpsCallable(name).call<Map<String, dynamic>>(data);
@@ -2062,11 +2165,36 @@ class ProductionRepository {
       (_localPredictionsByUid[uid]?.values.toList() ?? <SavedPrediction>[])
         ..sort((a, b) => b.submittedAt.compareTo(a.submittedAt));
 
+  _ReplayResource<List<ExclusiveVideo>> get _exclusiveVideoFeed {
+    final userId = auth.currentUser?.uid ?? 'guest';
+    if (_exclusiveVideosResource != null &&
+        _exclusiveVideosResourceUserId != userId) {
+      final staleResource = _exclusiveVideosResource;
+      _exclusiveVideosResource = null;
+      _exclusiveVideosResourceUserId = null;
+      unawaited(staleResource!.dispose());
+    }
+    _exclusiveVideosResourceUserId = userId;
+    return _exclusiveVideosResource ??= _ReplayResource<List<ExclusiveVideo>>(
+      maxAge: const Duration(seconds: 30),
+      load: () => apiRepo.fetchExclusiveVideos(forceRefresh: true),
+    );
+  }
+
+  _ReplayResource<List<ExclusiveVideo>> get _managedExclusiveVideoFeed =>
+      _managedExclusiveVideosResource ??= _ReplayResource<List<ExclusiveVideo>>(
+        maxAge: const Duration(seconds: 30),
+        load: () => apiRepo.fetchExclusiveVideos(managed: true),
+      );
+
   Stream<List<ExclusiveVideo>> watchExclusiveVideos() =>
-      (_exclusiveVideosResource ??= _ReplayResource<List<ExclusiveVideo>>(
-        maxAge: const Duration(minutes: 5),
-        load: apiRepo.fetchExclusiveVideos,
-      )).stream;
+      _exclusiveVideoFeed.stream;
+
+  Stream<List<ExclusiveVideo>> watchManagedExclusiveVideos() =>
+      _managedExclusiveVideoFeed.stream;
+
+  Future<void> refreshExclusiveVideos({bool force = true}) =>
+      _exclusiveVideoFeed.refresh(force: force);
 
   Future<void> createExclusiveVideo({
     required String youtubeId,
@@ -2076,18 +2204,41 @@ class ProductionRepository {
     DateTime? publishedAt,
     bool isUnlisted = true,
     bool memberOnly = false,
-  }) => apiRepo.createExclusiveVideo(
-    youtubeId: youtubeId,
-    title: title,
-    description: description,
-    thumbnailUrl: thumbnailUrl,
-    publishedAt: publishedAt,
-    isUnlisted: isUnlisted,
-    memberOnly: memberOnly,
-  );
+  }) async {
+    final normalizedYoutubeId = extractYoutubeVideoId(youtubeId);
+    if (normalizedYoutubeId == null) {
+      throw ArgumentError(
+        'Enter a valid YouTube link or 11-character video ID.',
+      );
+    }
+    await runMutationAndForceRefresh(
+      mutation: () => apiRepo.createExclusiveVideo(
+        youtubeId: normalizedYoutubeId,
+        title: title.trim(),
+        description: description?.trim(),
+        thumbnailUrl: thumbnailUrl?.trim(),
+        publishedAt: publishedAt,
+        isUnlisted: isUnlisted,
+        memberOnly: memberOnly,
+      ),
+      refreshers: <Future<void> Function()>[
+        if (_exclusiveVideosResource != null)
+          () => _exclusiveVideosResource!.refresh(force: true),
+        if (_managedExclusiveVideosResource != null)
+          () => _managedExclusiveVideosResource!.refresh(force: true),
+      ],
+    );
+  }
 
-  Future<void> deleteExclusiveVideo(String id) =>
-      apiRepo.deleteExclusiveVideo(id);
+  Future<void> deleteExclusiveVideo(String id) => runMutationAndForceRefresh(
+    mutation: () => apiRepo.deleteExclusiveVideo(id),
+    refreshers: <Future<void> Function()>[
+      if (_exclusiveVideosResource != null)
+        () => _exclusiveVideosResource!.refresh(force: true),
+      if (_managedExclusiveVideosResource != null)
+        () => _managedExclusiveVideosResource!.refresh(force: true),
+    ],
+  );
 
   Stream<LeaderboardSnapshot> watchLeaderboardView({
     required LeaderboardPeriod period,
@@ -2224,14 +2375,57 @@ class ProductionRepository {
       .handleError((_) => const <AbuRewardRedemption>[]);
 
   Future<void> redeemReward(String id) async {
-    // The deployed callable is idempotent only when the client supplies a
-    // stable key for this redemption attempt. The previous callable name did
-    // not exist, so every fan redemption failed before reaching the server.
-    final idempotencyKey = firestore.collection('loyaltyRedemptions').doc().id;
-    await _call('redeemLoyaltyReward', {
-      'rewardId': id,
-      'idempotencyKey': idempotencyKey,
-    });
+    final user = auth.currentUser;
+    if (user == null) {
+      throw AbuApiException(
+        statusCode: 401,
+        message: 'Authentication required',
+      );
+    }
+    final pendingKey = '${user.uid}:$id';
+    final preferenceKey =
+        '$_pendingRewardRedemptionPreferencePrefix${Uri.encodeComponent(pendingKey)}';
+    final preferences = await SharedPreferences.getInstance();
+    final persistedKey = preferences.getString(preferenceKey)?.trim();
+    if (!_pendingRewardRedemptionKeys.containsKey(pendingKey) &&
+        persistedKey != null &&
+        RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(persistedKey)) {
+      _pendingRewardRedemptionKeys[pendingKey] = persistedKey;
+    }
+    // Keep the same key after an ambiguous timeout. A second tap then replays
+    // the original receipt instead of deducting points and stock twice. The
+    // durable copy also survives an app termination after the server commits.
+    final idempotencyKey = _pendingRewardRedemptionKeys.putIfAbsent(
+      pendingKey,
+      () => firestore.collection('loyaltyRedemptions').doc().id,
+    );
+    await preferences.setString(preferenceKey, idempotencyKey);
+    final receipt = await apiRepo.redeemLoyaltyReward(
+      rewardId: id,
+      idempotencyKey: idempotencyKey,
+    );
+    if (_pendingRewardRedemptionKeys[pendingKey] == idempotencyKey) {
+      _pendingRewardRedemptionKeys.remove(pendingKey);
+    }
+    if (preferences.getString(preferenceKey) == idempotencyKey) {
+      await preferences.remove(preferenceKey);
+    }
+
+    final current = _localProfiles[user.uid];
+    if (current != null) {
+      final updated = current.copyWith(loyaltyPoints: receipt.remainingBalance);
+      _localProfiles[user.uid] = updated;
+      _profileResources[user.uid]?.emit(updated);
+    }
+
+    // Firestore listeners refresh the fan catalogue/history. Refresh the
+    // PostgreSQL profile and an already-open Admin Studio list as well so all
+    // current screens converge immediately after the cross-store commit.
+    await Future.wait([
+      refreshProfile(user.uid, force: true),
+      if (_adminRedemptionsResource != null)
+        _adminRedemptionsResource!.refresh(force: true),
+    ]);
   }
 
   Future<void> updateRedemptionStatus(
@@ -2270,11 +2464,20 @@ class ProductionRepository {
         .stream;
   }
 
+  Future<void> refreshPlayerCards(String uid, {bool force = true}) async {
+    if (uid.isEmpty || uid == 'guest') return;
+    watchPlayerCards(uid);
+    await _playerCardResources[uid]?.refresh(force: force);
+  }
+
   Stream<List<AbuPlayerCard>> watchManagedPlayerCards() =>
       (_managedPlayerCardsResource ??= _ReplayResource<List<AbuPlayerCard>>(
         maxAge: const Duration(minutes: 2),
         load: () => apiRepo.fetchPlayerCards(managed: true),
       )).stream;
+
+  Future<List<AbuPlayerCard>> fetchManagedPlayerCards() =>
+      apiRepo.fetchPlayerCards(managed: true);
 
   Future<void> setPlayerCardEnabled(String id, bool enabled) async {
     await apiRepo.setAdminPlayerCardEnabled(cardId: id, enabled: enabled);
@@ -2288,6 +2491,16 @@ class ProductionRepository {
 
   Future<void> savePlayerCard(AbuPlayerCard model) async {
     await apiRepo.saveAdminPlayerCard(model);
+    await Future.wait([
+      ..._playerCardResources.values.map(
+        (resource) => resource.refresh(force: true),
+      ),
+      _managedPlayerCardsResource?.refresh(force: true) ?? Future<void>.value(),
+    ]);
+  }
+
+  Future<void> deletePlayerCard(String id) async {
+    await apiRepo.deleteAdminPlayerCard(id);
     await Future.wait([
       ..._playerCardResources.values.map(
         (resource) => resource.refresh(force: true),
@@ -2326,7 +2539,7 @@ class ProductionRepository {
     };
   }
 
-  Future<void> createAdvancedChallenge({
+  Future<String> createAdvancedChallenge({
     required String kind,
     required String title,
     String description = '',
@@ -2339,6 +2552,7 @@ class ProductionRepository {
     int maximumAttempts = 1,
     bool memberOnly = false,
     bool notifyOnLive = false,
+    String playerCardId = '',
     List<dynamic> questions = const [],
   }) async {
     final formattedQuestions = questions
@@ -2363,7 +2577,10 @@ class ProductionRepository {
               .toString();
           return <String, dynamic>{
             'id': (data['id'] ?? 'main').toString(),
-            'prompt': (data['prompt'] ?? title).toString(),
+            'prompt': effectiveChallengePrompt(
+              title: title,
+              prompt: (data['prompt'] ?? '').toString(),
+            ),
             'type': (data['type'] ?? 'text').toString(),
             'options': data['options'] is List
                 ? List<String>.from(
@@ -2384,7 +2601,7 @@ class ProductionRepository {
     if (formattedQuestions.isEmpty) {
       throw ArgumentError('Add at least one challenge question.');
     }
-    await apiRepo.createAdminChallenge(
+    final challengeId = await apiRepo.createAdminChallenge(
       kind: kind,
       title: title.trim(),
       description: description.trim(),
@@ -2397,6 +2614,7 @@ class ProductionRepository {
       maximumAttempts: maximumAttempts,
       memberOnly: memberOnly,
       notifyOnLive: notifyOnLive,
+      playerCardId: playerCardId,
       questions: formattedQuestions,
     );
     await Future.wait([
@@ -2404,7 +2622,9 @@ class ProductionRepository {
         (resource) => resource.refresh(force: true),
       ),
       _managedChallengesResource?.refresh(force: true) ?? Future<void>.value(),
+      _managedPlayerCardsResource?.refresh(force: true) ?? Future<void>.value(),
     ]);
+    return challengeId;
   }
 
   String normalizeChallengeAnswer(String text) {
@@ -2461,19 +2681,13 @@ class ProductionRepository {
     required String uid,
     required bool isMember,
   }) async {
-    final reason = isMember
-        ? 'Gold membership granted from the admin user directory.'
-        : 'Gold membership revoked from the admin user directory.';
     await apiRepo.setAdminYouTubeMembership(userId: uid, isMember: isMember);
-    // Advanced challenges still use Firebase Functions, so mirror the audited
-    // admin decision there. This callable independently verifies admin access.
-    await functions
-        .httpsCallable('adminSetYouTubeMembership')
-        .call<Map<String, dynamic>>({
-          'targetUserId': uid,
-          'isMember': isMember,
-          'reason': reason,
-        });
+    // PostgreSQL is the production source of truth for membership and reward
+    // multipliers. Do not report a false failure by invoking the retired
+    // Firebase callable after this audited server mutation has committed.
+    if (_profileResources.containsKey(uid)) {
+      await _profileResources[uid]!.refresh(force: true);
+    }
   }
 
   // ── Games Arena Visibility Toggle ───────────────────────────────────────

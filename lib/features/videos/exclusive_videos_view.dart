@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -18,7 +20,7 @@ bool _exclusiveIsDark(BuildContext context) =>
 Color _exclusivePrimary(BuildContext context) =>
     _exclusiveIsDark(context) ? _exclusiveDarkLime : _exclusiveLightPrimary;
 
-class ExclusiveVideosView extends StatelessWidget {
+class ExclusiveVideosView extends StatefulWidget {
   const ExclusiveVideosView({
     super.key,
     required this.repository,
@@ -29,9 +31,47 @@ class ExclusiveVideosView extends StatelessWidget {
   final AbuUserProfile profile;
 
   @override
+  State<ExclusiveVideosView> createState() => _ExclusiveVideosViewState();
+}
+
+class _ExclusiveVideosViewState extends State<ExclusiveVideosView> {
+  void _refreshInBackground() {
+    unawaited(() async {
+      try {
+        await widget.repository.refreshExclusiveVideos(force: true);
+      } catch (error, stackTrace) {
+        debugPrint(
+          '[ExclusiveVideos] Background refresh failed: $error\n$stackTrace',
+        );
+      }
+    }());
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Visited shell tabs stay mounted. Force a network read whenever this page
+    // is first opened so an earlier cached empty list cannot hide a new video.
+    _refreshInBackground();
+  }
+
+  @override
+  void didUpdateWidget(covariant ExclusiveVideosView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.repository, widget.repository) ||
+        oldWidget.profile.uid != widget.profile.uid ||
+        oldWidget.profile.isYouTubeMember != widget.profile.isYouTubeMember) {
+      _refreshInBackground();
+    }
+  }
+
+  Future<void> _refresh() =>
+      widget.repository.refreshExclusiveVideos(force: true);
+
+  @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<ExclusiveVideo>>(
-      stream: repository.watchExclusiveVideos(),
+      stream: widget.repository.watchExclusiveVideos(),
       builder: (context, snapshot) {
         final videos = snapshot.data ?? const <ExclusiveVideo>[];
 
@@ -43,21 +83,37 @@ class ExclusiveVideosView extends StatelessWidget {
         }
 
         if (videos.isEmpty) {
-          return _buildEmptyState(context);
+          return RefreshIndicator(
+            onRefresh: _refresh,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _buildEmptyState(context),
+                ),
+              ],
+            ),
+          );
         }
 
-        return ListView.builder(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-          itemCount: videos.length,
-          itemBuilder: (context, index) {
-            final video = videos[index];
-            return _VideoCard(
-              video: video,
-              isMember: profile.isYouTubeMember,
-              onTap: () => _openVideo(context, video),
-            );
-          },
+        return RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
+            itemCount: videos.length,
+            itemBuilder: (context, index) {
+              final video = videos[index];
+              return _VideoCard(
+                video: video,
+                isMember: widget.profile.isYouTubeMember,
+                onTap: () => _openVideo(context, video),
+              );
+            },
+          ),
         );
       },
     );
@@ -119,7 +175,7 @@ class ExclusiveVideosView extends StatelessWidget {
   }
 
   void _openVideo(BuildContext context, ExclusiveVideo video) async {
-    if (video.memberOnly && !profile.isYouTubeMember) {
+    if (video.memberOnly && !widget.profile.isYouTubeMember) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

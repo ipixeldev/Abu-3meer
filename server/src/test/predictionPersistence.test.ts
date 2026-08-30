@@ -100,4 +100,44 @@ describe('prediction outcome evaluation', () => {
     assert.equal(result.isFirstScorer, false);
     assert.equal(result.isWinner, true);
   });
+
+  it('requires the exact normalized scorer option instead of a substring', () => {
+    const partial = evaluatePrediction({
+      predictedHome: 1,
+      predictedAway: 0,
+      predictedFirstScorer: 'Junior',
+      actualHome: 1,
+      actualAway: 0,
+      actualFirstScorer: 'Vinicius Junior',
+    });
+    const canonical = evaluatePrediction({
+      predictedHome: 1,
+      predictedAway: 0,
+      predictedFirstScorer: '  VINICIUS   JUNIOR ',
+      actualHome: 1,
+      actualAway: 0,
+      actualFirstScorer: 'Vinicius Junior',
+    });
+
+    assert.equal(partial.isFirstScorer, false);
+    assert.equal(canonical.isFirstScorer, true);
+  });
+
+  it('settles a 0-0 No scorer prediction as exact, scorer, and draw', () => {
+    assert.deepEqual(
+      evaluatePrediction({
+        predictedHome: 0,
+        predictedAway: 0,
+        predictedFirstScorer: 'No scorer',
+        actualHome: 0,
+        actualAway: 0,
+        actualFirstScorer: 'No scorer',
+      }),
+      {
+        isExact: true,
+        isFirstScorer: true,
+        isWinner: true,
+      },
+    );
+  });
 });

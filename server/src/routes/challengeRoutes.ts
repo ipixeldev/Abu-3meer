@@ -7,6 +7,7 @@ import {
 } from '../services/challengeService.js';
 import { query } from '../db/pool.js';
 import { getCachedJson, setCachedJson } from '../redis/client.js';
+import { listPlayerCardsForUser } from '../services/playerCardService.js';
 
 const submitSchema = z.object({
   answer: z.string().trim().min(1).max(200),
@@ -147,33 +148,9 @@ export async function challengeRoutes(fastify: FastifyInstance) {
       'Cache-Control',
       'private, no-store',
     );
-    const res = await query(
-      `SELECT pc.id,
-              CASE WHEN claim.id IS NOT NULL THEN pc.player_name ELSE '' END AS player_name,
-              CASE WHEN claim.id IS NOT NULL THEN pc.player_name_ar ELSE '' END AS player_name_ar,
-              CASE WHEN claim.id IS NOT NULL THEN pc.card_image_url ELSE '' END AS card_image_url,
-              CASE WHEN claim.id IS NOT NULL THEN pc.team ELSE '' END AS team,
-              CASE WHEN claim.id IS NOT NULL THEN pc.team_logo_url ELSE '' END AS team_logo_url,
-              CASE WHEN claim.id IS NOT NULL THEN COALESCE(pc.position, '') ELSE '' END AS position,
-              CASE WHEN claim.id IS NOT NULL THEN pc.rating ELSE 0 END AS rating,
-              pc.rarity,
-              CASE WHEN claim.id IS NOT NULL THEN pc.stats ELSE '{}'::jsonb END AS stats,
-              CASE WHEN claim.id IS NOT NULL THEN pc.description ELSE '' END AS description,
-              CASE WHEN claim.id IS NOT NULL THEN pc.description_ar ELSE '' END AS description_ar,
-              pc.enabled,
-              COALESCE(NULLIF(pc.source_challenge_id, ''), pc.challenge_id, '')
-                AS source_challenge_id,
-              claim.id IS NOT NULL AS unlocked,
-              claim.claimed_at AS unlocked_at,
-              pc.updated_at
-       FROM player_cards pc
-       LEFT JOIN player_card_claims claim
-         ON claim.player_card_id = pc.id AND claim.user_id = $1
-       WHERE pc.enabled = TRUE
-       ORDER BY pc.updated_at DESC
-       LIMIT 200`,
-      [request.user!.id],
+    return listPlayerCardsForUser(
+      (text, params) => query(text, params),
+      request.user!.id,
     );
-    return res.rows;
   });
 }

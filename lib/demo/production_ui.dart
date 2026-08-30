@@ -1,5 +1,15 @@
 part of 'fan_league_app.dart';
 
+void _runProductionBackgroundTask(Future<void> operation, String label) {
+  unawaited(() async {
+    try {
+      await operation;
+    } catch (error, stackTrace) {
+      debugPrint('[$label] Background refresh failed: $error\n$stackTrace');
+    }
+  }());
+}
+
 class _ProductionGate extends StatefulWidget {
   const _ProductionGate();
 
@@ -62,8 +72,10 @@ class _ProductionGateState extends State<_ProductionGate> {
                       'مشكلة اتصال مؤقتة',
                     ),
               message: productionErrorMessage(error),
-              onRetry: () =>
-                  unawaited(repository.refreshProfile(user.uid, force: true)),
+              onRetry: () => _runProductionBackgroundTask(
+                repository.refreshProfile(user.uid, force: true),
+                'Profile',
+              ),
               onSignOut: repository.signOut,
             );
           }
@@ -78,8 +90,10 @@ class _ProductionGateState extends State<_ProductionGate> {
                 'This account is suspended. Contact ${AbuBrand.supportEmail}.',
                 'هذا الحساب موقوف. تواصل عبر ${AbuBrand.supportEmail}.',
               ),
-              onRetry: () =>
-                  unawaited(repository.refreshProfile(user.uid, force: true)),
+              onRetry: () => _runProductionBackgroundTask(
+                repository.refreshProfile(user.uid, force: true),
+                'Profile',
+              ),
               onSignOut: repository.signOut,
             );
           }
@@ -2018,20 +2032,24 @@ class _ProductionShellState extends State<_ProductionShell>
   int index = _homeShellPageIndex;
   final Set<int> _visitedPageIndexes = <int>{_homeShellPageIndex};
   StreamSubscription<LaunchAnnouncement?>? announcementSubscription;
+  StreamSubscription<Map<String, dynamic>>? notificationTapSubscription;
+  StreamSubscription<Map<String, dynamic>>? foregroundNotificationSubscription;
   DateTime? _backgroundedAt;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    announcementSubscription = widget.repository
-        .watchLaunchAnnouncement()
-        .listen((announcement) {
-          if (announcement == null || !mounted) return;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) showLaunchAnnouncement(context, announcement);
-          });
-        });
+    unawaited(_listenForLaunchAnnouncements());
+    notificationTapSubscription = NotificationService.instance.notificationTaps
+        .listen(_handleNotificationTap);
+    foregroundNotificationSubscription = NotificationService
+        .instance
+        .foregroundNotifications
+        .listen(_handleForegroundNotification);
+    final pendingTap = NotificationService.instance
+        .takePendingNotificationTap();
+    if (pendingTap != null) _handleNotificationTap(pendingTap);
     if (!widget.profile.isGuest) {
       widget.repository
           .checkInDailyStreak(widget.profile.uid)
@@ -2092,11 +2110,98 @@ class _ProductionShellState extends State<_ProductionShell>
     }
   }
 
+  Future<void> _listenForLaunchAnnouncements() async {
+    // Refresh before subscribing so a reset performed on another device can
+    // never replay an old cached popup during shell construction.
+    try {
+      await widget.repository.refreshLaunchAnnouncement(force: true);
+    } catch (error, stackTrace) {
+      // Always subscribe. A temporary startup outage must not permanently
+      // disable launch announcements for the lifetime of this shell.
+      debugPrint('[Announcement] Startup refresh failed: $error\n$stackTrace');
+    }
+    if (!mounted) return;
+    announcementSubscription = widget.repository
+        .watchLaunchAnnouncement()
+        .listen(
+          (announcement) {
+            if (announcement == null || !mounted) return;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) showLaunchAnnouncement(context, announcement);
+            });
+          },
+          onError: (Object error, StackTrace stackTrace) {
+            debugPrint('[Announcement] Refresh failed: $error');
+          },
+        );
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     announcementSubscription?.cancel();
+    notificationTapSubscription?.cancel();
+    foregroundNotificationSubscription?.cancel();
     super.dispose();
+  }
+
+  void _handleForegroundNotification(Map<String, dynamic> data) {
+    final route = (data['route'] ?? '').toString().trim().toLowerCase();
+    final destination = switch (route) {
+      '/exclusive' => _exclusiveShellPageIndex,
+      '/challenges' => _challengesShellPageIndex,
+      '/predict' => _predictShellPageIndex,
+      _ => null,
+    };
+    if (destination != null) _refreshShellPage(destination);
+  }
+
+  void _handleNotificationTap(Map<String, dynamic> data) {
+    final route = (data['route'] ?? '').toString().trim().toLowerCase();
+    final destination = switch (route) {
+      '/exclusive' => _exclusiveShellPageIndex,
+      '/challenges' => _challengesShellPageIndex,
+      '/predict' => _predictShellPageIndex,
+      _ => _homeShellPageIndex,
+    };
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _selectShellPage(destination);
+    });
+  }
+
+  void _selectShellPage(int value) {
+    if (!mounted) return;
+    setState(() => index = value);
+    _refreshShellPage(value);
+  }
+
+  void _refreshShellPage(int value) {
+    if (value == _challengesShellPageIndex) {
+      _runProductionBackgroundTask(
+        widget.repository.refreshChallenges(force: true),
+        'Challenges',
+      );
+      _runProductionBackgroundTask(
+        widget.repository.refreshPlayerCards(widget.profile.uid, force: true),
+        'PlayerCards',
+      );
+    } else if (value == _exclusiveShellPageIndex) {
+      _runProductionBackgroundTask(
+        widget.repository.refreshExclusiveVideos(force: true),
+        'ExclusiveVideos',
+      );
+    } else if (value == _predictShellPageIndex) {
+      // A result push can arrive while the prediction replay resource still
+      // contains its pre-settlement `pending` snapshot. Refresh PostgreSQL-
+      // backed matches and prediction history before the fan opens the card.
+      _runProductionBackgroundTask(
+        widget.repository.refreshActiveResources(
+          uid: widget.profile.uid,
+          force: true,
+        ),
+        'Predictions',
+      );
+    }
   }
 
   @override
@@ -2115,10 +2220,12 @@ class _ProductionShellState extends State<_ProductionShell>
             const Duration(seconds: 30)) {
       return;
     }
-    unawaited(
+    _runProductionBackgroundTask(
       widget.repository.refreshActiveResources(
         uid: widget.profile.isGuest ? null : widget.profile.uid,
+        force: true,
       ),
+      'AppResume',
     );
   }
 
@@ -2135,7 +2242,7 @@ class _ProductionShellState extends State<_ProductionShell>
         onOpenStreak: () => _showStreakGoals(context, profile),
       ),
       _ProductionMatches(repository: widget.repository, profile: profile),
-      _ProductionChallenges(repository: widget.repository),
+      _ProductionChallenges(repository: widget.repository, profile: profile),
       ExclusiveVideosView(repository: widget.repository, profile: profile),
       _ProductionLeaderboard(repository: widget.repository, profile: profile),
       _ProductionRewards(repository: widget.repository, profile: profile),
@@ -2261,7 +2368,7 @@ class _ProductionShellState extends State<_ProductionShell>
                         'المزيد من ميزات الحساب',
                       ),
                       position: PopupMenuPosition.under,
-                      onSelected: (value) => setState(() => index = value),
+                      onSelected: _selectShellPage,
                       itemBuilder: (context) => <PopupMenuEntry<int>>[
                         for (final itemIndex in avatarMenuIndexes)
                           PopupMenuItem<int>(
@@ -2330,7 +2437,7 @@ class _ProductionShellState extends State<_ProductionShell>
                 selectedIndex: index,
                 page: pages[index],
                 profile: profile,
-                onSelect: (value) => setState(() => index = value),
+                onSelect: _selectShellPage,
                 onSignIn: () => showAuthModal(context, widget.repository),
               )
             : IndexedStack(
@@ -2358,7 +2465,7 @@ class _ProductionShellState extends State<_ProductionShell>
                     ? _homeShellPageIndex
                     : mobileSelected,
                 onSelect: (value) =>
-                    setState(() => index = _mobileShellPageIndexes[value]),
+                    _selectShellPage(_mobileShellPageIndexes[value]),
                 items: _mobileShellPageIndexes
                     .map((itemIndex) => items[itemIndex])
                     .toList(),
@@ -2783,8 +2890,9 @@ class _ProductionHome extends StatelessWidget {
                 body: productionErrorMessage(snapshot.error!),
               );
             }
-            final matches = snapshot.data ?? const [];
-            if (matches.isEmpty) {
+            final matches = snapshot.data ?? const <MatchEvent>[];
+            final nextMatch = nextHomePredictionMatch(matches);
+            if (nextMatch == null) {
               return _ProductionEmpty(
                 icon: Icons.event_busy_rounded,
                 title: abuText(
@@ -2799,20 +2907,13 @@ class _ProductionHome extends StatelessWidget {
                 ),
               );
             }
-            return Column(
-              children: [
-                // Home keeps a compact preview; the Predict tab is the full
-                // fixture list.
-                for (var i = 0; i < matches.take(1).length; i++) ...[
-                  if (i > 0) const SizedBox(height: 16),
-                  _ProductionMatchCard(
-                    event: matches[i],
-                    repository: repository,
-                    profile: profile,
-                    prediction: findPrediction(matches[i]),
-                  ),
-                ],
-              ],
+            // Home keeps the nearest future fixture; the Predict tab owns the
+            // complete fixture list and prediction history.
+            return _ProductionMatchCard(
+              event: nextMatch,
+              repository: repository,
+              profile: profile,
+              prediction: findPrediction(nextMatch),
             );
           },
         );
@@ -2844,19 +2945,12 @@ class _ProductionHome extends StatelessWidget {
                 ],
                 _ProductionLatestVideoCard(repository: repository),
                 const SizedBox(height: 16),
-                _HomeDirectChallengeActionSection(
-                  repository: repository,
-                  profile: profile,
-                ),
-                const SizedBox(height: 16),
                 _ProductionPointsHero(profile: profile),
                 const SizedBox(height: 16),
                 _ProductionHomeStreakCard(
                   profile: profile,
                   onTap: onOpenStreak,
                 ),
-                const SizedBox(height: 16),
-                _ProductionHomeActivityFeed(repository: repository),
                 const SizedBox(height: 16),
                 match,
               ],
@@ -2875,16 +2969,7 @@ class _ProductionHome extends StatelessWidget {
                 children: [
                   Expanded(
                     flex: 7,
-                    child: Column(
-                      children: [
-                        _HomeDirectChallengeActionSection(
-                          repository: repository,
-                          profile: profile,
-                        ),
-                        const SizedBox(height: 18),
-                        _ProductionPointsHero(profile: profile),
-                      ],
-                    ),
+                    child: _ProductionPointsHero(profile: profile),
                   ),
                   const SizedBox(width: 22),
                   Expanded(
@@ -2897,8 +2982,6 @@ class _ProductionHome extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 22),
-              _ProductionHomeActivityFeed(repository: repository),
-              const SizedBox(height: 22),
               match,
             ],
           );
@@ -2908,6 +2991,9 @@ class _ProductionHome extends StatelessWidget {
   }
 }
 
+// Kept for potential campaign deep links; challenges themselves belong only
+// to the dedicated Challenges tab.
+// ignore: unused_element
 class _HomeDirectChallengeActionSection extends StatelessWidget {
   const _HomeDirectChallengeActionSection({
     required this.repository,
@@ -3307,8 +3393,9 @@ class _DirectChallengeInlineCardState
               child: InkWell(
                 onTap: () {
                   final uri = externalHttpUri(challenge.videoUrl);
-                  if (uri != null)
+                  if (uri != null) {
                     launchUrl(uri, mode: LaunchMode.externalApplication);
+                  }
                 },
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -3338,6 +3425,8 @@ class _DirectChallengeInlineCardState
   }
 }
 
+// Retained for the optional multi-activity home layout.
+// ignore: unused_element
 class _HomeActivitiesBanner extends StatelessWidget {
   const _HomeActivitiesBanner({
     required this.repository,
@@ -3861,6 +3950,29 @@ class _ProductionPointsHero extends StatelessWidget {
 }
 
 enum _PredictionHistoryFilter { all, pending, resolved }
+
+@visibleForTesting
+MatchEvent? nextHomePredictionMatch(List<MatchEvent> events, {DateTime? now}) {
+  final current = now ?? DateTime.now();
+  const terminalStatuses = <String>{
+    'completed',
+    'finished',
+    'archived',
+    'cancelled',
+    'postponed',
+    'disabled',
+  };
+  final future =
+      events
+          .where(
+            (event) =>
+                event.kickoffAt.isAfter(current) &&
+                !terminalStatuses.contains(event.status.toLowerCase()),
+          )
+          .toList()
+        ..sort((a, b) => a.kickoffAt.compareTo(b.kickoffAt));
+  return future.firstOrNull;
+}
 
 @visibleForTesting
 DateTime initialMatchCalendarDay(List<MatchEvent> events, {DateTime? now}) {
@@ -4486,17 +4598,10 @@ class _ProductionSectionHeading extends StatelessWidget {
 }
 
 bool _predictionIsResolved(SavedPrediction prediction) {
-  if (prediction.rewarded || prediction.pointsAwarded > 0) return true;
-  final match = prediction.match;
-  return match != null &&
-      const {
-        'completed',
-        'archived',
-        'resolved',
-        'finished',
-      }.contains(match.status.toLowerCase()) &&
-      match.homeScore != null &&
-      match.awayScore != null;
+  // A provider score is not a settlement receipt. Keep the prediction pending
+  // until the server has atomically evaluated every pick and persisted the
+  // reward flag (including settled losses worth zero points).
+  return prediction.rewarded;
 }
 
 String _normalizedPredictionLabel(String value) =>
@@ -4504,12 +4609,12 @@ String _normalizedPredictionLabel(String value) =>
 
 bool? _predictionExactCorrect(SavedPrediction prediction, MatchEvent? match) {
   if (match == null || !_predictionIsResolved(prediction)) return null;
-  return prediction.homeScore == match.homeScore &&
-      prediction.awayScore == match.awayScore;
+  return prediction.exactScoreCorrect;
 }
 
 bool? _predictionScorerCorrect(SavedPrediction prediction, MatchEvent? match) {
   if (match == null || !_predictionIsResolved(prediction)) return null;
+  if (prediction.firstScorerMatchResult case final persisted?) return persisted;
   final cleanMatchScorer = match.firstScorer
       .replaceAll(RegExp(r'\s*\([^)]*\)'), '')
       .trim()
@@ -4520,9 +4625,7 @@ bool? _predictionScorerCorrect(SavedPrediction prediction, MatchEvent? match) {
       .toLowerCase();
   if (cleanMatchScorer.isEmpty && cleanPredScorer.isEmpty) return true;
   if (cleanMatchScorer.isEmpty || cleanPredScorer.isEmpty) return false;
-  return cleanMatchScorer == cleanPredScorer ||
-      cleanMatchScorer.contains(cleanPredScorer) ||
-      cleanPredScorer.contains(cleanMatchScorer);
+  return cleanMatchScorer == cleanPredScorer;
 }
 
 String _predictionScorerLabel(BuildContext context, String scorer) {
@@ -4561,20 +4664,9 @@ class _ProductionPredictionHistory extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         onTap: resolved && match != null
             ? () {
-                final exact =
-                    match.homeScore == prediction.homeScore &&
-                    match.awayScore == prediction.awayScore;
-                final firstScorerCorrect =
-                    match.firstScorer.trim().isNotEmpty &&
-                    match.firstScorer.trim().toLowerCase() ==
-                        prediction.firstScorer.trim().toLowerCase();
-                final winnerCorrect =
-                    ((prediction.homeScore > prediction.awayScore &&
-                        (match.homeScore ?? 0) > (match.awayScore ?? 0)) ||
-                    (prediction.homeScore < prediction.awayScore &&
-                        (match.homeScore ?? 0) < (match.awayScore ?? 0)) ||
-                    (prediction.homeScore == prediction.awayScore &&
-                        (match.homeScore ?? 0) == (match.awayScore ?? 0)));
+                final exact = prediction.exactScoreCorrect;
+                final firstScorerCorrect = prediction.firstScorerCorrect;
+                final winnerCorrect = prediction.winnerCorrect;
                 final wonAny = exact || firstScorerCorrect || winnerCorrect;
                 _showMatchPredictionResultAnnouncementDialog(
                   context,
@@ -4584,11 +4676,7 @@ class _ProductionPredictionHistory extends StatelessWidget {
                     exactMatch: exact,
                     firstScorerMatch: firstScorerCorrect,
                     winnerMatch: winnerCorrect,
-                    pointsEarned: prediction.pointsAwarded > 0
-                        ? prediction.pointsAwarded
-                        : (exact ? 30 : 0) +
-                              (firstScorerCorrect ? 20 : 0) +
-                              (winnerCorrect ? 10 : 0),
+                    pointsEarned: prediction.pointsAwarded,
                     isPerfect: exact && firstScorerCorrect && winnerCorrect,
                     hasSomeCorrect: wonAny,
                   ),
@@ -4866,13 +4954,8 @@ class _SavedPredictionSummary extends StatelessWidget {
         : (prediction.awayScore > prediction.homeScore
               ? (prediction.awayTeam.isNotEmpty ? prediction.awayTeam : 'Away')
               : abuText(context, 'Draw', 'تعادل'));
-    final winnerCorrect = match != null && match!.homeScore != null
-        ? ((prediction.homeScore > prediction.awayScore &&
-                  match!.homeScore! > match!.awayScore!) ||
-              (prediction.homeScore < prediction.awayScore &&
-                  match!.homeScore! < match!.awayScore!) ||
-              (prediction.homeScore == prediction.awayScore &&
-                  match!.homeScore! == match!.awayScore!))
+    final winnerCorrect = match != null && _predictionIsResolved(prediction)
+        ? prediction.winnerCorrect
         : null;
 
     final picks = <Widget>[
@@ -6479,7 +6562,6 @@ Future<void> _showMatchPredictionResultAnnouncementDialog(
                                 '${prediction.homeScore} – ${prediction.awayScore}',
                             actual: '${event.homeScore} – ${event.awayScore}',
                             isCorrect: outcome.exactMatch,
-                            points: outcome.exactMatch ? 30 : 0,
                           ),
                           const Divider(height: 14),
                           _predictionResultComparisonRow(
@@ -6498,7 +6580,6 @@ Future<void> _showMatchPredictionResultAnnouncementDialog(
                                       ? 'No scorer'
                                       : '–'),
                             isCorrect: outcome.firstScorerMatch,
-                            points: outcome.firstScorerMatch ? 20 : 0,
                           ),
                           const Divider(height: 14),
                           _predictionResultComparisonRow(
@@ -6529,13 +6610,12 @@ Future<void> _showMatchPredictionResultAnnouncementDialog(
                                           'تعادل',
                                         )),
                             isCorrect: outcome.winnerMatch,
-                            points: outcome.winnerMatch ? 10 : 0,
                           ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 18),
-                    if (hasAnyPoints)
+                    if (outcome.pointsEarned > 0)
                       Container(
                         margin: const EdgeInsets.only(bottom: 14),
                         padding: const EdgeInsets.symmetric(
@@ -6608,7 +6688,6 @@ Widget _predictionResultComparisonRow(
   required String picked,
   required String actual,
   required bool isCorrect,
-  required int points,
 }) => Row(
   children: [
     Icon(
@@ -6634,7 +6713,9 @@ Widget _predictionResultComparisonRow(
       ),
     ),
     Text(
-      isCorrect ? '+$points pts' : '0 pts',
+      isCorrect
+          ? abuText(context, 'Correct', 'صحيح')
+          : abuText(context, 'Incorrect', 'غير صحيح'),
       style: TextStyle(
         color: isCorrect ? _productionPrimary(context) : _muted,
         fontWeight: FontWeight.w900,
@@ -8520,6 +8601,8 @@ void _showFullPointsHistoryModal(
   );
 }
 
+// Retained for a possible standalone points route; Profile owns it today.
+// ignore: unused_element
 class _ProductionPoints extends StatelessWidget {
   const _ProductionPoints({required this.repository, required this.profile});
   final ProductionRepository repository;
@@ -10716,7 +10799,6 @@ class _ProductionAdmin extends StatelessWidget {
                                     'locked',
                                     'disabled',
                                     'completed',
-                                    'archived',
                                   ].contains(match.status)
                                   ? match.status
                                   : 'draft',
@@ -10747,36 +10829,35 @@ class _ProductionAdmin extends StatelessWidget {
                                 ),
                                 DropdownMenuItem(
                                   value: 'completed',
+                                  enabled: false,
                                   child: Text(
                                     abuText(context, 'Completed', 'مكتملة'),
                                   ),
                                 ),
-                                DropdownMenuItem(
-                                  value: 'archived',
-                                  child: Text(
-                                    abuText(context, 'Archived', 'مؤرشفة'),
-                                  ),
-                                ),
                               ],
-                              onChanged: (status) async {
-                                if (status == null) return;
-                                try {
-                                  await repository.setMatchStatus(
-                                    matchId: match.id,
-                                    status: status,
-                                  );
-                                } catch (error) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text(
-                                          productionErrorMessage(error),
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                }
-                              },
+                              onChanged: match.status == 'completed'
+                                  ? null
+                                  : (status) async {
+                                      if (status == null) return;
+                                      try {
+                                        await repository.setMatchStatus(
+                                          matchId: match.id,
+                                          status: status,
+                                        );
+                                      } catch (error) {
+                                        if (context.mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                productionErrorMessage(error),
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
                             );
 
                             return Column(
@@ -10827,7 +10908,38 @@ class _ProductionAdmin extends StatelessWidget {
                                   runSpacing: 8,
                                   alignment: WrapAlignment.end,
                                   children: [
-                                    if (match.status != 'open')
+                                    if (match.status == 'completed')
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 8,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _productionPrimary(context)
+                                              .withValues(alpha: .12),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                          border: Border.all(
+                                            color: _productionPrimary(context)
+                                                .withValues(alpha: .45),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          abuText(
+                                            context,
+                                            'FINAL ${match.homeScore ?? '-'} - ${match.awayScore ?? '-'}',
+                                            'النتيجة النهائية ${match.homeScore ?? '-'} - ${match.awayScore ?? '-'}',
+                                          ),
+                                          style: TextStyle(
+                                            color: _productionPrimary(context),
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 11,
+                                          ),
+                                        ),
+                                      ),
+                                    if (match.status != 'completed' &&
+                                        match.status != 'open')
                                       FilledButton.icon(
                                         style: FilledButton.styleFrom(
                                           backgroundColor: _productionPrimary(
@@ -10861,7 +10973,7 @@ class _ProductionAdmin extends StatelessWidget {
                                               );
                                             }
                                           } catch (e) {
-                                            if (context.mounted)
+                                            if (context.mounted) {
                                               ScaffoldMessenger.of(
                                                 context,
                                               ).showSnackBar(
@@ -10871,6 +10983,7 @@ class _ProductionAdmin extends StatelessWidget {
                                                   ),
                                                 ),
                                               );
+                                            }
                                           }
                                         },
                                         icon: Icon(
@@ -10889,7 +11002,7 @@ class _ProductionAdmin extends StatelessWidget {
                                           ),
                                         ),
                                       )
-                                    else
+                                    else if (match.status == 'open')
                                       FilledButton.tonalIcon(
                                         style: FilledButton.styleFrom(
                                           backgroundColor: _gold.withValues(
@@ -10922,7 +11035,7 @@ class _ProductionAdmin extends StatelessWidget {
                                                   );
                                             }
                                           } catch (e) {
-                                            if (context.mounted)
+                                            if (context.mounted) {
                                               ScaffoldMessenger.of(
                                                 context,
                                               ).showSnackBar(
@@ -10932,6 +11045,7 @@ class _ProductionAdmin extends StatelessWidget {
                                                   ),
                                                 ),
                                               );
+                                            }
                                           }
                                         },
                                         icon: Icon(
@@ -10950,64 +11064,72 @@ class _ProductionAdmin extends StatelessWidget {
                                           ),
                                         ),
                                       ),
-                                    OutlinedButton.icon(
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: _blue,
-                                        side: BorderSide(
-                                          color: _blue.withValues(alpha: .5),
+                                    if (match.status != 'completed' &&
+                                        match.status != 'disabled')
+                                      OutlinedButton.icon(
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: _blue,
+                                          side: BorderSide(
+                                            color: _blue.withValues(alpha: .5),
+                                          ),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 8,
+                                          ),
                                         ),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 8,
-                                        ),
-                                      ),
-                                      onPressed: () async {
-                                        try {
-                                          final res = await repository
-                                              .autoFetchAndSettleMatch(
-                                                match.id,
-                                              );
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  abuText(
-                                                    context,
-                                                    'Settled: ${res['homeScore']} - ${res['awayScore']} (First Scorer: ${res['firstScorer']})',
-                                                    'تم الحسم: ${res['homeScore']} - ${res['awayScore']} (أول مسجل: ${res['firstScorer']})',
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                        } catch (e) {
-                                          if (context.mounted)
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                      productionErrorMessage(e),
+                                        onPressed: () async {
+                                          try {
+                                            final res = await repository
+                                                .autoFetchAndSettleMatch(
+                                                  match.id,
+                                                );
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    abuText(
+                                                      context,
+                                                      'Settled: ${res['homeScore']} - ${res['awayScore']} (First Scorer: ${res['firstScorer']})',
+                                                      'تم الحسم: ${res['homeScore']} - ${res['awayScore']} (أول مسجل: ${res['firstScorer']})',
                                                     ),
                                                   ),
-                                                );
-                                        }
-                                      },
-                                      icon: Icon(Icons.sync_rounded, size: 16),
-                                      label: Text(
-                                        abuText(
-                                          context,
-                                          'AUTO-FETCH API RESULT',
-                                          'جلب وحسم النتيجة من API',
+                                                ),
+                                              );
+                                            }
+                                          } catch (e) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    productionErrorMessage(e),
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                        icon: Icon(
+                                          Icons.sync_rounded,
+                                          size: 16,
                                         ),
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 11,
+                                        label: Text(
+                                          abuText(
+                                            context,
+                                            'AUTO-FETCH API RESULT',
+                                            'جلب وحسم النتيجة من API',
+                                          ),
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 11,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    if (match.status != 'completed')
+                                    if (match.status != 'completed' &&
+                                        match.status != 'disabled')
                                       FilledButton.tonalIcon(
                                         onPressed: () =>
                                             _showResult(context, match),
@@ -12066,24 +12188,36 @@ class _ProductionAdmin extends StatelessWidget {
                             final rawLink = youtubeIdCtrl.text.trim();
                             if (titleCtrl.text.trim().isEmpty ||
                                 rawLink.isEmpty) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    abuText(
+                                      context,
+                                      'Add a title and YouTube link.',
+                                      'أضف عنواناً ورابط يوتيوب.',
+                                    ),
+                                  ),
+                                ),
+                              );
                               return;
                             }
 
-                            setModalState(() => saving = true);
-                            String ytId = rawLink;
-                            if (rawLink.contains('youtu.be/')) {
-                              ytId = rawLink
-                                  .split('youtu.be/')
-                                  .last
-                                  .split('?')
-                                  .first;
-                            } else if (rawLink.contains('watch?v=')) {
-                              ytId = rawLink
-                                  .split('watch?v=')
-                                  .last
-                                  .split('&')
-                                  .first;
+                            final ytId = extractYoutubeVideoId(rawLink);
+                            if (ytId == null) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    abuText(
+                                      context,
+                                      'Enter a valid YouTube link or 11-character video ID.',
+                                      'أدخل رابط يوتيوب صالحاً أو معرّف فيديو من 11 حرفاً.',
+                                    ),
+                                  ),
+                                ),
+                              );
+                              return;
                             }
+                            setModalState(() => saving = true);
 
                             try {
                               final thumbnailUrl = selectedThumbnail == null
@@ -12137,7 +12271,7 @@ class _ProductionAdmin extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   StreamBuilder<List<ExclusiveVideo>>(
-                    stream: repository.watchExclusiveVideos(),
+                    stream: repository.watchManagedExclusiveVideos(),
                     builder: (context, snapshot) {
                       final vids = snapshot.data ?? const [];
                       if (vids.isEmpty) {
@@ -12182,7 +12316,70 @@ class _ProductionAdmin extends StatelessWidget {
                                     color: Colors.redAccent,
                                   ),
                                   onPressed: () async {
-                                    await repository.deleteExclusiveVideo(v.id);
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (confirmationContext) =>
+                                          AlertDialog(
+                                            title: Text(
+                                              abuText(
+                                                confirmationContext,
+                                                'Delete this video?',
+                                                'حذف هذا الفيديو؟',
+                                              ),
+                                            ),
+                                            content: Text(v.title),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(
+                                                  confirmationContext,
+                                                  false,
+                                                ),
+                                                child: Text(
+                                                  abuText(
+                                                    confirmationContext,
+                                                    'CANCEL',
+                                                    'إلغاء',
+                                                  ),
+                                                ),
+                                              ),
+                                              FilledButton.icon(
+                                                style: FilledButton.styleFrom(
+                                                  backgroundColor: _red,
+                                                ),
+                                                onPressed: () => Navigator.pop(
+                                                  confirmationContext,
+                                                  true,
+                                                ),
+                                                icon: const Icon(
+                                                  Icons.delete_rounded,
+                                                ),
+                                                label: Text(
+                                                  abuText(
+                                                    confirmationContext,
+                                                    'DELETE',
+                                                    'حذف',
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                    );
+                                    if (confirmed != true) return;
+                                    try {
+                                      await repository.deleteExclusiveVideo(
+                                        v.id,
+                                      );
+                                    } catch (error) {
+                                      if (!context.mounted) return;
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                productionErrorMessage(error),
+                                              ),
+                                            ),
+                                          );
+                                    }
                                   },
                                 ),
                               ),
