@@ -71,6 +71,9 @@ export const challengeCreateSchema = z.object({
   maximumAttempts: z.number().int().min(1).max(20).default(3),
   memberOnly: z.boolean().default(false),
   notifyOnLive: z.boolean().default(false),
+  // Kept in the payload for backwards compatibility with older app builds.
+  // A Player Guess is now a video question whose private answer is the player
+  // name; it no longer depends on a collectible-card catalogue record.
   playerCardId: z.union([z.literal(''), challengeIdSchema]).default(''),
   // The current app presents one answer field and the submission endpoint
   // validates one answer. Reject hidden/legacy multi-question payloads rather
@@ -82,13 +85,6 @@ export const challengeCreateSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['availableUntil'],
       message: 'Challenge end time must be after its start time.',
-    });
-  }
-  if (value.kind === 'playerCard' && !value.playerCardId) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['playerCardId'],
-      message: 'Choose an enabled Player Card for this challenge.',
     });
   }
   value.questions.forEach((question, index) => {
@@ -359,25 +355,6 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
             ],
           );
         }
-        if (body.kind === 'playerCard') {
-          const linkedCard = await client.query(
-            `UPDATE player_cards
-             SET source_challenge_id = $1, updated_at = CURRENT_TIMESTAMP
-             WHERE id = $2
-               AND enabled = TRUE
-               AND COALESCE(source_challenge_id, '') = ''
-             RETURNING id`,
-            [id, body.playerCardId],
-          );
-          if (!linkedCard.rowCount) {
-            await client.query('ROLLBACK');
-            return reply.status(409).send({
-              error: 'PlayerCardUnavailable',
-              message:
-                'That Player Card is disabled, missing, or already linked to another challenge. Refresh and choose an unlinked card.',
-            });
-          }
-        }
         await client.query(
           `INSERT INTO admin_audit_logs
              (admin_user_id, action, target_entity, target_id, after_state)
@@ -391,7 +368,9 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
               status: body.status,
               rewardPoints: body.rewardPoints,
               questionCount: body.questions.length,
-              playerCardId: body.playerCardId || null,
+              // Older clients may still send this field. New Player Guess
+              // challenges intentionally do not create a catalogue link.
+              legacyPlayerCardId: body.playerCardId || null,
             }),
           ],
         );
@@ -446,7 +425,7 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
         id,
         notificationScheduled: Boolean(notificationCampaign?.campaignId),
         notificationQueued,
-        linkedPlayerCardId: body.playerCardId || null,
+        linkedPlayerCardId: null,
       });
     },
   );
@@ -481,35 +460,6 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
           });
         }
 
-        const activatesChallenge = ['open', 'scheduled'].includes(
-          parsed.data.status,
-        );
-        if (
-          activatesChallenge &&
-          String(currentChallenge.rows[0].kind) === 'playerCard'
-        ) {
-          // Lock the linked card in the same transaction. A concurrent card
-          // lifecycle request cannot invalidate the reward between this check
-          // and publishing the challenge.
-          const linkedCard = await client.query(
-            `SELECT id, enabled
-             FROM player_cards
-             WHERE source_challenge_id = $1
-                OR challenge_id = $1
-             ORDER BY updated_at DESC
-             LIMIT 1
-             FOR UPDATE`,
-            [id],
-          );
-          if (!linkedCard.rowCount || linkedCard.rows[0].enabled !== true) {
-            await client.query('ROLLBACK');
-            return reply.status(409).send({
-              error: 'PlayerCardUnavailable',
-              message:
-                'This Player Card challenge cannot go live because its linked card is missing or disabled.',
-            });
-          }
-        }
         const result = await client.query(
           `UPDATE challenges
            SET status = $1, updated_at = CURRENT_TIMESTAMP
@@ -620,6 +570,10 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
       );
       let cancelledCampaignIds: string[] = [];
       let linkedPlayerCardIds: string[] = [];
+      let submissionCount = 0;
+      let claimCount = 0;
+      let retainedPointTransactionCount = 0;
+      let retainedPoints = 0;
       const client = await getClient();
       try {
         await client.query('BEGIN');
@@ -629,21 +583,17 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
         );
         if (retirement.status !== 'retired') {
           await client.query('ROLLBACK');
-          if (retirement.status === 'missing') {
-            return reply.status(404).send({
-              error: 'NotFound',
-              message: 'Challenge not found.',
-            });
-          }
-          return reply.status(409).send({
-            error: 'ChallengeHasActivity',
-            message:
-              'This challenge already has fan activity and cannot be deleted. Archive it to preserve points and collection history.',
-            submissionCount: retirement.submissionCount,
-            claimCount: retirement.claimCount,
+          return reply.status(404).send({
+            error: 'NotFound',
+            message: 'Challenge not found.',
           });
         }
         linkedPlayerCardIds = retirement.playerCardIds;
+        submissionCount = retirement.submissionCount;
+        claimCount = retirement.claimCount;
+        retainedPointTransactionCount =
+          retirement.retainedPointTransactionCount;
+        retainedPoints = retirement.retainedPoints;
         cancelledCampaignIds = await cancelNotificationCampaignBySource(
           'challenge',
           id,
@@ -651,12 +601,16 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
         );
         await audit(
           request.user!.id,
-          'challenges.retire',
+          'challenges.delete',
           'challenge',
           id,
           {
             ...retirement.challenge,
             linkedPlayerCardIds,
+            submissionCount,
+            claimCount,
+            retainedPointTransactionCount,
+            retainedPoints,
             notificationsCancelled: cancelledCampaignIds.length,
           },
           (text, params) => client.query(text, params),
@@ -691,6 +645,10 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
         success: true,
         id,
         linkedPlayerCardIds,
+        submissionCount,
+        claimCount,
+        retainedPointTransactionCount,
+        retainedPoints,
         notificationsCancelled: cancelledCampaignIds.length,
       };
     },

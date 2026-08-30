@@ -10,6 +10,7 @@ import 'package:lottie/lottie.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:glass_liquid_navbar/glass_liquid_navbar.dart' as glass_nav;
 

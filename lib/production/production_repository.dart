@@ -1038,6 +1038,16 @@ class ProductionRepository {
     await auth.signInWithCredential(credential);
   }
 
+  Future<void> signInWithApple() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
+      throw UnsupportedError('Sign in with Apple is available on iOS only.');
+    }
+    final provider = AppleAuthProvider()
+      ..addScope('email')
+      ..addScope('name');
+    await auth.signInWithProvider(provider);
+  }
+
   Future<void> signOut() async {
     final uid = auth.currentUser?.uid;
     try {
@@ -1055,6 +1065,10 @@ class ProductionRepository {
     if (!kIsWeb && _googleInitialized) {
       await GoogleSignIn.instance.signOut();
     }
+    await _clearSignedInAccountState(uid);
+  }
+
+  Future<void> _clearSignedInAccountState(String? uid) async {
     if (uid != null) {
       _localProfiles.remove(uid);
       _localPredictionsByUid.remove(uid);
@@ -1249,6 +1263,44 @@ class ProductionRepository {
     }
   }
 
+  Future<void> _syncChallengeAward(Map<String, dynamic> result) async {
+    if (result['correct'] != true) return;
+    final uid = auth.currentUser?.uid;
+    if (uid == null) return;
+
+    final pointsAwarded = (result['pointsAwarded'] as num? ?? 0).toInt();
+    // New servers explicitly distinguish a fresh award from an idempotent
+    // replay. Optimistically update the header only for a confirmed fresh
+    // award; older servers omit the flag and rely on the authoritative fetch.
+    if (result['alreadyAwarded'] == false && pointsAwarded > 0) {
+      final current = _localProfiles[uid];
+      if (current != null) {
+        final updated = current.copyWith(
+          totalPoints: current.totalPoints + pointsAwarded,
+          monthlyPoints: current.monthlyPoints + pointsAwarded,
+          seasonPoints: current.seasonPoints + pointsAwarded,
+          loyaltyPoints: current.loyaltyPoints + pointsAwarded,
+          challengesCompleted: current.challengesCompleted + 1,
+        );
+        _localProfiles[uid] = updated;
+        _profileResources[uid]?.emit(updated);
+      }
+    }
+
+    try {
+      await Future.wait([
+        refreshProfile(uid, force: true),
+        _pointHistoryResources[uid]?.refresh(force: true) ??
+            Future<void>.value(),
+        _playerCardResources[uid]?.refresh(force: true) ?? Future<void>.value(),
+      ]);
+    } catch (error) {
+      // The atomic server transaction has already committed. Active resources
+      // converge on the next refresh/resume if this follow-up request fails.
+      debugPrint('[Challenges] Reward refresh deferred: $error');
+    }
+  }
+
   Future<Map<String, dynamic>> submitChallengeAnswer({
     required AbuChallenge challenge,
     required String answer,
@@ -1258,16 +1310,8 @@ class ProductionRepository {
         challengeId: challenge.id,
         answer: answer.trim(),
       );
-      if (res['correct'] == true) {
-        final uid = auth.currentUser?.uid;
-        if (uid != null) {
-          try {
-            await _playerCardResources[uid]?.refresh(force: true);
-          } catch (error) {
-            debugPrint('[PlayerCards] Unlock refresh deferred: $error');
-          }
-        }
-      }
+      await _syncChallengeAward(res);
+      await refreshChallenges(force: true);
       return res;
     } catch (e) {
       return {'correct': false, 'pointsAwarded': 0, 'message': e.toString()};
@@ -1995,10 +2039,6 @@ class ProductionRepository {
     return result;
   }
 
-  Future<void> _call(String name, Map<String, Object?> data) async {
-    await functions.httpsCallable(name).call<Map<String, dynamic>>(data);
-  }
-
   // ── Media upload helpers ──────────────────────────────────────────────
 
   Future<String> uploadAvatar(XFile file) async {
@@ -2060,13 +2100,101 @@ class ProductionRepository {
 
   // ── Account management ────────────────────────────────────────────────
 
-  Future<void> deleteAccount() async {
+  bool get accountDeletionNeedsPassword {
+    final providers = auth.currentUser?.providerData ?? const <UserInfo>[];
+    final canUseApple =
+        !kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.iOS &&
+        providers.any(
+          (provider) => provider.providerId == AppleAuthProvider.PROVIDER_ID,
+        );
+    final canUseGoogle = providers.any(
+      (provider) => provider.providerId == GoogleAuthProvider.PROVIDER_ID,
+    );
+    return !canUseApple &&
+        !canUseGoogle &&
+        providers.any(
+          (provider) => provider.providerId == EmailAuthProvider.PROVIDER_ID,
+        );
+  }
+
+  Future<void> deleteAccount({String? currentPassword}) async {
     final user = auth.currentUser;
-    if (user == null) return;
-    try {
-      await _call('deleteAccountData', {});
-    } catch (_) {}
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'unauthenticated',
+        message: 'Sign in before deleting your account.',
+      );
+    }
+    final uid = user.uid;
+    final usesApple = user.providerData.any(
+      (provider) => provider.providerId == AppleAuthProvider.PROVIDER_ID,
+    );
+    final usesGoogle = user.providerData.any(
+      (provider) => provider.providerId == GoogleAuthProvider.PROVIDER_ID,
+    );
+    final usesPassword = accountDeletionNeedsPassword;
+
+    // Verify ownership immediately before the destructive operation. This
+    // avoids deleting PostgreSQL first and only then discovering that
+    // Firebase requires a recent login to remove the authentication record.
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS && usesApple) {
+      final provider = AppleAuthProvider()
+        ..addScope('email')
+        ..addScope('name');
+      final credential = await user.reauthenticateWithProvider(provider);
+      final authorizationCode =
+          credential.additionalUserInfo?.authorizationCode;
+      if (authorizationCode == null || authorizationCode.isEmpty) {
+        throw StateError(
+          'Apple did not return the authorization needed to delete this account.',
+        );
+      }
+      await auth.revokeTokenWithAuthorizationCode(authorizationCode);
+    } else if (usesGoogle) {
+      if (kIsWeb) {
+        await user.reauthenticateWithPopup(GoogleAuthProvider());
+      } else {
+        if (!_googleInitialized) {
+          await GoogleSignIn.instance.initialize();
+          _googleInitialized = true;
+        }
+        final account = await GoogleSignIn.instance.authenticate();
+        final idToken = account.authentication.idToken;
+        if (idToken == null) {
+          throw FirebaseAuthException(
+            code: 'missing-google-token',
+            message: 'Google did not return a valid identity token.',
+          );
+        }
+        await user.reauthenticateWithCredential(
+          GoogleAuthProvider.credential(idToken: idToken),
+        );
+      }
+    } else if (usesPassword) {
+      final password = currentPassword?.trim() ?? '';
+      final email = user.email?.trim() ?? '';
+      if (password.isEmpty || email.isEmpty) {
+        throw FirebaseAuthException(
+          code: 'account-deletion-password-required',
+          message: 'Enter your current password to delete this account.',
+        );
+      }
+      await user.reauthenticateWithCredential(
+        EmailAuthProvider.credential(email: email, password: password),
+      );
+    }
+
+    // PostgreSQL is authoritative for profiles, points, predictions, content
+    // activity, devices, and notification preferences. Do not delete the
+    // Firebase identity when this request fails: the user must be able to
+    // retry without leaving a hidden server-side account behind.
+    await apiRepo.deleteAccount();
     await user.delete();
+    if (!kIsWeb && _googleInitialized) {
+      await GoogleSignIn.instance.signOut();
+    }
+    await _clearSignedInAccountState(uid);
   }
 
   // ── Achievements & Levels & Rewards CRUD stubs ────────────────────────
@@ -2523,16 +2651,8 @@ class ProductionRepository {
       challengeId: challenge.id,
       answer: answer,
     );
-    if (result['correct'] == true) {
-      final uid = auth.currentUser?.uid;
-      if (uid != null) {
-        try {
-          await _playerCardResources[uid]?.refresh(force: true);
-        } catch (error) {
-          debugPrint('[PlayerCards] Unlock refresh deferred: $error');
-        }
-      }
-    }
+    await _syncChallengeAward(result);
+    await refreshChallenges(force: true);
     return {
       ...result,
       'points': result['points'] ?? result['pointsAwarded'] ?? 0,
@@ -2734,7 +2854,13 @@ String productionErrorMessage(Object error) {
       'weak-password' => 'Use a stronger password with at least 8 characters.',
       'invalid-email' => 'Enter a valid email address.',
       'user-disabled' => 'This account has been suspended. Contact support.',
-      'popup-closed-by-user' || 'canceled' => 'Google sign-in was cancelled.',
+      'popup-closed-by-user' || 'canceled' => 'Sign-in was cancelled.',
+      'account-exists-with-different-credential' => 'An account already uses this email. Sign in with the method you used before.',
+      'operation-not-allowed' =>
+        'This sign-in method is not enabled yet. Contact support.',
+      'account-deletion-password-required' =>
+        'Enter your current password to delete this account.',
+      'requires-recent-login' => 'For your security, sign out and sign in again before deleting your account.',
       'network-request-failed' =>
         'Check your internet connection and try again.',
       _ => error.message ?? 'Authentication failed. Please try again.',

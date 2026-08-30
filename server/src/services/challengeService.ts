@@ -54,7 +54,15 @@ export async function submitChallengeAnswer(
   userId: string,
   rawAnswer: string,
   isYouTubeMember: boolean,
-): Promise<{ correct: boolean; pointsAwarded: number; message?: string }> {
+): Promise<{
+  correct: boolean;
+  pointsAwarded: number;
+  attemptsUsed: number;
+  remainingAttempts: number;
+  solved: boolean;
+  alreadyAwarded?: boolean;
+  message?: string;
+}> {
   const client = await getClient();
   let shouldInvalidatePointCaches = false;
 
@@ -112,20 +120,57 @@ export async function submitChallengeAnswer(
       );
     }
 
+    const sourceType: PointSourceType =
+      challenge.kind === 'playerCard' ? 'player_card' : 'video_phrase';
+    const basePoints = Number(challenge.reward_points) || 10;
+    const awardParams = {
+      userId,
+      sourceType,
+      sourceId: challengeId,
+      basePoints,
+      multiplier: memberMultiplierForSource(sourceType, isYouTubeMember),
+      description: `Solved Challenge: ${challenge.title}`,
+      idempotencyKey: `challenge:${challengeId}:user:${userId}`,
+    };
+
     const submissionsRes = await client.query(
-      `SELECT id, is_correct, attempt_number
+      `SELECT id, is_correct, attempt_number, points_awarded
        FROM challenge_submissions
        WHERE challenge_id = $1 AND user_id = $2
        ORDER BY attempt_number DESC`,
       [challengeId, userId],
     );
 
-    if (submissionsRes.rows.some((submission: any) => submission.is_correct)) {
+    const existingCorrect = submissionsRes.rows.find(
+      (submission: any) => submission.is_correct,
+    );
+    if (existingCorrect) {
+      // Replaying a successful request must report the canonical award, not
+      // "0 points". Calling the idempotent award operation also repairs the
+      // rare legacy state where a correct submission was saved without its
+      // ledger transaction.
+      const award = await awardPointsInTransaction(client, awardParams);
+      const canonicalPoints = award.pointsAwarded;
+      if (Number(existingCorrect.points_awarded) !== canonicalPoints) {
+        await client.query(
+          `UPDATE challenge_submissions
+           SET points_awarded = $1
+           WHERE id = $2`,
+          [canonicalPoints, existingCorrect.id],
+        );
+      }
       await client.query('COMMIT');
+      if (!award.alreadyAwarded) await invalidatePointCaches();
       return {
         correct: true,
-        pointsAwarded: 0,
-        message: 'Already solved and claimed!',
+        pointsAwarded: canonicalPoints,
+        attemptsUsed: submissionsRes.rows.length,
+        remainingAttempts: 0,
+        solved: true,
+        alreadyAwarded: award.alreadyAwarded === true,
+        message: award.alreadyAwarded
+          ? 'Already solved; your points were awarded earlier.'
+          : 'Your missing challenge points were restored.',
       };
     }
 
@@ -153,23 +198,15 @@ export async function submitChallengeAnswer(
     let pointsEarned = 0;
     let newlyCompleted = 0;
     let newlyClaimedCards = 0;
+    let alreadyAwarded = false;
     if (isCorrect) {
-      const basePoints = Number(challenge.reward_points) || 10;
-      const sourceType: PointSourceType =
-        challenge.kind === 'playerCard' ? 'player_card' : 'video_phrase';
-      const award = await awardPointsInTransaction(client, {
-        userId,
-        sourceType,
-        sourceId: challengeId,
-        basePoints,
-        multiplier: memberMultiplierForSource(sourceType, isYouTubeMember),
-        description: `Solved Challenge: ${challenge.title}`,
-        idempotencyKey: `challenge:${challengeId}:user:${userId}`,
-      });
+      const award = await awardPointsInTransaction(client, awardParams);
 
       // A legacy partial write may already own the award key. Do not present
-      // old points as newly earned or increment the completion counter twice.
-      pointsEarned = award.alreadyAwarded ? 0 : award.pointsAwarded;
+      // old points as newly earned or increment the completion counter twice,
+      // but still return/store the canonical amount instead of a misleading 0.
+      pointsEarned = award.pointsAwarded;
+      alreadyAwarded = award.alreadyAwarded === true;
       newlyCompleted = award.alreadyAwarded ? 0 : 1;
       shouldInvalidatePointCaches = !award.alreadyAwarded;
 
@@ -222,7 +259,16 @@ export async function submitChallengeAnswer(
 
     await client.query('COMMIT');
     if (shouldInvalidatePointCaches) await invalidatePointCaches();
-    return { correct: isCorrect, pointsAwarded: pointsEarned };
+    return {
+      correct: isCorrect,
+      pointsAwarded: pointsEarned,
+      attemptsUsed: attemptNumber,
+      remainingAttempts: isCorrect
+        ? 0
+        : Math.max(0, Number(challenge.maximum_attempts) - attemptNumber),
+      solved: isCorrect,
+      ...(isCorrect ? { alreadyAwarded } : {}),
+    };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
     throw error;

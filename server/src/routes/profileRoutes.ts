@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticateUser, requirePermission } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
+import { deleteAccountData } from '../services/accountDeletionService.js';
 
 const updateProfileSchema = z.object({
   displayName: z.string().trim().min(2).max(50).optional(),
@@ -273,6 +274,35 @@ export async function profileRoutes(fastify: FastifyInstance) {
       },
     };
   });
+
+  // DELETE /api/v1/profile/me - Permanently delete the signed-in fan and all
+  // PostgreSQL-owned account data. User-scoped tables reference users with
+  // ON DELETE CASCADE; the service wraps the complete cascade and its
+  // non-identifying audit marker in one transaction.
+  fastify.delete(
+    '/profile/me',
+    {
+      preHandler: [authenticateUser],
+      config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    },
+    async (request, reply) => {
+      const deleted = await deleteAccountData(
+        request.user!.id,
+        request.id,
+      );
+      if (!deleted) {
+        return reply.status(404).send({
+          error: 'NotFound',
+          message: 'Profile no longer exists.',
+        });
+      }
+      return {
+        success: true,
+        message: 'Account data permanently deleted.',
+        requestId: request.id,
+      };
+    },
+  );
 
   // PUT /api/v1/profile/team - Select/update supported team
   fastify.put('/profile/team', { preHandler: [authenticateUser] }, async (request, reply) => {

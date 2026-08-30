@@ -13,6 +13,25 @@ const submitSchema = z.object({
   answer: z.string().trim().min(1).max(200),
 });
 
+type ChallengeFeedRow = Record<string, unknown>;
+
+export function mergeChallengeActivity(
+  challenges: ChallengeFeedRow[],
+  activityRows: ChallengeFeedRow[],
+): ChallengeFeedRow[] {
+  const activityByChallenge = new Map(
+    activityRows.map((row) => [String(row.challenge_id), row]),
+  );
+  return challenges.map((challenge) => {
+    const activity = activityByChallenge.get(String(challenge.id));
+    return {
+      ...challenge,
+      attempts_used: Number(activity?.attempts_used ?? 0),
+      solved: activity?.solved === true,
+    };
+  });
+}
+
 export async function challengeRoutes(fastify: FastifyInstance) {
   // GET /api/v1/challenges/active - Returns active challenges without answer keys
   fastify.get(
@@ -25,37 +44,51 @@ export async function challengeRoutes(fastify: FastifyInstance) {
         'private, max-age=30, stale-while-revalidate=120',
       );
       const cacheKey = `cache:challenges:active:${canAccessMemberContent ? 'member' : 'public'}`;
-      const cached = await getCachedJson(cacheKey);
-      if (cached) return cached;
+      let challenges = await getCachedJson<ChallengeFeedRow[]>(cacheKey);
+      if (!challenges) {
+        const res = await query(
+          `SELECT c.id, c.video_id, c.title, c.description, c.kind, c.status,
+                c.reward_points, c.reward_points * 2 AS member_points,
+                c.video_url, c.image_url, c.maximum_attempts, c.member_only,
+                c.notify_on_live, c.starts_at, c.ends_at,
+                COALESCE(
+                  jsonb_agg(
+                    jsonb_build_object(
+                      'id', q.id,
+                      'prompt', q.prompt,
+                      'type', q.answer_type,
+                      'options', q.options
+                    ) ORDER BY q.position
+                  ) FILTER (WHERE q.id IS NOT NULL),
+                  '[]'::jsonb
+                ) AS questions
+         FROM challenges c
+         LEFT JOIN challenge_questions q ON q.challenge_id = c.id
+         WHERE c.status IN ('open', 'scheduled')
+           AND c.starts_at <= CURRENT_TIMESTAMP
+           AND c.ends_at >= CURRENT_TIMESTAMP
+           AND (c.member_only = FALSE OR $1 = TRUE)
+         GROUP BY c.id
+         ORDER BY c.starts_at DESC`,
+          [canAccessMemberContent],
+        );
+        challenges = res.rows;
+        await setCachedJson(cacheKey, challenges, 60);
+      }
 
-      const res = await query(
-        `SELECT c.id, c.video_id, c.title, c.description, c.kind, c.status,
-              c.reward_points, c.reward_points * 2 AS member_points,
-              c.video_url, c.image_url, c.maximum_attempts, c.member_only,
-              c.notify_on_live, c.starts_at, c.ends_at,
-              COALESCE(
-                jsonb_agg(
-                  jsonb_build_object(
-                    'id', q.id,
-                    'prompt', q.prompt,
-                    'type', q.answer_type,
-                    'options', q.options
-                  ) ORDER BY q.position
-                ) FILTER (WHERE q.id IS NOT NULL),
-                '[]'::jsonb
-              ) AS questions
-       FROM challenges c
-       LEFT JOIN challenge_questions q ON q.challenge_id = c.id
-       WHERE c.status IN ('open', 'scheduled')
-         AND c.starts_at <= CURRENT_TIMESTAMP
-         AND c.ends_at >= CURRENT_TIMESTAMP
-         AND (c.member_only = FALSE OR $1 = TRUE)
-       GROUP BY c.id
-       ORDER BY c.starts_at DESC`,
-        [canAccessMemberContent],
+      const challengeIds = challenges.map((challenge) => String(challenge.id));
+      if (challengeIds.length === 0) return challenges;
+      const activity = await query(
+        `SELECT challenge_id,
+                COUNT(*)::integer AS attempts_used,
+                BOOL_OR(is_correct) AS solved
+         FROM challenge_submissions
+         WHERE user_id = $1
+           AND challenge_id = ANY($2::varchar[])
+         GROUP BY challenge_id`,
+        [request.user!.id, challengeIds],
       );
-      await setCachedJson(cacheKey, res.rows, 60);
-      return res.rows;
+      return mergeChallengeActivity(challenges, activity.rows);
     },
   );
 

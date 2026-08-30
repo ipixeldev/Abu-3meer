@@ -57,11 +57,6 @@ class _ProductionChallenges extends StatelessWidget {
             );
           },
         ),
-        const SizedBox(height: 28),
-        _ProductionPlayerCardCollection(
-          repository: repository,
-          profile: profile,
-        ),
       ],
     ),
   );
@@ -109,8 +104,8 @@ class _ProductionChallengeEmptyState extends StatelessWidget {
           ),
           body: abuText(
             context,
-            'Secret phrases and hidden Player Cards published by Abu 3meer will appear here.',
-            'ستظهر هنا العبارات السرية وبطاقات اللاعبين التي ينشرها أبو عمير.',
+            'Video questions and player-guess challenges published by Abu 3meer will appear here.',
+            'ستظهر هنا أسئلة الفيديو وتحديات تخمين اللاعبين التي ينشرها أبو عمير.',
           ),
         );
       }
@@ -125,12 +120,12 @@ class _ProductionChallengeEmptyState extends StatelessWidget {
           ),
         ),
         (
-          Icons.style_rounded,
-          abuText(context, 'PLAYER CARD', 'بطاقة اللاعب'),
+          Icons.person_search_rounded,
+          abuText(context, 'GUESS THE PLAYER', 'احزر اللاعب'),
           abuText(
             context,
-            'Find the hidden player and claim it',
-            'اعثر على اللاعب المخفي واحصل على بطاقته',
+            'Watch the clues and answer the player name',
+            'شاهد التلميحات وأجب باسم اللاعب',
           ),
         ),
         (
@@ -288,7 +283,7 @@ class _ProductionChallengeCard extends StatelessWidget {
   );
 
   IconData get _icon => switch (challenge.canonicalKind) {
-    'playerCard' => Icons.style_rounded,
+    'playerCard' => Icons.person_search_rounded,
     'multipleChoice' => Icons.fact_check_rounded,
     'trueFalse' => Icons.rule_rounded,
     'multiQuestion' => Icons.quiz_rounded,
@@ -351,12 +346,19 @@ class _ProductionChallengeCard extends StatelessWidget {
                 ),
               ),
               _ChallengeMetaChip(
-                icon: Icons.replay_rounded,
+                icon: challenge.solved
+                    ? Icons.check_circle_rounded
+                    : Icons.replay_rounded,
                 label: abuText(
                   context,
-                  '${math.max(0, challenge.maximumAttempts - challenge.attemptsUsed)} attempts left',
-                  '${math.max(0, challenge.maximumAttempts - challenge.attemptsUsed)} محاولة متبقية',
+                  challenge.solved
+                      ? 'SOLVED'
+                      : '${math.max(0, challenge.maximumAttempts - challenge.attemptsUsed)} attempts left',
+                  challenge.solved
+                      ? 'تم الحل'
+                      : '${math.max(0, challenge.maximumAttempts - challenge.attemptsUsed)} محاولة متبقية',
                 ),
+                color: challenge.solved ? _productionPrimary(context) : _muted,
               ),
               if (challenge.questions.length > 1)
                 _ChallengeMetaChip(
@@ -393,6 +395,7 @@ class _ProductionChallengeCard extends StatelessWidget {
             child: FilledButton(
               onPressed:
                   challenge.isOpen &&
+                      !challenge.solved &&
                       challenge.attemptsUsed < challenge.maximumAttempts &&
                       (!challenge.memberOnly || isMember)
                   ? () => answer(context)
@@ -400,6 +403,8 @@ class _ProductionChallengeCard extends StatelessWidget {
               child: Text(
                 !challenge.isOpen
                     ? abuText(context, 'CLOSED', 'مغلق')
+                    : challenge.solved
+                    ? abuText(context, 'SOLVED', 'تم الحل')
                     : challenge.memberOnly && !isMember
                     ? abuText(context, 'MEMBERS ONLY', 'للأعضاء فقط')
                     : challenge.attemptsUsed >= challenge.maximumAttempts
@@ -524,13 +529,18 @@ class _ChallengePlayDialogState extends State<_ChallengePlayDialog> {
       if (!mounted) return;
       final correct = result['correct'] == true;
       final points = result['points'] ?? 0;
+      final alreadyAwarded = result['alreadyAwarded'] == true;
       final remaining = result['remainingAttempts'];
       final messenger = ScaffoldMessenger.of(context);
       final feedback = correct
           ? abuText(
               context,
-              'Perfect! +$points points added.',
-              'إجابة رائعة! تمت إضافة $points نقطة.',
+              alreadyAwarded
+                  ? 'Already solved. Your $points points were awarded earlier.'
+                  : 'Perfect! +$points points added.',
+              alreadyAwarded
+                  ? 'تم حل التحدي سابقاً. تمت إضافة $points نقطة من قبل.'
+                  : 'إجابة رائعة! تمت إضافة $points نقطة.',
             )
           : abuText(
               context,
@@ -5493,6 +5503,7 @@ class _AdminQuestionDraft {
 
   final TextEditingController prompt = TextEditingController();
   final TextEditingController answer = TextEditingController();
+  final TextEditingController acceptedAnswers = TextEditingController();
   final TextEditingController options = TextEditingController();
   String type;
 
@@ -5516,6 +5527,11 @@ class _AdminQuestionDraft {
         correctAnswer: type == 'trueFalse'
             ? answer.text.trim().toLowerCase()
             : answer.text.trim(),
+        acceptedAnswers: acceptedAnswers.text
+            .split('\n')
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty)
+            .toList(growable: false),
       );
 
   void updateType(String value) {
@@ -5531,12 +5547,13 @@ class _AdminQuestionDraft {
   void dispose() {
     prompt.dispose();
     answer.dispose();
+    acceptedAnswers.dispose();
     options.dispose();
   }
 }
 
 IconData _adminChallengeKindIcon(String kind) => switch (kind) {
-  'playerCard' => Icons.style_rounded,
+  'playerCard' => Icons.person_search_rounded,
   _ => Icons.subtitles_rounded,
 };
 
@@ -5558,8 +5575,8 @@ class _ProductionAdminTools extends StatelessWidget {
           label: abuText(context, 'NEW CHALLENGE', 'تحدٍ جديد'),
           detail: abuText(
             context,
-            'Publish a phrase or Player Card challenge.',
-            'انشر عبارة أو تحدي بطاقة لاعب.',
+            'Publish a video question or Player Guess challenge.',
+            'انشر سؤال فيديو أو تحدي تخمين لاعب.',
           ),
           color: _productionPrimary(context),
           primary: true,
@@ -5644,12 +5661,12 @@ class _ProductionAdminTools extends StatelessWidget {
             onTap: () => showAdminPointAdjustments(context, repository),
           ),
         _AdminQuickAction(
-          icon: Icons.style_rounded,
-          label: abuText(context, 'PLAYER CARDS', 'بطاقات اللاعبين'),
+          icon: Icons.person_search_rounded,
+          label: abuText(context, 'NEW PLAYER GUESS', 'تخمين لاعب جديد'),
           detail: abuText(
             context,
-            'Publish collectible cards linked to challenges.',
-            'انشر بطاقات قابلة للجمع ومرتبطة بالتحديات.',
+            'Publish a video clue and let fans answer the player name.',
+            'انشر تلميح فيديو ودع الجمهور يخمن اسم اللاعب.',
           ),
           color: _blue,
           onTap: () => managePlayerCards(context),
@@ -5812,8 +5829,12 @@ class _ProductionAdminTools extends StatelessWidget {
                     onTap: () => showAdminPointAdjustments(context, repository),
                   ),
                 _AdminMobileAction(
-                  icon: Icons.style_rounded,
-                  label: abuText(context, 'PLAYER CARDS', 'بطاقات اللاعبين'),
+                  icon: Icons.person_search_rounded,
+                  label: abuText(
+                    context,
+                    'NEW PLAYER GUESS',
+                    'تخمين لاعب جديد',
+                  ),
                   color: _blue,
                   onTap: () => managePlayerCards(context),
                 ),
@@ -5855,36 +5876,26 @@ class _ProductionAdminTools extends StatelessWidget {
     builder: (_) => _AdminMembershipDialog(repository: repository),
   );
 
-  Future<void> createChallenge(BuildContext context) async {
-    List<AbuPlayerCard> availablePlayerCards = const <AbuPlayerCard>[];
-    try {
-      availablePlayerCards = (await repository.fetchManagedPlayerCards())
-          .where(
-            (card) => card.enabled && card.sourceChallengeId.trim().isEmpty,
-          )
-          .toList(growable: false);
-    } catch (_) {
-      // Video challenges remain available if the optional card catalog cannot
-      // be loaded. A Player Card challenge will show a clear validation hint.
-    }
-    if (!context.mounted) return;
+  Future<void> createChallenge(
+    BuildContext context, {
+    String initialKind = 'videoPhrase',
+  }) async {
     final title = TextEditingController();
     final description = TextEditingController();
     final video = TextEditingController();
     final points = TextEditingController(text: '10');
     final questions = <_AdminQuestionDraft>[_AdminQuestionDraft()];
-    var kind = 'videoPhrase';
+    var kind = initialKind == 'playerCard' ? 'playerCard' : 'videoPhrase';
     var status = 'open';
     var maximumAttempts = 3;
     var memberOnly = false;
     var notifyOnLive = true;
-    var playerCardId = '';
     var startsAt = DateTime.now();
     var endsAt = DateTime.now().add(const Duration(days: 7));
     XFile? selectedImage;
     dynamic selectedImageBytes;
     String kindLabel(BuildContext context, String value) => switch (value) {
-      'playerCard' => abuText(context, 'Player Card', 'بطاقة لاعب'),
+      'playerCard' => abuText(context, 'Guess the player', 'احزر اللاعب'),
       _ => abuText(context, 'Video phrase', 'عبارة من الفيديو'),
     };
 
@@ -5899,6 +5910,17 @@ class _ProductionAdminTools extends StatelessWidget {
       questions
         ..clear()
         ..add(_AdminQuestionDraft(type: questionTypeForKind(value)));
+      if (value == 'playerCard') {
+        questions.first.prompt.text = abuText(
+          context,
+          'Which player is described in the video?',
+          'من هو اللاعب المذكور في الفيديو؟',
+        );
+      }
+    }
+
+    if (kind == 'playerCard') {
+      resetQuestions(kind);
     }
 
     final submit = await showDialog<bool>(
@@ -5941,64 +5963,38 @@ class _ProductionAdminTools extends StatelessWidget {
                       if (value == null || value == kind) return;
                       setDialogState(() {
                         kind = value;
-                        playerCardId =
-                            value == 'playerCard' &&
-                                availablePlayerCards.isNotEmpty
-                            ? availablePlayerCards.first.id
-                            : '';
                         resetQuestions(value);
-                        points.text = switch (value) {
-                          'playerCard' => '300',
-                          _ => '250',
-                        };
+                        points.text = '10';
                       });
                     },
                   ),
                   if (kind == 'playerCard') ...[
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      initialValue: playerCardId,
-                      decoration: InputDecoration(
-                        labelText: abuText(
-                          context,
-                          'Card unlocked by this challenge',
-                          'البطاقة التي يفتحها هذا التحدي',
-                        ),
-                        helperText: availablePlayerCards.isEmpty
-                            ? abuText(
-                                context,
-                                'Create an enabled card in Player Card Studio first.',
-                                'أنشئ بطاقة مفعّلة في استوديو بطاقات اللاعبين أولاً.',
-                              )
-                            : abuText(
-                                context,
-                                'A correct answer will add this card to the fan collection.',
-                                'ستضيف الإجابة الصحيحة هذه البطاقة إلى مجموعة المشجع.',
+                    Card(
+                      color: _productionPrimary(context).withValues(alpha: .08),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.smart_display_rounded,
+                              color: _productionPrimary(context),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                abuText(
+                                  context,
+                                  'Add the YouTube video containing the clues, then enter the player name as the private correct answer below. Fans watch, type their guess in the app, and earn the configured points.',
+                                  'أضف فيديو يوتيوب الذي يحتوي على التلميحات، ثم أدخل اسم اللاعب كإجابة صحيحة خاصة أدناه. يشاهد الجمهور الفيديو ويكتبون تخمينهم داخل التطبيق ويحصلون على النقاط المحددة.',
+                                ),
+                                style: TextStyle(color: _muted, height: 1.4),
                               ),
+                            ),
+                          ],
+                        ),
                       ),
-                      items: <DropdownMenuItem<String>>[
-                        DropdownMenuItem<String>(
-                          value: '',
-                          child: Text(
-                            abuText(
-                              context,
-                              'Choose a Player Card',
-                              'اختر بطاقة لاعب',
-                            ),
-                          ),
-                        ),
-                        ...availablePlayerCards.map(
-                          (card) => DropdownMenuItem<String>(
-                            value: card.id,
-                            child: Text(
-                              '${card.playerName} · ${card.rating} ${card.position}',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                      ],
-                      onChanged: (value) =>
-                          setDialogState(() => playerCardId = value ?? ''),
                     ),
                   ],
                   const SizedBox(height: 12),
@@ -6326,15 +6322,52 @@ class _ProductionAdminTools extends StatelessWidget {
                                         value ?? 'true',
                               )
                             else
-                              TextField(
-                                controller: questions[index].answer,
-                                decoration: InputDecoration(
-                                  labelText: abuText(
-                                    context,
-                                    'Private correct answer',
-                                    'الإجابة الصحيحة الخاصة',
+                              Column(
+                                children: [
+                                  TextField(
+                                    controller: questions[index].answer,
+                                    decoration: InputDecoration(
+                                      labelText: kind == 'playerCard'
+                                          ? abuText(
+                                              context,
+                                              'Private player name',
+                                              'اسم اللاعب الخاص',
+                                            )
+                                          : abuText(
+                                              context,
+                                              'Private correct answer',
+                                              'الإجابة الصحيحة الخاصة',
+                                            ),
+                                      helperText: kind == 'playerCard'
+                                          ? abuText(
+                                              context,
+                                              'Fans never see this answer before submitting.',
+                                              'لن يرى الجمهور هذه الإجابة قبل الإرسال.',
+                                            )
+                                          : null,
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(height: 10),
+                                  TextField(
+                                    controller:
+                                        questions[index].acceptedAnswers,
+                                    minLines: 2,
+                                    maxLines: 4,
+                                    decoration: InputDecoration(
+                                      labelText: kind == 'playerCard'
+                                          ? abuText(
+                                              context,
+                                              'Other accepted player spellings · one per line (optional)',
+                                              'تهجئات أخرى مقبولة لاسم اللاعب · واحدة في كل سطر (اختياري)',
+                                            )
+                                          : abuText(
+                                              context,
+                                              'Other accepted answers · one per line (optional)',
+                                              'إجابات أخرى مقبولة · واحدة في كل سطر (اختياري)',
+                                            ),
+                                    ),
+                                  ),
+                                ],
                               ),
                           ],
                         ),
@@ -6399,12 +6432,6 @@ class _ProductionAdminTools extends StatelessWidget {
                     context,
                     'End time must be after the start time.',
                     'يجب أن يكون وقت الانتهاء بعد وقت البدء.',
-                  );
-                } else if (kind == 'playerCard' && playerCardId.isEmpty) {
-                  validationError = abuText(
-                    context,
-                    'Choose the Player Card this challenge should unlock.',
-                    'اختر بطاقة اللاعب التي سيفتحها هذا التحدي.',
                   );
                 }
                 for (final draft in questions) {
@@ -6473,7 +6500,6 @@ class _ProductionAdminTools extends StatelessWidget {
           maximumAttempts: maximumAttempts,
           memberOnly: memberOnly,
           notifyOnLive: notifyOnLive,
-          playerCardId: playerCardId,
           questions: questionModels,
         );
       }, abuText(context, 'Challenge published.', 'تم نشر التحدي.'));
@@ -7070,36 +7096,8 @@ class _ProductionAdminTools extends StatelessWidget {
   Future<void> manageRedemptions(BuildContext context) =>
       _showAdminRedemptionManager(context, repository);
 
-  Future<void> managePlayerCards(
-    BuildContext context,
-  ) => _showAdminDefinitionManager<AbuPlayerCard>(
-    context: context,
-    title: abuText(context, 'Player Card studio', 'استوديو بطاقات اللاعبين'),
-    emptyTitle: abuText(
-      context,
-      'No Player Cards configured',
-      'لم يتم إعداد بطاقات لاعبين',
-    ),
-    emptyBody: abuText(
-      context,
-      'Publish the first collectible card.',
-      'انشر أول بطاقة قابلة للجمع.',
-    ),
-    stream: repository.watchManagedPlayerCards(),
-    enabled: (item) => item.enabled,
-    icon: (_) => Icons.style_rounded,
-    label: (item) => item.playerName,
-    detail: (item) => abuText(
-      context,
-      '${item.rating} ${item.position} · ${item.teamName} · ${item.rarity} · ${item.sourceChallengeId.trim().isEmpty ? 'not linked to a challenge' : 'linked to ${item.sourceChallengeId}'}',
-      '${item.rating} ${item.position} · ${item.teamName} · ${item.rarity} · ${item.sourceChallengeId.trim().isEmpty ? 'غير مرتبط بتحدٍ' : 'مرتبط بـ ${item.sourceChallengeId}'}',
-    ),
-    onToggle: (item, value) => repository.setPlayerCardEnabled(item.id, value),
-    onEdit: (item) =>
-        _editPlayerCardDefinition(context, repository, existing: item),
-    onDelete: (item) => repository.deletePlayerCard(item.id),
-    onCreate: () => _editPlayerCardDefinition(context, repository),
-  );
+  Future<void> managePlayerCards(BuildContext context) =>
+      createChallenge(context, initialKind: 'playerCard');
 
   Future<void> manageRoles(BuildContext context) => showDialog<void>(
     context: context,
@@ -9074,346 +9072,6 @@ Future<void> _showRewardPreview(
   ),
 );
 
-Map<String, int>? _parsePlayerStats(String raw) {
-  final result = <String, int>{};
-  for (final line in raw.split('\n')) {
-    if (line.trim().isEmpty) continue;
-    final separator = line.indexOf(':');
-    if (separator <= 0) return null;
-    final key = line.substring(0, separator).trim();
-    final value = int.tryParse(line.substring(separator + 1).trim());
-    if (key.isEmpty || value == null || value < 0 || value > 100) return null;
-    result[key] = value;
-  }
-  return result;
-}
-
-Future<void> _editPlayerCardDefinition(
-  BuildContext context,
-  ProductionRepository repository, {
-  AbuPlayerCard? existing,
-}) async {
-  final name = TextEditingController(text: existing?.playerName ?? '');
-  final nameAr = TextEditingController(text: existing?.playerNameAr ?? '');
-  final description = TextEditingController(text: existing?.description ?? '');
-  final descriptionAr = TextEditingController(
-    text: existing?.descriptionAr ?? '',
-  );
-  final image = TextEditingController(text: existing?.imageUrl ?? '');
-  final team = TextEditingController(text: existing?.teamName ?? '');
-  final teamLogo = TextEditingController(text: existing?.teamLogoUrl ?? '');
-  final position = TextEditingController(text: existing?.position ?? '');
-  final rating = TextEditingController(text: '${existing?.rating ?? 80}');
-  final stats = TextEditingController(
-    text:
-        existing?.stats.entries
-            .map((entry) => '${entry.key}: ${entry.value}')
-            .join('\n') ??
-        'pace: 80\nshooting: 80\npassing: 80',
-  );
-  var rarity = existing?.rarity ?? 'common';
-  var enabled = existing?.enabled ?? true;
-  XFile? selectedPlayerImage;
-  dynamic selectedPlayerImageBytes;
-  XFile? selectedTeamLogo;
-  dynamic selectedTeamLogoBytes;
-  final submit = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        title: Text(
-          existing == null
-              ? abuText(context, 'Create Player Card', 'إنشاء بطاقة لاعب')
-              : abuText(context, 'Edit Player Card', 'تعديل بطاقة اللاعب'),
-        ),
-        content: SizedBox(
-          width: 720,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _AdminBilingualFields(
-                  english: name,
-                  arabic: nameAr,
-                  englishLabel: abuText(
-                    context,
-                    'Player name · English',
-                    'اسم اللاعب · الإنجليزية',
-                  ),
-                  arabicLabel: abuText(
-                    context,
-                    'Player name · Arabic',
-                    'اسم اللاعب · العربية',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _AdminBilingualFields(
-                  english: description,
-                  arabic: descriptionAr,
-                  englishLabel: abuText(
-                    context,
-                    'Description · English',
-                    'الوصف · الإنجليزية',
-                  ),
-                  arabicLabel: abuText(
-                    context,
-                    'Description · Arabic',
-                    'الوصف · العربية',
-                  ),
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final selection = await _selectAdminImage(context);
-                          if (selection == null || !context.mounted) return;
-                          setDialogState(() {
-                            selectedPlayerImage = selection.file;
-                            selectedPlayerImageBytes = selection.bytes;
-                          });
-                        },
-                        icon: const Icon(Icons.person_rounded),
-                        label: Text(
-                          selectedPlayerImage == null
-                              ? abuText(context, 'PLAYER IMAGE', 'صورة اللاعب')
-                              : selectedPlayerImage!.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final selection = await _selectAdminImage(context);
-                          if (selection == null || !context.mounted) return;
-                          setDialogState(() {
-                            selectedTeamLogo = selection.file;
-                            selectedTeamLogoBytes = selection.bytes;
-                          });
-                        },
-                        icon: const Icon(Icons.shield_outlined),
-                        label: Text(
-                          selectedTeamLogo == null
-                              ? abuText(context, 'TEAM LOGO', 'شعار الفريق')
-                              : selectedTeamLogo!.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                if (selectedPlayerImage != null || image.text.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  _campaignImagePreview(
-                    context: context,
-                    imageUrl: image.text,
-                    imageBytes: selectedPlayerImageBytes,
-                    height: 180,
-                  ),
-                ],
-                if (selectedTeamLogo != null) ...[
-                  const SizedBox(height: 10),
-                  _campaignImagePreview(
-                    context: context,
-                    imageUrl: teamLogo.text,
-                    imageBytes: selectedTeamLogoBytes,
-                    height: 120,
-                  ),
-                ],
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: team,
-                        decoration: InputDecoration(
-                          labelText: abuText(context, 'Team', 'الفريق'),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: position,
-                        decoration: InputDecoration(
-                          labelText: abuText(context, 'Position', 'المركز'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: rating,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: abuText(
-                            context,
-                            'Rating · 1–99',
-                            'التقييم · 1–99',
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: rarity,
-                        decoration: InputDecoration(
-                          labelText: abuText(context, 'Rarity', 'الندرة'),
-                        ),
-                        items: const ['common', 'rare', 'epic', 'legendary']
-                            .map(
-                              (value) => DropdownMenuItem(
-                                value: value,
-                                child: Text(value),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) =>
-                            setDialogState(() => rarity = value ?? 'common'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: stats,
-                  minLines: 3,
-                  maxLines: 6,
-                  decoration: InputDecoration(
-                    labelText: abuText(
-                      context,
-                      'Stats · one “name: value” per line',
-                      'الإحصاءات · «الاسم: القيمة» في كل سطر',
-                    ),
-                  ),
-                ),
-                if (existing == null)
-                  SwitchListTile.adaptive(
-                    contentPadding: EdgeInsets.zero,
-                    value: enabled,
-                    onChanged: (value) => setDialogState(() => enabled = value),
-                    title: Text(abuText(context, 'Enabled', 'مفعّل')),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(abuText(context, 'CANCEL', 'إلغاء')),
-          ),
-          TextButton.icon(
-            onPressed: () => _showPlayerCardDetails(
-              context,
-              AbuPlayerCard(
-                id: 'preview',
-                playerName: name.text.isEmpty
-                    ? abuText(context, 'Player name', 'اسم اللاعب')
-                    : name.text,
-                playerNameAr: nameAr.text,
-                imageUrl: image.text,
-                teamName: team.text,
-                teamLogoUrl: teamLogo.text,
-                position: position.text,
-                rating: int.tryParse(rating.text) ?? 0,
-                rarity: rarity,
-                stats: _parsePlayerStats(stats.text) ?? const {},
-                description: description.text,
-                descriptionAr: descriptionAr.text,
-                unlocked: true,
-                enabled: true,
-                sourceChallengeId: existing?.sourceChallengeId ?? '',
-              ),
-            ),
-            icon: Icon(Icons.visibility_rounded),
-            label: Text(abuText(context, 'PREVIEW', 'معاينة')),
-          ),
-          FilledButton(
-            onPressed: () {
-              final parsedRating = int.tryParse(rating.text);
-              final parsedStats = _parsePlayerStats(stats.text);
-              if (name.text.trim().isEmpty ||
-                  parsedRating == null ||
-                  parsedRating < 1 ||
-                  parsedRating > 99 ||
-                  parsedStats == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      abuText(
-                        context,
-                        'Add a player name, 1–99 rating, and valid stats.',
-                        'أضف اسم اللاعب وتقييماً من 1–99 وإحصاءات صالحة.',
-                      ),
-                    ),
-                  ),
-                );
-                return;
-              }
-              Navigator.pop(dialogContext, true);
-            },
-            child: Text(abuText(context, 'SAVE', 'حفظ')),
-          ),
-        ],
-      ),
-    ),
-  );
-  if (submit == true && context.mounted) {
-    await _saveAdminDefinition(context, () async {
-      final finalPlayerImage = selectedPlayerImage == null
-          ? image.text
-          : await repository.uploadPlayerCardImage(selectedPlayerImage!);
-      final finalTeamLogo = selectedTeamLogo == null
-          ? teamLogo.text
-          : await repository.uploadPlayerCardImage(selectedTeamLogo!);
-      final model = AbuPlayerCard(
-        id: existing?.id ?? '',
-        playerName: name.text,
-        playerNameAr: nameAr.text,
-        imageUrl: finalPlayerImage,
-        teamName: team.text,
-        teamLogoUrl: finalTeamLogo,
-        position: position.text,
-        rating: int.tryParse(rating.text) ?? 0,
-        rarity: rarity,
-        stats: _parsePlayerStats(stats.text) ?? const {},
-        description: description.text,
-        descriptionAr: descriptionAr.text,
-        unlocked: false,
-        enabled: enabled,
-        sourceChallengeId: existing?.sourceChallengeId ?? '',
-      );
-      await repository.savePlayerCard(model);
-    }, abuText(context, 'Player Card saved.', 'تم حفظ بطاقة اللاعب.'));
-  }
-  for (final controller in [
-    name,
-    nameAr,
-    description,
-    descriptionAr,
-    image,
-    team,
-    teamLogo,
-    position,
-    rating,
-    stats,
-  ]) {
-    controller.dispose();
-  }
-}
-
 class _AdminMobileAction extends StatelessWidget {
   const _AdminMobileAction({
     required this.icon,
@@ -9561,8 +9219,8 @@ class _AdminEventManager extends StatelessWidget {
           ),
           body: abuText(
             context,
-            'Create a Video Question or Player Card event above.',
-            'أنشئ سؤال فيديو أو فعالية بطاقة لاعب أعلاه.',
+            'Create a Video Question or Player Guess event above.',
+            'أنشئ سؤال فيديو أو فعالية تخمين لاعب أعلاه.',
           ),
         );
       }
@@ -9623,7 +9281,7 @@ class _AdminEventManager extends StatelessWidget {
                               width: 52,
                               child: Icon(
                                 event.kind == 'playerCard'
-                                    ? Icons.style_rounded
+                                    ? Icons.person_search_rounded
                                     : Icons.quiz_rounded,
                                 color: _productionPrimary(context),
                               ),
@@ -9672,7 +9330,7 @@ class _AdminEventManager extends StatelessWidget {
                         contentPadding: EdgeInsets.zero,
                         leading: Icon(
                           event.kind == 'playerCard'
-                              ? Icons.style_rounded
+                              ? Icons.person_search_rounded
                               : Icons.quiz_rounded,
                         ),
                         title: Text(event.title),
@@ -9760,11 +9418,7 @@ class _AdminEventManager extends StatelessWidget {
   }
 
   Widget _deleteButton(BuildContext context, AbuChallenge event) => IconButton(
-    tooltip: abuText(
-      context,
-      'Delete unused challenge',
-      'حذف التحدي غير المستخدم',
-    ),
+    tooltip: abuText(context, 'Delete challenge', 'حذف التحدي'),
     icon: const Icon(Icons.delete_outline_rounded),
     color: _red,
     onPressed: () async {
@@ -9777,8 +9431,8 @@ class _AdminEventManager extends StatelessWidget {
           content: Text(
             abuText(
               dialogContext,
-              'This permanently removes “${event.title}”, releases its linked Player Card, and cancels its pending notification. Challenges with fan answers must be archived instead.',
-              'سيؤدي هذا إلى حذف «${event.title}» نهائياً، وتحرير بطاقة اللاعب المرتبطة، وإلغاء الإشعار المعلّق. يجب أرشفة التحديات التي تحتوي على إجابات.',
+              'This permanently removes “${event.title}”, its submitted answers, and its pending notification. Points already earned by fans are kept.',
+              'سيؤدي هذا إلى حذف «${event.title}» نهائياً وإجاباته المُرسلة وإشعاره المعلّق. ستبقى النقاط التي حصل عليها الجمهور.',
             ),
           ),
           actions: [

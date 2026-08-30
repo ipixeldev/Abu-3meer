@@ -649,6 +649,22 @@ class _ProductionAuthState extends State<_ProductionAuth> {
                 padding: const EdgeInsets.all(14),
               ),
             ),
+            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
+              const SizedBox(height: 10),
+              SignInWithAppleButton(
+                onPressed: busy
+                    ? null
+                    : () => run(widget.repository.signInWithApple),
+                text: abuText(
+                  context,
+                  'Continue with Apple',
+                  'المتابعة باستخدام Apple',
+                ),
+                height: 52,
+                style: SignInWithAppleButtonStyle.white,
+                borderRadius: const BorderRadius.all(Radius.circular(26)),
+              ),
+            ],
             const SizedBox(height: 10),
             if (!createAccount)
               TextButton(
@@ -3074,7 +3090,19 @@ class _DirectChallengeInlineCardState
     extends State<_DirectChallengeInlineCard> {
   final _controller = TextEditingController();
   bool _submitting = false;
-  bool _solved = false;
+  late bool _solved;
+
+  @override
+  void initState() {
+    super.initState();
+    _solved = widget.challenge.solved;
+  }
+
+  @override
+  void didUpdateWidget(covariant _DirectChallengeInlineCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.challenge.solved) _solved = true;
+  }
 
   @override
   void dispose() {
@@ -3102,6 +3130,7 @@ class _DirectChallengeInlineCardState
           : 10;
       final memberEligible = widget.profile.isYouTubeMember;
       final points = result['points'] ?? basePoints * (memberEligible ? 2 : 1);
+      final alreadyAwarded = result['alreadyAwarded'] == true;
       if (correct) {
         setState(() => _solved = true);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3115,8 +3144,12 @@ class _DirectChallengeInlineCardState
                   child: Text(
                     abuText(
                       context,
-                      'Correct answer! +$points XP added to your account.',
-                      'إجابة صحيحة! تمت إضافة +$points نقطة إلى حسابك.',
+                      alreadyAwarded
+                          ? 'Already solved. Your $points XP was awarded earlier.'
+                          : 'Correct answer! +$points XP added to your account.',
+                      alreadyAwarded
+                          ? 'تم حل التحدي سابقاً. تمت إضافة $points نقطة من قبل.'
+                          : 'إجابة صحيحة! تمت إضافة +$points نقطة إلى حسابك.',
                     ),
                     style: TextStyle(
                       color: _productionPrimary(context),
@@ -3172,7 +3205,7 @@ class _DirectChallengeInlineCardState
         ? '+${basePoints * 2} XP (2×)'
         : '+$basePoints XP';
     final cardTitle = isPlayerCard
-        ? abuText(context, 'HIDDEN PLAYER CARD', 'بطاقة اللاعب المخفي')
+        ? abuText(context, 'GUESS THE PLAYER', 'احزر اللاعب')
         : abuText(context, 'SECRET VIDEO PHRASE', 'العبارة السرية في الفيديو');
     final hintText = isPlayerCard
         ? abuText(context, 'Type the player name…', 'اكتب اسم اللاعب…')
@@ -3217,7 +3250,9 @@ class _DirectChallengeInlineCardState
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  isPlayerCard ? Icons.style_rounded : Icons.subtitles_rounded,
+                  isPlayerCard
+                      ? Icons.person_search_rounded
+                      : Icons.subtitles_rounded,
                   color: isPlayerCard
                       ? const Color(0xFF9B72FF)
                       : _productionPrimary(context),
@@ -3243,7 +3278,7 @@ class _DirectChallengeInlineCardState
                     const SizedBox(height: 2),
                     Text(
                       challenge.title.isEmpty
-                          ? (isPlayerCard ? 'Player Discovery' : 'Video Riddle')
+                          ? (isPlayerCard ? 'Guess the Player' : 'Video Riddle')
                           : challenge.title,
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
@@ -9107,7 +9142,7 @@ IconData _pointSourceIcon(String source) => switch (source) {
   'exactPrediction' => Icons.sports_soccer_rounded,
   'firstScorer' => Icons.person_pin_circle_rounded,
   'videoQuestion' => Icons.play_circle_fill_rounded,
-  'playerCard' => Icons.style_rounded,
+  'playerCard' || 'player_card' => Icons.person_search_rounded,
   _ => Icons.add_circle_rounded,
 };
 
@@ -10084,13 +10119,9 @@ class _ProductionProfileSummary extends StatelessWidget {
         ),
         const SizedBox(height: 14),
 
-        // Category 3: Streaks & Badges
+        // Category 3: Streaks & challenge activity
         _ProfileStatSection(
-          title: abuText(
-            context,
-            'STREAKS & COLLECTIONS',
-            'السلاسل والمجموعات',
-          ),
+          title: abuText(context, 'STREAKS & CHALLENGES', 'السلاسل والتحديات'),
           icon: Icons.local_fire_department_rounded,
           items: [
             _StatItem(
@@ -10105,8 +10136,8 @@ class _ProductionProfileSummary extends StatelessWidget {
               color: _gold,
             ),
             _StatItem(
-              value: '${profile.playerCardsCollected}',
-              label: abuText(context, 'CARDS COLLECTED', 'البطاقات المجمعة'),
+              value: '${profile.exactPredictions}',
+              label: abuText(context, 'EXACT PREDICTIONS', 'توقعات دقيقة'),
               color: _blue,
             ),
             _StatItem(
@@ -10402,6 +10433,39 @@ class _ProductionSettings extends StatelessWidget {
                         )
                       : null,
                 ),
+                if (!profile.isGuest) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.delete_forever_rounded,
+                      color: _red,
+                    ),
+                    title: Text(
+                      abuText(context, 'Delete account', 'حذف الحساب'),
+                      style: const TextStyle(
+                        color: _red,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    subtitle: Text(
+                      abuText(
+                        context,
+                        'Permanently delete your profile and all account data.',
+                        'حذف ملفك وجميع بيانات حسابك نهائياً.',
+                      ),
+                    ),
+                    trailing: const Icon(
+                      Icons.chevron_right_rounded,
+                      color: _red,
+                    ),
+                    onTap: () => showDialog<bool>(
+                      context: context,
+                      barrierDismissible: false,
+                      builder: (_) =>
+                          _AccountDeletionDialog(repository: repository),
+                    ),
+                  ),
+                ],
               ],
             );
             final experience = _SettingsPanel(
@@ -10474,8 +10538,8 @@ class _ProductionSettings extends StatelessWidget {
                   title: abuText(context, 'New challenges', 'التحديات الجديدة'),
                   subtitle: abuText(
                     context,
-                    'Video phrases, Player Cards, and Exclusive videos.',
-                    'عبارات الفيديو وبطاقات اللاعبين والفيديوهات الحصرية.',
+                    'Video questions, player guesses, and Exclusive videos.',
+                    'أسئلة الفيديو وتخمين اللاعبين والفيديوهات الحصرية.',
                   ),
                   value: preferences.challengeNotifications,
                   onChanged: preferences.setChallengeNotifications,
@@ -10500,8 +10564,8 @@ class _ProductionSettings extends StatelessWidget {
                       Text(
                         abuText(
                           context,
-                          'Verified members receive 2× points on predictions and video challenges, including Player Cards. Signup and daily streak points stay unchanged.',
-                          'يحصل الأعضاء الموثقون على نقاط ×٢ للتوقعات وتحديات الفيديو، بما فيها بطاقات اللاعبين. لا تتضاعف نقاط التسجيل أو السلسلة اليومية.',
+                          'Verified members receive 2× points on predictions and video challenges, including player guesses. Signup and daily streak points stay unchanged.',
+                          'يحصل الأعضاء الموثقون على نقاط ×٢ للتوقعات وتحديات الفيديو، بما فيها تخمين اللاعب. لا تتضاعف نقاط التسجيل أو السلسلة اليومية.',
                         ),
                         style: TextStyle(color: _muted, height: 1.45),
                       ),
@@ -10549,6 +10613,8 @@ class _ProductionSettings extends StatelessWidget {
                     )
                   : Column(
                       children: [
+                        account,
+                        const SizedBox(height: 14),
                         experience,
                         const SizedBox(height: 14),
                         notifications,
@@ -10559,6 +10625,182 @@ class _ProductionSettings extends StatelessWidget {
             );
           },
         ),
+      ),
+    );
+  }
+}
+
+class _AccountDeletionDialog extends StatefulWidget {
+  const _AccountDeletionDialog({required this.repository});
+
+  final ProductionRepository repository;
+
+  @override
+  State<_AccountDeletionDialog> createState() => _AccountDeletionDialogState();
+}
+
+class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
+  final confirmation = TextEditingController();
+  final password = TextEditingController();
+  bool busy = false;
+  bool obscurePassword = true;
+  String? error;
+
+  bool get confirmed =>
+      confirmation.text.trim().toUpperCase() == 'DELETE' &&
+      (!widget.repository.accountDeletionNeedsPassword ||
+          password.text.isNotEmpty);
+
+  @override
+  void dispose() {
+    confirmation.dispose();
+    password.dispose();
+    super.dispose();
+  }
+
+  Future<void> deleteAccount() async {
+    if (!confirmed || busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.repository.deleteAccount(currentPassword: password.text);
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (exception, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('[AccountDeletion] $exception');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+      if (mounted) {
+        setState(() {
+          busy = false;
+          error = productionErrorMessage(exception);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !busy,
+      child: AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded, color: _red, size: 42),
+        title: Text(
+          abuText(
+            context,
+            'Delete account permanently?',
+            'حذف الحساب نهائياً؟',
+          ),
+          textAlign: TextAlign.center,
+        ),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  abuText(
+                    context,
+                    'This cannot be undone. Your profile, points, predictions, challenge answers, rewards, device registrations, and sign-in account will be permanently deleted.',
+                    'لا يمكن التراجع عن هذا الإجراء. سيُحذف ملفك ونقاطك وتوقعاتك وإجابات التحديات ومكافآتك وأجهزة الإشعارات وحساب تسجيل الدخول نهائياً.',
+                  ),
+                  style: const TextStyle(height: 1.45),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  abuText(
+                    context,
+                    'You may be asked to verify your sign-in again. Type DELETE to continue.',
+                    'قد يُطلب منك تأكيد تسجيل الدخول مرة أخرى. اكتب DELETE للمتابعة.',
+                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: confirmation,
+                  enabled: !busy,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textCapitalization: TextCapitalization.characters,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: abuText(context, 'Type DELETE', 'اكتب DELETE'),
+                  ),
+                ),
+                if (widget.repository.accountDeletionNeedsPassword) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: password,
+                    enabled: !busy,
+                    obscureText: obscurePassword,
+                    autofillHints: const [AutofillHints.password],
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      labelText: abuText(
+                        context,
+                        'Current password',
+                        'كلمة المرور الحالية',
+                      ),
+                      suffixIcon: IconButton(
+                        onPressed: busy
+                            ? null
+                            : () => setState(
+                                () => obscurePassword = !obscurePassword,
+                              ),
+                        icon: Icon(
+                          obscurePassword
+                              ? Icons.visibility_rounded
+                              : Icons.visibility_off_rounded,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    error!,
+                    style: const TextStyle(
+                      color: _red,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: busy ? null : () => Navigator.of(context).pop(false),
+            child: Text(abuText(context, 'CANCEL', 'إلغاء')),
+          ),
+          FilledButton.icon(
+            onPressed: confirmed && !busy ? deleteAccount : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: _red,
+              foregroundColor: Colors.white,
+            ),
+            icon: busy
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.delete_forever_rounded),
+            label: Text(
+              busy
+                  ? abuText(context, 'DELETING…', 'جارٍ الحذف…')
+                  : abuText(context, 'DELETE ACCOUNT', 'حذف الحساب'),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -12466,8 +12708,8 @@ class _ProductionAdmin extends StatelessWidget {
                 decoration: InputDecoration(
                   labelText: abuText(
                     context,
-                    'Player Card (10 XP)',
-                    'بطاقة اللاعب (١٠ نقاط)',
+                    'Player Guess (10 XP)',
+                    'تخمين اللاعب (١٠ نقاط)',
                   ),
                 ),
               ),

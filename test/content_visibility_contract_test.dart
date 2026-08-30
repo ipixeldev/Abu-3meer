@@ -85,14 +85,15 @@ void main() {
     },
   );
 
-  test('Challenges exposes Player Cards after the Games tab was removed', () {
+  test('Challenges exposes Player Guess without a collectible-card shelf', () {
     final source = File('lib/demo/production_features.dart').readAsStringSync();
     final challengesStart = source.indexOf('class _ProductionChallenges');
     final challengeGridStart = source.indexOf('class _ProductionChallengeGrid');
     final challenges = source.substring(challengesStart, challengeGridStart);
 
-    expect(challenges, contains('_ProductionPlayerCardCollection'));
-    expect(source, contains('onDelete: (item) => repository.deletePlayerCard'));
+    expect(challenges, isNot(contains('_ProductionPlayerCardCollection')));
+    expect(source, contains("'Guess the player'"));
+    expect(source, contains("'Private player name'"));
     expect(source, contains('repository.resetAnnouncement'));
   });
 
@@ -111,29 +112,22 @@ void main() {
     expect(collection, contains('final cards = snapshot.data'));
   });
 
-  test(
-    'Player Card edits cannot submit a free-text challenge relationship',
-    () {
-      final featureSource = File('lib/demo/production_features.dart')
-          .readAsStringSync();
-      final editorStart = featureSource.indexOf(
-        'Future<void> _editPlayerCardDefinition',
-      );
-      final editor = featureSource.substring(editorStart);
-      final apiSource = File('lib/production/api_production_repository.dart')
-          .readAsStringSync();
-      final saveStart = apiSource.indexOf('Future<String> saveAdminPlayerCard');
-      final saveEnd = apiSource.indexOf(
-        'Future<void> setAdminPlayerCardEnabled',
-        saveStart,
-      );
-      final savePayload = apiSource.substring(saveStart, saveEnd);
+  test('Player Guess creation has no catalogue-card dependency', () {
+    final source = File('lib/demo/production_features.dart').readAsStringSync();
+    final createStart = source.indexOf('Future<void> createChallenge(');
+    final createEnd = source.indexOf(
+      'Future<void> editAnnouncement',
+      createStart,
+    );
+    final creator = source.substring(createStart, createEnd);
 
-      expect(editor, isNot(contains('Source challenge ID')));
-      expect(editor, isNot(contains('controller: sourceChallenge')));
-      expect(savePayload, isNot(contains("'sourceChallengeId'")));
-    },
-  );
+    expect(creator, contains("var kind = initialKind == 'playerCard'"));
+    expect(creator, contains("'Private player name'"));
+    expect(creator, contains('acceptedAnswers'));
+    expect(creator, isNot(contains('availablePlayerCards')));
+    expect(creator, isNot(contains('Card unlocked by this challenge')));
+    expect(creator, isNot(contains('playerCardId:')));
+  });
 
   test('selecting mounted content tabs still performs a forced refresh', () {
     final source = File('lib/demo/production_ui.dart').readAsStringSync();

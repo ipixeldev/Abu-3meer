@@ -91,6 +91,24 @@ void main() {
       );
     });
 
+    test('Player Guess source wins over the generic challenge reason', () {
+      expect(
+        localizedPointTransactionReason(
+          sourceType: 'player_card',
+          storedReason: 'Solved Challenge: Who is the player?',
+          language: AbuLanguage.english,
+        ),
+        'Player Guess answered',
+      );
+      expect(
+        localizedPointSourceLabel(
+          sourceType: 'player_card',
+          language: AbuLanguage.english,
+        ),
+        'Player Guess',
+      );
+    });
+
     test('does not leak Arabic fragments into an English fallback', () {
       final label = localizedPointTransactionReason(
         sourceType: 'custom_event',

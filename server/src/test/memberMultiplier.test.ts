@@ -1,11 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  awardPointsInTransaction,
   enforceEligibleMultiplier,
   isMemberMultiplierEligible,
   memberMultiplierForSource,
   PointSourceType,
 } from '../services/pointsService.js';
+import type { PoolClient } from 'pg';
 
 describe('YouTube member point multiplier scope', () => {
   const predictionSources: PointSourceType[] = [
@@ -52,5 +54,37 @@ describe('YouTube member point multiplier scope', () => {
     assert.equal(enforceEligibleMultiplier('prediction_exact', 2), 2);
     assert.equal(enforceEligibleMultiplier('video_phrase', 2), 2);
     assert.equal(enforceEligibleMultiplier('player_card', 2), 2);
+  });
+
+  it('returns the original points for an idempotent challenge replay', async () => {
+    const statements: string[] = [];
+    const client = {
+      query: async (text: string) => {
+        statements.push(text);
+        if (statements.length === 1) return { rowCount: 0, rows: [] };
+        return {
+          rowCount: 1,
+          rows: [{ user_id: 'user_1', final_points: 20 }],
+        };
+      },
+    } as unknown as PoolClient;
+
+    const result = await awardPointsInTransaction(client, {
+      userId: 'user_1',
+      sourceType: 'video_phrase',
+      sourceId: 'challenge_1',
+      basePoints: 10,
+      multiplier: 2,
+      description: 'Solved challenge',
+      idempotencyKey: 'challenge:challenge_1:user:user_1',
+    });
+
+    assert.deepEqual(result, {
+      success: true,
+      pointsAwarded: 20,
+      alreadyAwarded: true,
+    });
+    assert.equal(statements.length, 2);
+    assert.doesNotMatch(statements.join('\n'), /UPDATE user_profiles/);
   });
 });

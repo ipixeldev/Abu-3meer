@@ -120,8 +120,11 @@ export type ChallengeRetirementResult =
       status: 'retired';
       challenge: Record<string, unknown>;
       playerCardIds: string[];
+      submissionCount: number;
+      claimCount: number;
+      retainedPointTransactionCount: number;
+      retainedPoints: number;
     }
-  | { status: 'in_use'; submissionCount: number; claimCount: number }
   | { status: 'missing' };
 
 export type PlayerCardDefinitionInput = {
@@ -320,11 +323,14 @@ export async function deletePlayerCardDefinition(
 }
 
 /**
- * Permanently retires unused challenge content and releases its Player Card.
+ * Permanently retires challenge content and releases its Player Card.
  *
  * A challenge row is locked first; submissions take the same row lock, so the
- * usage check and deletion cannot race a fan answer. Content with history is
- * retained for points/audit integrity and can be archived instead.
+ * deletion cannot race a fan answer. The challenge and its answer rows are
+ * deleted, while immutable point-ledger entries and already-collected Player
+ * Cards are deliberately retained. This lets an admin remove accidental/test
+ * content without silently taking earned points or collectibles away from
+ * fans. The returned counts make that retention explicit in the audit log.
  */
 export async function retireChallengeDefinition(
   execute: AdminContentQueryExecutor,
@@ -356,14 +362,25 @@ export async function retireChallengeDefinition(
         FROM player_card_claims claim
         JOIN player_cards card ON card.id = claim.player_card_id
         WHERE card.source_challenge_id = $1 OR card.challenge_id = $1)
-         AS claim_count`,
+         AS claim_count,
+       (SELECT COUNT(*)::integer
+        FROM point_transactions
+        WHERE source_id = $1
+          AND source_type IN ('video_phrase', 'player_card'))
+         AS point_transaction_count,
+       (SELECT COALESCE(SUM(final_points), 0)::bigint
+        FROM point_transactions
+        WHERE source_id = $1
+          AND source_type IN ('video_phrase', 'player_card'))
+         AS retained_points`,
     [challengeId],
   );
   const submissionCount = Number(usage.rows[0]?.submission_count ?? 0);
   const claimCount = Number(usage.rows[0]?.claim_count ?? 0);
-  if (submissionCount > 0 || claimCount > 0) {
-    return { status: 'in_use', submissionCount, claimCount };
-  }
+  const retainedPointTransactionCount = Number(
+    usage.rows[0]?.point_transaction_count ?? 0,
+  );
+  const retainedPoints = Number(usage.rows[0]?.retained_points ?? 0);
 
   await execute(
     `UPDATE player_cards
@@ -378,6 +395,10 @@ export async function retireChallengeDefinition(
     status: 'retired',
     challenge: challenge.rows[0],
     playerCardIds: linkedCards.rows.map((row) => String(row.id)),
+    submissionCount,
+    claimCount,
+    retainedPointTransactionCount,
+    retainedPoints,
   };
 }
 

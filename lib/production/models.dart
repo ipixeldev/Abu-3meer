@@ -328,6 +328,7 @@ class AbuChallenge {
     this.questions = const <AbuChallengeQuestion>[],
     this.maximumAttempts = 5,
     this.attemptsUsed = 0,
+    this.solved = false,
     this.memberOnly = false,
     this.notifyOnLive = false,
     this.imageUrl = '',
@@ -345,6 +346,7 @@ class AbuChallenge {
   final List<AbuChallengeQuestion> questions;
   final int maximumAttempts;
   final int attemptsUsed;
+  final bool solved;
   final bool memberOnly;
   final bool notifyOnLive;
   final String imageUrl;
@@ -375,7 +377,7 @@ class AbuChallenge {
       kind: data['challengeType'] as String? ?? data['kind'] as String? ?? kind,
       title:
           data['title'] as String? ??
-          (kind == 'playerCard' ? 'Find the Player Card' : 'Secret phrase'),
+          (kind == 'playerCard' ? 'Guess the Player' : 'Video question'),
       description: data['description'] as String? ?? '',
       rewardPoints: (data['rewardPoints'] as num? ?? 0).toInt(),
       status: data['status'] as String? ?? 'draft',
@@ -383,6 +385,7 @@ class AbuChallenge {
       imageUrl: data['imageUrl'] as String? ?? '',
       maximumAttempts: (data['maximumAttempts'] as num? ?? 5).toInt(),
       attemptsUsed: (data['attemptsUsed'] as num? ?? 0).toInt(),
+      solved: data['solved'] as bool? ?? false,
       memberOnly: data['memberOnly'] as bool? ?? false,
       notifyOnLive: data['notifyOnLive'] as bool? ?? false,
       questions: (data['questions'] as List<dynamic>? ?? const [])
@@ -417,6 +420,7 @@ class AbuChallenge {
       attemptsUsed:
           (data['attemptsUsed'] as num? ?? data['attempts_used'] as num? ?? 0)
               .toInt(),
+      solved: data['solved'] as bool? ?? false,
       memberOnly:
           data['memberOnly'] as bool? ?? data['member_only'] as bool? ?? false,
       notifyOnLive:
@@ -438,6 +442,7 @@ class AbuChallenge {
   AbuChallenge copyWith({
     List<AbuChallengeQuestion>? questions,
     int? attemptsUsed,
+    bool? solved,
   }) => AbuChallenge(
     id: id,
     kind: kind,
@@ -452,6 +457,7 @@ class AbuChallenge {
     questions: questions ?? this.questions,
     maximumAttempts: maximumAttempts,
     attemptsUsed: attemptsUsed ?? this.attemptsUsed,
+    solved: solved ?? this.solved,
     memberOnly: memberOnly,
     notifyOnLive: notifyOnLive,
   );

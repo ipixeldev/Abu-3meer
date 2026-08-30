@@ -42,7 +42,7 @@ test('video challenges accept an omitted Player Card ID', () => {
   if (parsed.success) assert.equal(parsed.data.playerCardId, '');
 });
 
-test('Player Card challenges still require a valid linked card ID', () => {
+test('Player Guess challenges need only a private player-name answer', () => {
   const parsed = challengeCreateSchema.safeParse({
     kind: 'playerCard',
     title: 'Guess the player',
@@ -55,11 +55,19 @@ test('Player Card challenges still require a valid linked card ID', () => {
       type: 'text',
       options: [],
       correctAnswer: 'player',
-      acceptedAnswers: [],
+      acceptedAnswers: ['player jr', 'اللاعب'],
     }],
   });
 
-  assert.equal(parsed.success, false);
+  assert.equal(parsed.success, true);
+  if (parsed.success) {
+    assert.equal(parsed.data.playerCardId, '');
+    assert.equal(parsed.data.questions[0].correctAnswer, 'player');
+    assert.deepEqual(parsed.data.questions[0].acceptedAnswers, [
+      'player jr',
+      'اللاعب',
+    ]);
+  }
 });
 
 test('redemption transitions keep fulfilled and cancelled requests terminal', () => {
@@ -270,7 +278,7 @@ test('fan Player Card feed exposes only claimed cards or cards in a live challen
   assert.deepEqual(rows, [{ id: 'card_owned', enabled: false, unlocked: true }]);
 });
 
-test('unused challenge retirement unlinks its Player Card before deletion', async () => {
+test('challenge deletion unlinks its Player Card before deletion', async () => {
   const statements: string[] = [];
   const result = await retireChallengeDefinition(async (text, params) => {
     statements.push(text);
@@ -301,6 +309,8 @@ test('unused challenge retirement unlinks its Player Card before deletion', asyn
   assert.equal(result.status, 'retired');
   if (result.status === 'retired') {
     assert.deepEqual(result.playerCardIds, ['card_test']);
+    assert.equal(result.submissionCount, 0);
+    assert.equal(result.retainedPoints, 0);
   }
   assert.match(statements[0], /FROM challenges/);
   assert.match(statements[0], /FOR UPDATE/);
@@ -309,10 +319,11 @@ test('unused challenge retirement unlinks its Player Card before deletion', asyn
   assert.match(statements[4], /DELETE FROM challenges/);
 });
 
-test('challenge retirement preserves content that already has fan activity', async () => {
-  let calls = 0;
-  const result = await retireChallengeDefinition(async () => {
-    calls += 1;
+test('challenge deletion removes answers but retains earned points and collected cards', async () => {
+  const statements: string[] = [];
+  const result = await retireChallengeDefinition(async (text) => {
+    statements.push(text);
+    const calls = statements.length;
     if (calls === 1) {
       return {
         rowCount: 1,
@@ -320,18 +331,36 @@ test('challenge retirement preserves content that already has fan activity', asy
       };
     }
     if (calls === 2) return { rowCount: 0, rows: [] };
-    return {
+    if (calls === 3) return {
       rowCount: 1,
-      rows: [{ submission_count: 2, claim_count: 0 }],
+      rows: [{
+        submission_count: 2,
+        claim_count: 1,
+        point_transaction_count: 1,
+        retained_points: 20,
+      }],
     };
+    return { rowCount: 1, rows: [] };
   }, 'challenge_used');
 
   assert.deepEqual(result, {
-    status: 'in_use',
+    status: 'retired',
+    challenge: {
+      id: 'challenge_used',
+      title: 'Used',
+      kind: 'videoPhrase',
+    },
+    playerCardIds: [],
     submissionCount: 2,
-    claimCount: 0,
+    claimCount: 1,
+    retainedPointTransactionCount: 1,
+    retainedPoints: 20,
   });
-  assert.equal(calls, 3);
+  assert.equal(statements.length, 5);
+  assert.match(statements[2], /FROM point_transactions/);
+  assert.match(statements[2], /SUM\(final_points\), 0\)::bigint/);
+  assert.match(statements[3], /UPDATE player_cards/);
+  assert.match(statements[4], /DELETE FROM challenges/);
 });
 
 test('launch-popup reset deletes the canonical platform setting', async () => {

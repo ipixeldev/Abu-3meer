@@ -132,7 +132,7 @@ String localizedPointTransactionReason({
     _PointTransactionKind.videoChallenge =>
       isArabic ? 'إكمال تحدي الفيديو' : 'Video challenge completed',
     _PointTransactionKind.playerCard =>
-      isArabic ? 'العثور على بطاقة لاعب' : 'Player Card found',
+      isArabic ? 'إجابة تخمين اللاعب' : 'Player Guess answered',
     _PointTransactionKind.achievement =>
       isArabic ? 'مكافأة إنجاز' : 'Achievement bonus',
     _PointTransactionKind.adminAdjustment =>
@@ -164,7 +164,8 @@ String localizedPointSourceLabel({
       isArabic ? 'الفائز بالمباراة' : 'Match winner',
     _PointTransactionKind.videoChallenge =>
       isArabic ? 'تحدي الفيديو' : 'Video challenge',
-    _PointTransactionKind.playerCard => isArabic ? 'بطاقة لاعب' : 'Player Card',
+    _PointTransactionKind.playerCard =>
+      isArabic ? 'تخمين اللاعب' : 'Player Guess',
     _PointTransactionKind.achievement => isArabic ? 'إنجاز' : 'Achievement',
     _PointTransactionKind.adminAdjustment =>
       isArabic ? 'تعديل نقاط' : 'Points adjustment',
@@ -218,14 +219,14 @@ _PointTransactionKind _pointTransactionKind(String sourceType, String reason) {
       normalizedReason.contains('match winner')) {
     return _PointTransactionKind.matchWinner;
   }
+  if ({'playercard'}.contains(source) ||
+      normalizedReason.contains('player card')) {
+    return _PointTransactionKind.playerCard;
+  }
   if ({'videophrase', 'videoquestion', 'videochallenge'}.contains(source) ||
       normalizedReason.contains('solved challenge') ||
       normalizedReason.contains('challenge completed')) {
     return _PointTransactionKind.videoChallenge;
-  }
-  if ({'playercard'}.contains(source) ||
-      normalizedReason.contains('player card')) {
-    return _PointTransactionKind.playerCard;
   }
   if ({'achievement', 'achievementbonus'}.contains(source) ||
       normalizedReason.startsWith('achievement:')) {

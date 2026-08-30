@@ -578,7 +578,11 @@ class ApiProductionRepository {
   }
 
   Future<List<AbuChallenge>> fetchActiveChallenges() async {
-    final res = await api.get('/challenges/active', requireAuth: true);
+    final res = await api.get(
+      '/challenges/active',
+      requireAuth: true,
+      bypassCache: true,
+    );
     if (res is List) {
       return res.map(parseApiChallenge).toList(growable: false);
     }
@@ -1071,6 +1075,10 @@ class ApiProductionRepository {
     }
 
     await api.put('/profile/me', body: body, requireAuth: true);
+  }
+
+  Future<void> deleteAccount() async {
+    await api.delete('/profile/me', requireAuth: true);
   }
 
   String? _absoluteHttpUrlOrNull(String? value) {
