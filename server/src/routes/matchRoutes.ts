@@ -23,6 +23,18 @@ function normalizeTeam(value: unknown): string {
   return value == null ? '' : String(value).trim().toLowerCase();
 }
 
+export function matchDetailsCacheTtlSeconds(
+  matchId: string,
+  status: string = '',
+): number {
+  // External detail sections already have provider-specific shared caches.
+  // Keeping a second long-lived envelope here made an empty pre-match lineup
+  // or timeline remain visible after API-Football had published the data.
+  return matchId.startsWith('external_') || status.toLowerCase() === 'live'
+    ? 20
+    : 120;
+}
+
 export async function matchRoutes(fastify: FastifyInstance) {
   fastify.get('/matches/upcoming', async (request, reply) => {
     reply.header(
@@ -114,7 +126,11 @@ export async function matchRoutes(fastify: FastifyInstance) {
       season: String(match?.season_id ?? external.season ?? ''),
       provider: external.provider || 'Abu 3meer',
     };
-    await setCachedJson(cacheKey, result, match?.status === 'live' ? 20 : 120);
+    await setCachedJson(
+      cacheKey,
+      result,
+      matchDetailsCacheTtlSeconds(id, String(match?.status ?? '')),
+    );
     return result;
   });
 

@@ -171,6 +171,39 @@ AdminPointAdjustment parseAdminPointAdjustment(dynamic value) {
   );
 }
 
+@visibleForTesting
+AbuChallenge parseApiChallenge(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid challenge response.');
+  }
+  return AbuChallenge.fromMap(Map<String, dynamic>.from(value));
+}
+
+@visibleForTesting
+AbuPlayerCard parseApiPlayerCard(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid Player Card response.');
+  }
+  return AbuPlayerCard.fromMap(Map<String, dynamic>.from(value));
+}
+
+@visibleForTesting
+LaunchAnnouncement? parseApiLaunchAnnouncement(dynamic value) {
+  if (value == null) return null;
+  if (value is! Map) {
+    throw const FormatException('Invalid launch-popup response.');
+  }
+  return LaunchAnnouncement.fromMap(Map<String, dynamic>.from(value));
+}
+
+@visibleForTesting
+AbuRewardRedemption parseApiRedemption(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid redemption response.');
+  }
+  return AbuRewardRedemption.fromMap(Map<String, dynamic>.from(value));
+}
+
 class ApiProductionRepository {
   ApiProductionRepository({AbuApiClient? apiClient, FirebaseAuth? auth})
     : api = apiClient ?? AbuApiClient(),
@@ -329,9 +362,15 @@ class ApiProductionRepository {
   /// Loads normalized timeline, lineup, table and statistics through the
   /// self-hosted API. Keeping the football-provider key on the server also
   /// avoids direct-browser CORS failures on Flutter web.
-  Future<MatchDetails> fetchMatchDetails(String matchId) async {
+  Future<MatchDetails> fetchMatchDetails(
+    String matchId, {
+    bool forceRefresh = false,
+  }) async {
     final encodedId = Uri.encodeComponent(matchId);
-    final response = await api.get('/matches/$encodedId/details');
+    final response = await api.get(
+      '/matches/$encodedId/details',
+      bypassCache: forceRefresh,
+    );
     if (response is! Map) {
       throw const FormatException('Invalid match-details response.');
     }
@@ -339,9 +378,9 @@ class ApiProductionRepository {
   }
 
   Future<List<AbuChallenge>> fetchActiveChallenges() async {
-    final res = await api.get('/challenges/active');
+    final res = await api.get('/challenges/active', requireAuth: true);
     if (res is List) {
-      return res.map((c) => _parseChallenge(c)).toList(growable: false);
+      return res.map(parseApiChallenge).toList(growable: false);
     }
     throw AbuApiException(
       statusCode: 502,
@@ -362,6 +401,278 @@ class ApiProductionRepository {
     return res is Map<String, dynamic>
         ? res
         : {'correct': false, 'pointsAwarded': 0};
+  }
+
+  Future<List<AbuChallenge>> fetchManagedChallenges() async {
+    final response = await api.get('/admin/challenges', requireAuth: true);
+    if (response is! List) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid admin challenge list.',
+        details: response,
+      );
+    }
+    return response.map(parseApiChallenge).toList(growable: false);
+  }
+
+  Future<String> createAdminChallenge({
+    required String kind,
+    required String title,
+    required String description,
+    required String videoUrl,
+    required String imageUrl,
+    required int rewardPoints,
+    required DateTime availableFrom,
+    required DateTime availableUntil,
+    required String status,
+    required int maximumAttempts,
+    required bool memberOnly,
+    required bool notifyOnLive,
+    required List<Map<String, dynamic>> questions,
+  }) async {
+    final response = await api.post(
+      '/admin/challenges',
+      requireAuth: true,
+      body: <String, dynamic>{
+        'kind': kind,
+        'title': title,
+        'description': description,
+        'videoUrl': videoUrl,
+        'imageUrl': imageUrl,
+        'rewardPoints': rewardPoints,
+        'availableFrom': availableFrom.toUtc().toIso8601String(),
+        'availableUntil': availableUntil.toUtc().toIso8601String(),
+        'status': status,
+        'maximumAttempts': maximumAttempts,
+        'memberOnly': memberOnly,
+        'notifyOnLive': notifyOnLive,
+        'questions': questions,
+      },
+    );
+    if (response is Map && response['id'] != null) {
+      return response['id'].toString();
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server did not confirm the new challenge.',
+      details: response,
+    );
+  }
+
+  Future<void> setAdminChallengeStatus({
+    required String challengeId,
+    required String status,
+  }) async {
+    await api.put(
+      '/admin/challenges/${Uri.encodeComponent(challengeId)}/status',
+      body: {'status': status},
+      requireAuth: true,
+    );
+  }
+
+  Future<List<AbuPlayerCard>> fetchPlayerCards({bool managed = false}) async {
+    final response = await api.get(
+      managed ? '/admin/player-cards' : '/player-cards',
+      // The fan endpoint is personalized: locked cards have their private
+      // identity fields redacted and unlock state comes from this user's
+      // player_card_claims row.
+      requireAuth: true,
+    );
+    if (response is! List) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid Player Card list.',
+        details: response,
+      );
+    }
+    return response.map(parseApiPlayerCard).toList(growable: false);
+  }
+
+  Future<String> saveAdminPlayerCard(AbuPlayerCard card) async {
+    final response = await api.post(
+      '/admin/player-cards',
+      requireAuth: true,
+      body: <String, dynamic>{
+        if (card.id.isNotEmpty) 'id': card.id,
+        'playerName': card.playerName,
+        'playerNameAr': card.playerNameAr,
+        'imageUrl': card.imageUrl,
+        'teamName': card.teamName,
+        'teamLogoUrl': card.teamLogoUrl,
+        'position': card.position,
+        'rating': card.rating,
+        'rarity': card.rarity,
+        'stats': card.stats,
+        'description': card.description,
+        'descriptionAr': card.descriptionAr,
+        'enabled': card.enabled,
+        'sourceChallengeId': card.sourceChallengeId,
+      },
+    );
+    if (response is Map && response['id'] != null) {
+      return response['id'].toString();
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server did not confirm the Player Card save.',
+      details: response,
+    );
+  }
+
+  Future<void> setAdminPlayerCardEnabled({
+    required String cardId,
+    required bool enabled,
+  }) async {
+    await api.put(
+      '/admin/player-cards/${Uri.encodeComponent(cardId)}/status',
+      body: {'enabled': enabled},
+      requireAuth: true,
+    );
+  }
+
+  Future<LaunchAnnouncement?> fetchLaunchAnnouncement() async {
+    final response = await api.get('/settings/launch-announcement');
+    return parseApiLaunchAnnouncement(response);
+  }
+
+  Future<LaunchAnnouncement> saveAdminLaunchAnnouncement({
+    required bool enabled,
+    required String title,
+    required String body,
+    required String imageUrl,
+    required String linkUrl,
+    required String buttonLabel,
+    required String frequency,
+    required DateTime startsAt,
+    required DateTime endsAt,
+  }) async {
+    final response = await api.put(
+      '/admin/settings/launch-announcement',
+      requireAuth: true,
+      body: <String, dynamic>{
+        'enabled': enabled,
+        'title': title,
+        'body': body,
+        'imageUrl': imageUrl,
+        'linkUrl': linkUrl,
+        'buttonLabel': buttonLabel,
+        'frequency': frequency,
+        'startsAt': startsAt.toUtc().toIso8601String(),
+        'endsAt': endsAt.toUtc().toIso8601String(),
+      },
+    );
+    if (response is Map && response['announcement'] is Map) {
+      return parseApiLaunchAnnouncement(response['announcement'])!;
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server did not confirm the launch popup.',
+      details: response,
+    );
+  }
+
+  Future<List<AbuRewardRedemption>> fetchAdminRedemptions() async {
+    final response = await api.get('/admin/redemptions', requireAuth: true);
+    if (response is! List) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid redemption list.',
+        details: response,
+      );
+    }
+    return response.map(parseApiRedemption).toList(growable: false);
+  }
+
+  Future<void> updateAdminRedemptionStatus({
+    required String redemptionId,
+    required String status,
+    String note = '',
+  }) async {
+    await api.put(
+      '/admin/redemptions/${Uri.encodeComponent(redemptionId)}/status',
+      requireAuth: true,
+      body: {'status': status, 'note': note},
+    );
+  }
+
+  Future<void> saveAdminAchievement(AbuAchievement achievement) async {
+    await api.post(
+      '/admin/achievements',
+      requireAuth: true,
+      body: <String, dynamic>{
+        if (achievement.id.isNotEmpty) 'id': achievement.id,
+        ...achievement.toMap(),
+      },
+    );
+  }
+
+  Future<void> setAdminAchievementEnabled({
+    required String achievementId,
+    required bool enabled,
+  }) async {
+    await api.put(
+      '/admin/achievements/${Uri.encodeComponent(achievementId)}/status',
+      requireAuth: true,
+      body: {'enabled': enabled},
+    );
+  }
+
+  Future<void> saveAdminLevel(AbuLevel level) async {
+    await api.post(
+      '/admin/levels',
+      requireAuth: true,
+      body: <String, dynamic>{
+        if (level.id.isNotEmpty) 'id': level.id,
+        ...level.toMap(),
+      },
+    );
+  }
+
+  Future<void> setAdminLevelEnabled({
+    required String levelId,
+    required bool enabled,
+  }) async {
+    await api.put(
+      '/admin/levels/${Uri.encodeComponent(levelId)}/status',
+      requireAuth: true,
+      body: {'enabled': enabled},
+    );
+  }
+
+  Future<void> saveAdminReward(AbuLoyaltyReward reward) async {
+    await api.post(
+      '/admin/rewards',
+      requireAuth: true,
+      body: <String, dynamic>{
+        if (reward.id.isNotEmpty) 'id': reward.id,
+        'title': reward.title.trim(),
+        'titleAr': reward.titleAr.trim(),
+        'description': reward.description.trim(),
+        'descriptionAr': reward.descriptionAr.trim(),
+        'imageUrl': reward.imageUrl.trim(),
+        'category': reward.category,
+        'cost': reward.cost,
+        'stock': reward.stock,
+        'unlimitedStock': reward.unlimitedStock,
+        'perUserLimit': reward.perUserLimit,
+        'memberOnly': reward.memberOnly,
+        'enabled': reward.enabled,
+        'startsAt': reward.startsAt?.toUtc().toIso8601String(),
+        'endsAt': reward.endsAt?.toUtc().toIso8601String(),
+        'fulfilmentType': reward.fulfilmentType,
+      },
+    );
+  }
+
+  Future<void> setAdminRewardEnabled({
+    required String rewardId,
+    required bool enabled,
+  }) async {
+    await api.put(
+      '/admin/rewards/${Uri.encodeComponent(rewardId)}/status',
+      requireAuth: true,
+      body: {'enabled': enabled},
+    );
   }
 
   Future<void> submitPrediction({
@@ -800,22 +1111,35 @@ class ApiProductionRepository {
     return Map<String, dynamic>.from(result as Map);
   }
 
-  AbuChallenge _parseChallenge(dynamic c) {
-    return AbuChallenge(
-      id: c['id'] ?? '',
-      title: c['title'] ?? '',
-      description: c['description'] ?? '',
-      kind: c['kind'] ?? 'videoPhrase',
-      status: c['status'] ?? 'open',
-      rewardPoints: (c['reward_points'] ?? 10).toInt(),
-      availableFrom: DateTime.tryParse(c['starts_at'] ?? '') ?? DateTime.now(),
-      availableUntil: DateTime.tryParse(c['ends_at'] ?? '') ?? DateTime.now(),
-      videoUrl: c['video_url'] ?? '',
-      imageUrl: c['image_url'] ?? '',
-      questions: const [],
-      maximumAttempts: (c['maximum_attempts'] ?? 3).toInt(),
-      memberOnly: c['member_only'] == true,
+  Future<Map<String, dynamic>> createNotificationBroadcast({
+    required String title,
+    required String body,
+    String? imageUrl,
+    DateTime? scheduledAt,
+  }) async {
+    final result = await api.post(
+      '/admin/notifications/broadcast',
+      body: <String, dynamic>{
+        'title': title.trim(),
+        'body': body.trim(),
+        'category': 'general',
+        'targetAudience': 'all',
+        'data': const <String, String>{'route': '/home'},
+        if (imageUrl != null && imageUrl.trim().isNotEmpty)
+          'imageUrl': imageUrl.trim(),
+        if (scheduledAt != null)
+          'scheduledAt': scheduledAt.toUtc().toIso8601String(),
+      },
+      requireAuth: true,
     );
+    if (result is! Map) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server did not confirm the notification campaign.',
+        details: result,
+      );
+    }
+    return Map<String, dynamic>.from(result);
   }
 
   SavedPrediction _parsePrediction(dynamic p) {

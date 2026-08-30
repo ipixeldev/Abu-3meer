@@ -1,3 +1,4 @@
+import type { PoolClient } from 'pg';
 import { getClient, query } from '../db/pool.js';
 import { redis } from '../redis/client.js';
 import { config } from '../config.js';
@@ -59,76 +60,101 @@ export interface AwardPointsParams {
   idempotencyKey: string;
 }
 
-export async function awardPoints(params: AwardPointsParams): Promise<{ success: boolean; pointsAwarded: number; alreadyAwarded?: boolean }> {
+export interface AwardPointsResult {
+  success: boolean;
+  pointsAwarded: number;
+  alreadyAwarded?: boolean;
+}
+
+/**
+ * Writes an award through an existing database transaction.
+ *
+ * Callers own BEGIN/COMMIT/ROLLBACK. This is intentionally exported so a
+ * domain operation such as solving a challenge can keep its ledger entry,
+ * balance update, submission and unlock claim in one atomic transaction.
+ */
+export async function awardPointsInTransaction(
+  client: PoolClient,
+  params: AwardPointsParams,
+): Promise<AwardPointsResult> {
+  const multiplier = enforceEligibleMultiplier(
+    params.sourceType,
+    params.multiplier ?? 1.0,
+  );
+  const finalPoints = Math.round(params.basePoints * multiplier);
+
+  const inserted = await client.query(
+    `INSERT INTO point_transactions
+       (user_id, source_type, source_id, base_points, multiplier, final_points,
+        description, idempotency_key)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (idempotency_key) DO NOTHING
+     RETURNING final_points`,
+    [
+      params.userId,
+      params.sourceType,
+      params.sourceId,
+      params.basePoints,
+      multiplier,
+      finalPoints,
+      params.description,
+      params.idempotencyKey,
+    ],
+  );
+
+  if (!inserted.rowCount) {
+    const existing = await client.query(
+      `SELECT user_id, final_points
+       FROM point_transactions
+       WHERE idempotency_key = $1`,
+      [params.idempotencyKey],
+    );
+    if (!existing.rowCount || existing.rows[0].user_id !== params.userId) {
+      throw new Error('Point award idempotency key is already owned by another operation');
+    }
+    return {
+      success: true,
+      pointsAwarded: Number(existing.rows[0].final_points),
+      alreadyAwarded: true,
+    };
+  }
+
+  const profileUpdate = await client.query(
+    `UPDATE user_profiles
+     SET total_points = total_points + $1,
+         monthly_points = monthly_points + $1,
+         season_points = season_points + $1,
+         loyalty_points = loyalty_points + $1,
+         updated_at = CURRENT_TIMESTAMP
+     WHERE user_id = $2`,
+    [finalPoints, params.userId],
+  );
+  if (profileUpdate.rowCount !== 1) {
+    throw new Error(`Point balance profile not found for user ${params.userId}`);
+  }
+
+  return { success: true, pointsAwarded: finalPoints };
+}
+
+export async function invalidatePointCaches(): Promise<void> {
+  await Promise.all([
+    redis.del('cache:leaderboard:monthly:top100'),
+    redis.del('cache:leaderboard:season:top100'),
+  ]).catch((error) => {
+    // The immutable ledger and balance are already committed. A temporary
+    // cache outage must not make a successful points transaction look lost.
+    console.warn('[PointsService] Points committed; cache invalidation failed:', error);
+  });
+}
+
+export async function awardPoints(params: AwardPointsParams): Promise<AwardPointsResult> {
   const client = await getClient();
   try {
     await client.query('BEGIN');
-
-    // 1. Check idempotency
-    const existing = await client.query(
-      'SELECT id, final_points FROM point_transactions WHERE idempotency_key = $1',
-      [params.idempotencyKey]
-    );
-
-    if (existing.rows.length > 0) {
-      await client.query('ROLLBACK');
-      return { success: true, pointsAwarded: existing.rows[0].final_points, alreadyAwarded: true };
-    }
-
-    // Enforce the product rule at the ledger boundary as well as at callers.
-    // This prevents a future award path from accidentally doubling an
-    // ineligible activity such as a sign-up or daily check-in.
-    const multiplier = enforceEligibleMultiplier(
-      params.sourceType,
-      params.multiplier ?? 1.0,
-    );
-    const finalPoints = Math.round(params.basePoints * multiplier);
-
-    // 2. Insert ledger transaction
-    await client.query(
-      `INSERT INTO point_transactions (user_id, source_type, source_id, base_points, multiplier, final_points, description, idempotency_key)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        params.userId,
-        params.sourceType,
-        params.sourceId,
-        params.basePoints,
-        multiplier,
-        finalPoints,
-        params.description,
-        params.idempotencyKey,
-      ]
-    );
-
-    // 3. Update user profile balance
-    const profileUpdate = await client.query(
-      `UPDATE user_profiles
-       SET total_points = total_points + $1,
-           monthly_points = monthly_points + $1,
-           season_points = season_points + $1,
-           loyalty_points = loyalty_points + $1,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE user_id = $2`,
-      [finalPoints, params.userId]
-    );
-
-    if (profileUpdate.rowCount !== 1) {
-      throw new Error(`Point balance profile not found for user ${params.userId}`);
-    }
-
+    const result = await awardPointsInTransaction(client, params);
     await client.query('COMMIT');
-
-    // 4. Invalidate Redis leaderboard cache
-    await Promise.all([
-      redis.del('cache:leaderboard:monthly:top100'),
-      redis.del('cache:leaderboard:season:top100'),
-    ]).catch((error) => {
-      // The immutable ledger and balance are already committed. A temporary
-      // cache outage must not make a successful points transaction look lost.
-      console.warn('[PointsService] Points committed; cache invalidation failed:', error);
-    });
-
-    return { success: true, pointsAwarded: finalPoints };
+    if (!result.alreadyAwarded) await invalidatePointCaches();
+    return result;
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('[PointsService] Error awarding points:', err);

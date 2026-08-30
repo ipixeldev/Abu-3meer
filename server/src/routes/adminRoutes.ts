@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { requirePermission, requireSuperAdmin } from '../middleware/auth.js';
 import { getClient, query } from '../db/pool.js';
 import { awardPoints } from '../services/pointsService.js';
-import { matchSettlementQueue, notificationQueue } from '../queues/workers.js';
+import { enqueueNotificationCampaign, matchSettlementQueue } from '../queues/workers.js';
 import { notificationCategories } from '../services/notificationDomain.js';
+import { createNotificationCampaign } from '../services/notificationService.js';
 import { config } from '../config.js';
 
 const manageableRoles = ['fan', 'member', 'moderator', 'admin', 'super_admin'] as const;
@@ -530,6 +531,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
       category: z.enum(notificationCategories).default('general'),
       targetAudience: z.enum(['all', 'members_only', 'team_specific', 'inactive_users']).default('all'),
       targetTeam: z.string().trim().min(2).max(100).optional(),
+      imageUrl: z.string().url().max(1000).refine(
+        value => value.startsWith('https://'),
+        'Notification images must use HTTPS.'
+      ).optional(),
+      scheduledAt: z.string().datetime().optional(),
     }).superRefine((value, ctx) => {
       if (value.targetAudience === 'team_specific' && !value.targetTeam) {
         ctx.addIssue({
@@ -538,6 +544,17 @@ export async function adminRoutes(fastify: FastifyInstance) {
           message: 'targetTeam is required for a team_specific notification.',
         });
       }
+      if (value.scheduledAt) {
+        const scheduledAt = new Date(value.scheduledAt);
+        const maximum = Date.now() + 366 * 24 * 60 * 60 * 1000;
+        if (scheduledAt.getTime() > maximum) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['scheduledAt'],
+            message: 'Notifications can be scheduled up to one year ahead.',
+          });
+        }
+      }
     });
 
     const parsed = schema.safeParse(request.body);
@@ -545,27 +562,31 @@ export async function adminRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
     }
 
-    const campaign = await query(
-      `INSERT INTO notification_campaigns
-         (title, body, target_audience, target_team, category, data_payload, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id`,
-      [
-        parsed.data.title,
-        parsed.data.body,
-        parsed.data.targetAudience,
-        parsed.data.targetTeam || null,
-        parsed.data.category,
-        JSON.stringify(parsed.data.data || {}),
-        request.user!.id,
-      ]
-    );
-    const campaignId = campaign.rows[0].id;
-    await notificationQueue.add(
-      'broadcast',
-      { campaignId },
-      { jobId: `notification-${campaignId}`, attempts: 3, backoff: { type: 'exponential', delay: 5000 } }
-    );
+    const scheduledFor = parsed.data.scheduledAt
+      ? new Date(parsed.data.scheduledAt)
+      : new Date();
+    const campaign = await createNotificationCampaign({
+      title: parsed.data.title,
+      body: parsed.data.body,
+      targetAudience: parsed.data.targetAudience,
+      targetTeam: parsed.data.targetTeam,
+      category: parsed.data.category,
+      data: parsed.data.data,
+      imageUrl: parsed.data.imageUrl,
+      scheduledFor,
+      createdBy: request.user!.id,
+    });
+    const campaignId = campaign.campaignId!;
+    let notificationQueued = false;
+    try {
+      await enqueueNotificationCampaign(campaignId, campaign.scheduledFor);
+      notificationQueued = true;
+    } catch (error) {
+      fastify.log.error(
+        { err: error, campaignId },
+        'Broadcast notification left pending for outbox recovery',
+      );
+    }
 
     // Audit log
     await query(
@@ -574,6 +595,20 @@ export async function adminRoutes(fastify: FastifyInstance) {
       [request.user!.id, JSON.stringify({ campaignId, ...parsed.data })]
     );
 
-    return { success: true, campaignId, message: 'Broadcast notification queued.' };
+    return {
+      success: true,
+      campaignId,
+      scheduledAt: campaign.scheduledFor.toISOString(),
+      status: !notificationQueued
+        ? 'pending_recovery'
+        : campaign.scheduledFor.getTime() > Date.now() + 1000
+          ? 'scheduled'
+          : 'queued',
+      message: !notificationQueued
+        ? 'Broadcast saved and awaiting queue recovery.'
+        : campaign.scheduledFor.getTime() > Date.now() + 1000
+        ? 'Broadcast notification scheduled.'
+        : 'Broadcast notification queued.',
+    };
   });
 }

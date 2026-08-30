@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../production/models.dart';
@@ -26,6 +28,7 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   MatchDetails _details = const MatchDetails();
+  Timer? _refreshTimer;
   bool _loading = true;
   String? _error;
 
@@ -54,26 +57,61 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
       vsync: this,
     );
     _details = MatchDetails(timeline: widget.event.timeline);
-    _loadDetails();
+    unawaited(_loadDetails());
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      // Re-evaluate the kickoff window on every tick. A screen opened more
+      // than an hour before kickoff must begin polling when that window starts.
+      if (_shouldPollDetails) {
+        unawaited(_loadDetails(showLoading: false, forceRefresh: true));
+      }
+    });
+  }
+
+  bool get _shouldPollDetails {
+    final status = widget.event.status.toLowerCase();
+    if (status == 'live') return true;
+    if (const {
+      'completed',
+      'finished',
+      'cancelled',
+      'postponed',
+    }.contains(status)) {
+      return false;
+    }
+    final now = DateTime.now();
+    return now.isAfter(
+          widget.event.kickoffAt.subtract(const Duration(hours: 1)),
+        ) &&
+        now.isBefore(widget.event.kickoffAt.add(const Duration(hours: 4)));
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadDetails() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _loadDetails({
+    bool showLoading = true,
+    bool forceRefresh = false,
+  }) async {
+    if (showLoading) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
-      final details = await widget.repository.fetchMatchDetails(widget.event);
+      final details = await widget.repository.fetchMatchDetails(
+        widget.event,
+        forceRefresh: forceRefresh,
+      );
       if (!mounted) return;
       setState(() {
-        _details = details;
+        _details = _retainPublishedSections(_details, details);
         _loading = false;
+        _error = null;
       });
     } catch (_) {
       if (!mounted) return;
@@ -86,6 +124,23 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
       });
     }
   }
+
+  MatchDetails _retainPublishedSections(
+    MatchDetails current,
+    MatchDetails incoming,
+  ) => incoming.copyWith(
+    timeline: incoming.timeline.isEmpty ? current.timeline : incoming.timeline,
+    lineup: incoming.lineup.isEmpty ? current.lineup : incoming.lineup,
+    statistics: incoming.statistics.isEmpty
+        ? current.statistics
+        : incoming.statistics,
+    standings: incoming.standings.isEmpty
+        ? current.standings
+        : incoming.standings,
+    venue: incoming.venue.isEmpty ? current.venue : incoming.venue,
+    season: incoming.season.isEmpty ? current.season : incoming.season,
+    provider: incoming.provider.isEmpty ? current.provider : incoming.provider,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -125,7 +180,7 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
         actions: [
           IconButton(
             tooltip: _t('Refresh', 'تحديث'),
-            onPressed: _loading ? null : _loadDetails,
+            onPressed: _loading ? null : () => _loadDetails(forceRefresh: true),
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],
@@ -236,8 +291,75 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
         )
       else
         ..._details.timeline.map(_timelineCard),
+      if (_details.statistics.isNotEmpty) ...[
+        const SizedBox(height: 24),
+        _sectionTitle(_t('Match statistics', 'إحصائيات المباراة')),
+        const SizedBox(height: 10),
+        _statisticsCard(),
+      ],
     ]);
   }
+
+  Widget _statisticsCard() => _card(
+    child: Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                widget.event.homeTeam,
+                textAlign: TextAlign.start,
+                style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                widget.event.awayTeam,
+                textAlign: TextAlign.end,
+                style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ..._details.statistics.map(
+          (statistic) => Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: _line)),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 52,
+                  child: Text(
+                    statistic.homeValue.isEmpty ? '—' : statistic.homeValue,
+                    style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    statistic.label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: _muted, fontSize: 12),
+                  ),
+                ),
+                SizedBox(
+                  width: 52,
+                  child: Text(
+                    statistic.awayValue.isEmpty ? '—' : statistic.awayValue,
+                    textAlign: TextAlign.end,
+                    style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _scoreSummary() {
     final event = widget.event;
@@ -761,7 +883,10 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
         Expanded(
           child: Text(_error!, style: TextStyle(color: _text)),
         ),
-        TextButton(onPressed: _loadDetails, child: Text(_t('RETRY', 'إعادة'))),
+        TextButton(
+          onPressed: () => _loadDetails(forceRefresh: true),
+          child: Text(_t('RETRY', 'إعادة')),
+        ),
       ],
     ),
   );

@@ -4,6 +4,9 @@ DateTime _date(Object? value) => switch (value) {
   Timestamp timestamp => timestamp.toDate(),
   DateTime date => date,
   int milliseconds => DateTime.fromMillisecondsSinceEpoch(milliseconds),
+  String text =>
+    DateTime.tryParse(text)?.toLocal() ??
+        DateTime.fromMillisecondsSinceEpoch(0),
   _ => DateTime.fromMillisecondsSinceEpoch(0),
 };
 
@@ -394,6 +397,44 @@ class AbuChallenge {
     );
   }
 
+  factory AbuChallenge.fromMap(Map<String, dynamic> data) {
+    return AbuChallenge(
+      id: (data['id'] ?? '').toString(),
+      kind: (data['kind'] ?? 'videoPhrase').toString(),
+      title: (data['title'] ?? '').toString(),
+      description: (data['description'] ?? '').toString(),
+      rewardPoints:
+          (data['rewardPoints'] as num? ?? data['reward_points'] as num? ?? 0)
+              .toInt(),
+      status: (data['status'] ?? 'draft').toString(),
+      videoUrl: (data['videoUrl'] ?? data['video_url'] ?? '').toString(),
+      imageUrl: (data['imageUrl'] ?? data['image_url'] ?? '').toString(),
+      maximumAttempts:
+          (data['maximumAttempts'] as num? ??
+                  data['maximum_attempts'] as num? ??
+                  3)
+              .toInt(),
+      attemptsUsed:
+          (data['attemptsUsed'] as num? ?? data['attempts_used'] as num? ?? 0)
+              .toInt(),
+      memberOnly:
+          data['memberOnly'] as bool? ?? data['member_only'] as bool? ?? false,
+      notifyOnLive:
+          data['notifyOnLive'] as bool? ??
+          data['notify_on_live'] as bool? ??
+          false,
+      questions: (data['questions'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(
+            (value) =>
+                AbuChallengeQuestion.fromMap(Map<String, dynamic>.from(value)),
+          )
+          .toList(growable: false),
+      availableFrom: _date(data['availableFrom'] ?? data['starts_at']),
+      availableUntil: _date(data['availableUntil'] ?? data['ends_at']),
+    );
+  }
+
   AbuChallenge copyWith({
     List<AbuChallengeQuestion>? questions,
     int? attemptsUsed,
@@ -559,6 +600,22 @@ class LaunchAnnouncement {
       endsAt: data['endsAt'] == null
           ? DateTime.now().add(const Duration(days: 3650))
           : _date(data['endsAt']),
+    );
+  }
+
+  factory LaunchAnnouncement.fromMap(Map<String, dynamic> data) {
+    return LaunchAnnouncement(
+      enabled: data['enabled'] as bool? ?? false,
+      title: (data['title'] ?? '').toString(),
+      body: (data['body'] ?? '').toString(),
+      imageUrl: (data['imageUrl'] ?? data['image_url'] ?? '').toString(),
+      linkUrl: (data['linkUrl'] ?? data['link_url'] ?? '').toString(),
+      buttonLabel: (data['buttonLabel'] ?? data['button_label'] ?? 'OPEN')
+          .toString(),
+      revision: (data['revision'] as num? ?? 0).toInt(),
+      frequency: (data['frequency'] ?? 'once').toString(),
+      startsAt: _date(data['startsAt'] ?? data['starts_at']),
+      endsAt: _date(data['endsAt'] ?? data['ends_at']),
     );
   }
 }
@@ -1697,6 +1754,25 @@ class AbuRewardRedemption {
       updatedAt: _optionalDate(data['updatedAt']),
     );
   }
+
+  factory AbuRewardRedemption.fromMap(Map<String, dynamic> data) {
+    return AbuRewardRedemption(
+      id: (data['id'] ?? '').toString(),
+      rewardId: (data['rewardId'] ?? data['reward_id'] ?? '').toString(),
+      rewardTitle: (data['rewardTitle'] ?? data['reward_title'] ?? '')
+          .toString(),
+      cost: (data['cost'] as num? ?? 0).toInt(),
+      status: (data['status'] ?? 'pending').toString(),
+      createdAt: _date(data['createdAt'] ?? data['created_at']),
+      userId: (data['userId'] ?? data['user_id'] ?? '').toString(),
+      userDisplayName:
+          (data['userDisplayName'] ?? data['user_display_name'] ?? '')
+              .toString(),
+      note: (data['note'] ?? data['adminNote'] ?? '').toString(),
+      fulfilledAt: _optionalDate(data['fulfilledAt'] ?? data['fulfilled_at']),
+      updatedAt: _optionalDate(data['updatedAt'] ?? data['updated_at']),
+    );
+  }
 }
 
 class AbuPlayerCard {
@@ -1765,6 +1841,41 @@ class AbuPlayerCard {
       unlockedAt: unlockedAt,
       sourceChallengeId:
           sourceChallengeId ?? data['sourceChallengeId'] as String? ?? '',
+    );
+  }
+
+  factory AbuPlayerCard.fromMap(Map<String, dynamic> data) {
+    final rawStats = data['stats'];
+    final stats = rawStats is Map
+        ? Map<String, dynamic>.from(rawStats).map(
+            (key, value) => MapEntry(
+              key,
+              value is num ? value.toInt() : int.tryParse('$value') ?? 0,
+            ),
+          )
+        : const <String, int>{};
+    return AbuPlayerCard(
+      id: (data['id'] ?? '').toString(),
+      playerName: (data['playerName'] ?? data['player_name'] ?? '').toString(),
+      playerNameAr: (data['playerNameAr'] ?? data['player_name_ar'] ?? '')
+          .toString(),
+      imageUrl: (data['imageUrl'] ?? data['card_image_url'] ?? '').toString(),
+      teamName: (data['teamName'] ?? data['team'] ?? '').toString(),
+      teamLogoUrl: (data['teamLogoUrl'] ?? data['team_logo_url'] ?? '')
+          .toString(),
+      position: (data['position'] ?? '').toString(),
+      rating: (data['rating'] as num? ?? 0).toInt(),
+      rarity: (data['rarity'] ?? data['card_tier'] ?? 'common').toString(),
+      stats: stats,
+      description: (data['description'] ?? '').toString(),
+      descriptionAr: (data['descriptionAr'] ?? data['description_ar'] ?? '')
+          .toString(),
+      unlocked: data['unlocked'] as bool? ?? false,
+      enabled: data['enabled'] as bool? ?? true,
+      sourceChallengeId:
+          (data['sourceChallengeId'] ?? data['source_challenge_id'] ?? '')
+              .toString(),
+      unlockedAt: _optionalDate(data['unlockedAt'] ?? data['unlocked_at']),
     );
   }
 

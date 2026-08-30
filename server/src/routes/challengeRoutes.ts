@@ -1,7 +1,10 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticateUser } from '../middleware/auth.js';
-import { submitChallengeAnswer } from '../services/challengeService.js';
+import {
+  ChallengeSubmissionError,
+  submitChallengeAnswer,
+} from '../services/challengeService.js';
 import { query } from '../db/pool.js';
 import { getCachedJson, setCachedJson } from '../redis/client.js';
 
@@ -11,26 +14,49 @@ const submitSchema = z.object({
 
 export async function challengeRoutes(fastify: FastifyInstance) {
   // GET /api/v1/challenges/active - Returns active challenges without answer keys
-  fastify.get('/challenges/active', async (request, reply) => {
-    reply.header(
-      'Cache-Control',
-      'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
-    );
-    const cacheKey = 'cache:challenges:active';
-    const cached = await getCachedJson(cacheKey);
-    if (cached) return cached;
+  fastify.get(
+    '/challenges/active',
+    { preHandler: [authenticateUser] },
+    async (request, reply) => {
+      const canAccessMemberContent = request.user!.isYouTubeMember;
+      reply.header(
+        'Cache-Control',
+        'private, max-age=30, stale-while-revalidate=120',
+      );
+      const cacheKey = `cache:challenges:active:${canAccessMemberContent ? 'member' : 'public'}`;
+      const cached = await getCachedJson(cacheKey);
+      if (cached) return cached;
 
-    const res = await query(
-      `SELECT id, video_id, title, description, kind, status, reward_points,
-              reward_points * 2 AS member_points,
-              video_url, image_url, maximum_attempts, member_only, starts_at, ends_at
-       FROM challenges
-       WHERE status = 'open' AND starts_at <= CURRENT_TIMESTAMP AND ends_at >= CURRENT_TIMESTAMP
-       ORDER BY starts_at DESC`
-    );
-    await setCachedJson(cacheKey, res.rows, 60);
-    return res.rows;
-  });
+      const res = await query(
+        `SELECT c.id, c.video_id, c.title, c.description, c.kind, c.status,
+              c.reward_points, c.reward_points * 2 AS member_points,
+              c.video_url, c.image_url, c.maximum_attempts, c.member_only,
+              c.notify_on_live, c.starts_at, c.ends_at,
+              COALESCE(
+                jsonb_agg(
+                  jsonb_build_object(
+                    'id', q.id,
+                    'prompt', q.prompt,
+                    'type', q.answer_type,
+                    'options', q.options
+                  ) ORDER BY q.position
+                ) FILTER (WHERE q.id IS NOT NULL),
+                '[]'::jsonb
+              ) AS questions
+       FROM challenges c
+       LEFT JOIN challenge_questions q ON q.challenge_id = c.id
+       WHERE c.status IN ('open', 'scheduled')
+         AND c.starts_at <= CURRENT_TIMESTAMP
+         AND c.ends_at >= CURRENT_TIMESTAMP
+         AND (c.member_only = FALSE OR $1 = TRUE)
+       GROUP BY c.id
+       ORDER BY c.starts_at DESC`,
+        [canAccessMemberContent],
+      );
+      await setCachedJson(cacheKey, res.rows, 60);
+      return res.rows;
+    },
+  );
 
   // POST /api/v1/challenges/:id/submit - Submit challenge answer with anti-brute force lock
   fastify.post('/challenges/:id/submit', { preHandler: [authenticateUser] }, async (request, reply) => {
@@ -100,18 +126,53 @@ export async function challengeRoutes(fastify: FastifyInstance) {
 
       return result;
     } catch (err: any) {
-      return reply.status(400).send({ error: 'ChallengeSubmissionError', message: err.message });
+      if (err instanceof ChallengeSubmissionError) {
+        return reply.status(err.statusCode).send({
+          error: err.code,
+          message: err.message,
+        });
+      }
+      request.log.error({ err, challengeId: id }, 'Challenge submission failed');
+      return reply.status(500).send({
+        error: 'ChallengeSubmissionError',
+        message: 'The challenge answer could not be saved. Please try again.',
+      });
     }
   });
 
-  // GET /api/v1/player-cards - Public list of available player card clues
-  fastify.get('/player-cards', async (request, reply) => {
+  // GET /api/v1/player-cards - Per-user collection. Locked cards deliberately
+  // omit answer-bearing player/team/image/stat fields.
+  fastify.get('/player-cards', { preHandler: [authenticateUser] }, async (request, reply) => {
+    reply.header(
+      'Cache-Control',
+      'private, no-store',
+    );
     const res = await query(
-      `SELECT pc.id, pc.challenge_id, pc.player_name, pc.team, pc.position, pc.card_tier,
-              pc.card_image_url, pc.secret_hint, c.reward_points
+      `SELECT pc.id,
+              CASE WHEN claim.id IS NOT NULL THEN pc.player_name ELSE '' END AS player_name,
+              CASE WHEN claim.id IS NOT NULL THEN pc.player_name_ar ELSE '' END AS player_name_ar,
+              CASE WHEN claim.id IS NOT NULL THEN pc.card_image_url ELSE '' END AS card_image_url,
+              CASE WHEN claim.id IS NOT NULL THEN pc.team ELSE '' END AS team,
+              CASE WHEN claim.id IS NOT NULL THEN pc.team_logo_url ELSE '' END AS team_logo_url,
+              CASE WHEN claim.id IS NOT NULL THEN COALESCE(pc.position, '') ELSE '' END AS position,
+              CASE WHEN claim.id IS NOT NULL THEN pc.rating ELSE 0 END AS rating,
+              pc.rarity,
+              CASE WHEN claim.id IS NOT NULL THEN pc.stats ELSE '{}'::jsonb END AS stats,
+              CASE WHEN claim.id IS NOT NULL THEN pc.description ELSE '' END AS description,
+              CASE WHEN claim.id IS NOT NULL THEN pc.description_ar ELSE '' END AS description_ar,
+              pc.enabled,
+              COALESCE(NULLIF(pc.source_challenge_id, ''), pc.challenge_id, '')
+                AS source_challenge_id,
+              claim.id IS NOT NULL AS unlocked,
+              claim.claimed_at AS unlocked_at,
+              pc.updated_at
        FROM player_cards pc
-       JOIN challenges c ON c.id = pc.challenge_id
-       WHERE c.status = 'open'`
+       LEFT JOIN player_card_claims claim
+         ON claim.player_card_id = pc.id AND claim.user_id = $1
+       WHERE pc.enabled = TRUE
+       ORDER BY pc.updated_at DESC
+       LIMIT 200`,
+      [request.user!.id],
     );
     return res.rows;
   });

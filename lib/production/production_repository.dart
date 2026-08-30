@@ -291,7 +291,14 @@ class ProductionRepository {
   _predictionResources = {};
   _ReplayResource<List<MatchEvent>>? _matchesResource;
   _ReplayResource<List<MatchEvent>>? _managedMatchesResource;
-  _ReplayResource<List<AbuChallenge>>? _challengesResource;
+  final Map<String, _ReplayResource<List<AbuChallenge>>> _challengeResources =
+      {};
+  _ReplayResource<List<AbuChallenge>>? _managedChallengesResource;
+  final Map<String, _ReplayResource<List<AbuPlayerCard>>> _playerCardResources =
+      {};
+  _ReplayResource<List<AbuPlayerCard>>? _managedPlayerCardsResource;
+  _ReplayResource<LaunchAnnouncement?>? _launchAnnouncementResource;
+  _ReplayResource<List<AbuRewardRedemption>>? _adminRedemptionsResource;
   _ReplayResource<List<ExclusiveVideo>>? _exclusiveVideosResource;
   final Map<bool, _ReplayResource<List<LeaderboardEntry>>>
   _leaderboardResources = {};
@@ -352,7 +359,14 @@ class ProductionRepository {
     }
     add(_matchesResource);
     add(_managedMatchesResource);
-    add(_challengesResource);
+    if (uid != null && uid.isNotEmpty && uid != 'guest') {
+      add(_challengeResources[uid]);
+      add(_playerCardResources[uid]);
+    }
+    add(_managedChallengesResource);
+    add(_managedPlayerCardsResource);
+    add(_launchAnnouncementResource);
+    add(_adminRedemptionsResource);
     add(_exclusiveVideosResource);
     for (final resource in _leaderboardResources.values) {
       add(resource);
@@ -526,11 +540,14 @@ class ProductionRepository {
     }
   }
 
-  Future<MatchDetails> fetchMatchDetails(MatchEvent event) async {
+  Future<MatchDetails> fetchMatchDetails(
+    MatchEvent event, {
+    bool forceRefresh = false,
+  }) async {
     try {
       final detailsMatchId = footballDetailsMatchId(event);
       final details = await apiRepo
-          .fetchMatchDetails(detailsMatchId)
+          .fetchMatchDetails(detailsMatchId, forceRefresh: forceRefresh)
           .timeout(const Duration(seconds: 12));
       return details.timeline.isEmpty && event.timeline.isNotEmpty
           ? details.copyWith(timeline: event.timeline)
@@ -646,13 +663,25 @@ class ProductionRepository {
           )
           .stream;
 
-  Stream<List<AbuChallenge>> watchChallenges() =>
-      (_challengesResource ??= _ReplayResource<List<AbuChallenge>>(
-        maxAge: const Duration(minutes: 2),
-        load: apiRepo.fetchActiveChallenges,
-      )).stream;
+  Stream<List<AbuChallenge>> watchChallenges() {
+    final uid = auth.currentUser?.uid ?? '';
+    if (uid.isEmpty) return Stream.value(const <AbuChallenge>[]);
+    return _challengeResources
+        .putIfAbsent(
+          uid,
+          () => _ReplayResource<List<AbuChallenge>>(
+            maxAge: const Duration(minutes: 2),
+            load: apiRepo.fetchActiveChallenges,
+          ),
+        )
+        .stream;
+  }
 
-  Stream<List<AbuChallenge>> watchManagedChallenges() => watchChallenges();
+  Stream<List<AbuChallenge>> watchManagedChallenges() =>
+      (_managedChallengesResource ??= _ReplayResource<List<AbuChallenge>>(
+        maxAge: const Duration(minutes: 2),
+        load: apiRepo.fetchManagedChallenges,
+      )).stream;
 
   Stream<List<AbuPost>> watchPosts() => firestore
       .collection('posts')
@@ -672,15 +701,11 @@ class ProductionRepository {
       .map((snapshot) => snapshot.docs.map(AbuComment.fromDocument).toList())
       .handleError((_) => const <AbuComment>[]);
 
-  Stream<LaunchAnnouncement?> watchLaunchAnnouncement() => firestore
-      .collection('platformSettings')
-      .doc('launchAnnouncement')
-      .snapshots()
-      .map(
-        (snapshot) =>
-            snapshot.exists ? LaunchAnnouncement.fromDocument(snapshot) : null,
-      )
-      .handleError((_) => null);
+  Stream<LaunchAnnouncement?> watchLaunchAnnouncement() =>
+      (_launchAnnouncementResource ??= _ReplayResource<LaunchAnnouncement?>(
+        maxAge: const Duration(minutes: 2),
+        load: apiRepo.fetchLaunchAnnouncement,
+      )).stream;
 
   /// The self-hosted PostgreSQL database is the account source of truth.
   /// Firestore may not contain a document for Firebase users created after the
@@ -978,6 +1003,16 @@ class ProductionRepository {
         challengeId: challenge.id,
         answer: answer.trim(),
       );
+      if (res['correct'] == true) {
+        final uid = auth.currentUser?.uid;
+        if (uid != null) {
+          try {
+            await _playerCardResources[uid]?.refresh(force: true);
+          } catch (error) {
+            debugPrint('[PlayerCards] Unlock refresh deferred: $error');
+          }
+        }
+      }
       return res;
     } catch (e) {
       return {'correct': false, 'pointsAwarded': 0, 'message': e.toString()};
@@ -1007,44 +1042,53 @@ class ProductionRepository {
     if (rewardPoints < 0 || maximumAttempts < 1) {
       throw ArgumentError('Points and attempts must be valid positive values.');
     }
-    final collection = kind == 'playerCard' ? 'playerCards' : 'videoQuestions';
-    final ref = firestore.collection(collection).doc();
-    final batch = firestore.batch();
-    batch.set(ref, {
-      'title': title.trim(),
-      'description': description.trim(),
-      'videoUrl': videoUrl.trim(),
-      'rewardPoints': rewardPoints,
-      'kind': kind,
-      'status': status,
-      'maximumAttempts': maximumAttempts,
-      'memberOnly': memberOnly,
-      'notifyOnLive': notifyOnLive,
-      'availableFrom': Timestamp.fromDate(availableFrom),
-      'availableUntil': Timestamp.fromDate(availableUntil),
-      'createdBy': auth.currentUser!.uid,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    batch.set(ref.collection('private').doc('answer'), {
-      'normalizedAnswer': normalizeChallengeAnswer(answer),
-    });
-    await batch.commit();
+    await apiRepo.createAdminChallenge(
+      kind: kind,
+      title: title.trim(),
+      description: description.trim(),
+      videoUrl: videoUrl.trim(),
+      imageUrl: '',
+      rewardPoints: rewardPoints,
+      availableFrom: availableFrom,
+      availableUntil: availableUntil,
+      status: status,
+      maximumAttempts: maximumAttempts,
+      memberOnly: memberOnly,
+      notifyOnLive: notifyOnLive,
+      questions: [
+        {
+          'id': 'main',
+          'prompt': title.trim(),
+          'type': 'text',
+          'options': const <String>[],
+          'correctAnswer': answer.trim(),
+          'acceptedAnswers': const <String>[],
+        },
+      ],
+    );
+    await Future.wait([
+      ..._challengeResources.values.map(
+        (resource) => resource.refresh(force: true),
+      ),
+      _managedChallengesResource?.refresh(force: true) ?? Future<void>.value(),
+    ]);
   }
 
   Future<void> setChallengeStatus({
     required AbuChallenge challenge,
     required String status,
-  }) => firestore
-      .collection(
-        challenge.kind == 'playerCard' ? 'playerCards' : 'videoQuestions',
-      )
-      .doc(challenge.id)
-      .update({
-        'status': status,
-        'updatedBy': auth.currentUser!.uid,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+  }) async {
+    await apiRepo.setAdminChallengeStatus(
+      challengeId: challenge.id,
+      status: status,
+    );
+    await Future.wait([
+      ..._challengeResources.values.map(
+        (resource) => resource.refresh(force: true),
+      ),
+      _managedChallengesResource?.refresh(force: true) ?? Future<void>.value(),
+    ]);
+  }
 
   Future<void> createPost({
     required String title,
@@ -1169,23 +1213,18 @@ class ProductionRepository {
     }
     final normalizedImage = _normalizedOptionalUrl(imageUrl, 'Image URL');
     final normalizedLink = _normalizedOptionalUrl(linkUrl, 'Clickable link');
-    await firestore
-        .collection('platformSettings')
-        .doc('launchAnnouncement')
-        .set({
-          'enabled': enabled,
-          'title': title.trim(),
-          'body': body.trim(),
-          'imageUrl': normalizedImage,
-          'linkUrl': normalizedLink,
-          'buttonLabel': buttonLabel.trim(),
-          'frequency': frequency,
-          'startsAt': Timestamp.fromDate(startsAt),
-          'endsAt': Timestamp.fromDate(endsAt),
-          'revision': DateTime.now().millisecondsSinceEpoch,
-          'updatedBy': auth.currentUser!.uid,
-          'updatedAt': FieldValue.serverTimestamp(),
-        });
+    final announcement = await apiRepo.saveAdminLaunchAnnouncement(
+      enabled: enabled,
+      title: title.trim(),
+      body: body.trim(),
+      imageUrl: normalizedImage,
+      linkUrl: normalizedLink,
+      buttonLabel: buttonLabel.trim(),
+      frequency: frequency,
+      startsAt: startsAt,
+      endsAt: endsAt,
+    );
+    _launchAnnouncementResource?.emit(announcement);
   }
 
   Future<void> setUserRole({required String uid, required String role}) async {
@@ -1841,6 +1880,18 @@ class ProductionRepository {
     );
   }
 
+  Future<Map<String, dynamic>> createNotificationBroadcast({
+    required String title,
+    required String body,
+    String? imageUrl,
+    DateTime? scheduledAt,
+  }) => apiRepo.createNotificationBroadcast(
+    title: title,
+    body: body,
+    imageUrl: imageUrl,
+    scheduledAt: scheduledAt,
+  );
+
   Future<void> _call(String name, Map<String, Object?> data) async {
     await functions.httpsCallable(name).call<Map<String, dynamic>>(data);
   }
@@ -2111,22 +2162,11 @@ class ProductionRepository {
       .map((s) => s.docs.map(AbuAchievement.fromDocument).toList())
       .handleError((_) => const <AbuAchievement>[]);
 
-  Future<void> setAchievementEnabled(String id, bool enabled) => firestore
-      .collection('achievementDefinitions')
-      .doc(id)
-      .update({'enabled': enabled});
+  Future<void> setAchievementEnabled(String id, bool enabled) =>
+      apiRepo.setAdminAchievementEnabled(achievementId: id, enabled: enabled);
 
-  Future<void> saveAchievement(AbuAchievement model) async {
-    final data = model.toMap();
-    if (model.id.isEmpty) {
-      await firestore.collection('achievementDefinitions').add(data);
-    } else {
-      await firestore
-          .collection('achievementDefinitions')
-          .doc(model.id)
-          .set(data, SetOptions(merge: true));
-    }
-  }
+  Future<void> saveAchievement(AbuAchievement model) =>
+      apiRepo.saveAdminAchievement(model);
 
   Future<Map<String, dynamic>> claimAchievement(String id) async {
     final result = await functions
@@ -2150,22 +2190,10 @@ class ProductionRepository {
       .map((s) => s.docs.map(AbuLevel.fromDocument).toList())
       .handleError((_) => const <AbuLevel>[]);
 
-  Future<void> setLevelEnabled(String id, bool enabled) => firestore
-      .collection('levelDefinitions')
-      .doc(id)
-      .update({'enabled': enabled});
+  Future<void> setLevelEnabled(String id, bool enabled) =>
+      apiRepo.setAdminLevelEnabled(levelId: id, enabled: enabled);
 
-  Future<void> saveLevel(AbuLevel model) async {
-    final data = model.toMap();
-    if (model.id.isEmpty) {
-      await firestore.collection('levelDefinitions').add(data);
-    } else {
-      await firestore
-          .collection('levelDefinitions')
-          .doc(model.id)
-          .set(data, SetOptions(merge: true));
-    }
-  }
+  Future<void> saveLevel(AbuLevel model) => apiRepo.saveAdminLevel(model);
 
   Stream<List<AbuLoyaltyReward>> watchRewards() => firestore
       .collection('loyaltyRewards')
@@ -2180,22 +2208,11 @@ class ProductionRepository {
       .map((s) => s.docs.map(AbuLoyaltyReward.fromDocument).toList())
       .handleError((_) => const <AbuLoyaltyReward>[]);
 
-  Future<void> setRewardEnabled(String id, bool enabled) => firestore
-      .collection('loyaltyRewards')
-      .doc(id)
-      .update({'enabled': enabled});
+  Future<void> setRewardEnabled(String id, bool enabled) =>
+      apiRepo.setAdminRewardEnabled(rewardId: id, enabled: enabled);
 
-  Future<void> saveReward(AbuLoyaltyReward model) async {
-    final data = model.toMap();
-    if (model.id.isEmpty) {
-      await firestore.collection('loyaltyRewards').add(data);
-    } else {
-      await firestore
-          .collection('loyaltyRewards')
-          .doc(model.id)
-          .set(data, SetOptions(merge: true));
-    }
-  }
+  Future<void> saveReward(AbuLoyaltyReward model) =>
+      apiRepo.saveAdminReward(model);
 
   Stream<List<AbuRewardRedemption>> watchRedemptions(String uid) => firestore
       .collection('loyaltyRedemptions')
@@ -2206,50 +2223,77 @@ class ProductionRepository {
       .map((s) => s.docs.map(AbuRewardRedemption.fromDocument).toList())
       .handleError((_) => const <AbuRewardRedemption>[]);
 
-  Future<void> redeemReward(String id) =>
-      _call('redeemReward', {'rewardId': id});
+  Future<void> redeemReward(String id) async {
+    // The deployed callable is idempotent only when the client supplies a
+    // stable key for this redemption attempt. The previous callable name did
+    // not exist, so every fan redemption failed before reaching the server.
+    final idempotencyKey = firestore.collection('loyaltyRedemptions').doc().id;
+    await _call('redeemLoyaltyReward', {
+      'rewardId': id,
+      'idempotencyKey': idempotencyKey,
+    });
+  }
 
   Future<void> updateRedemptionStatus(
     String id,
     String status, {
     String? note,
-  }) => firestore.collection('loyaltyRedemptions').doc(id).update({
-    'status': status,
-    if (note != null && note.isNotEmpty) 'adminNote': note,
-    'updatedAt': FieldValue.serverTimestamp(),
-  });
+  }) async {
+    await apiRepo.updateAdminRedemptionStatus(
+      redemptionId: id,
+      status: status,
+      note: note ?? '',
+    );
+    await _adminRedemptionsResource?.refresh(force: true);
+  }
+
+  Stream<List<AbuRewardRedemption>> watchManagedRedemptions() =>
+      (_adminRedemptionsResource ??= _ReplayResource<List<AbuRewardRedemption>>(
+        maxAge: const Duration(minutes: 1),
+        load: apiRepo.fetchAdminRedemptions,
+      )).stream;
 
   // ── Player Cards ──────────────────────────────────────────────────────
 
-  Stream<List<AbuPlayerCard>> watchPlayerCards(String uid) => firestore
-      .collection('playerCards')
-      .orderBy('availableFrom', descending: true)
-      .limit(30)
-      .snapshots()
-      .map((s) => s.docs.map(AbuPlayerCard.fromDocument).toList())
-      .handleError((_) => const <AbuPlayerCard>[]);
+  Stream<List<AbuPlayerCard>> watchPlayerCards(String uid) {
+    if (uid.isEmpty || uid == 'guest') {
+      return Stream.value(const <AbuPlayerCard>[]);
+    }
+    return _playerCardResources
+        .putIfAbsent(
+          uid,
+          () => _ReplayResource<List<AbuPlayerCard>>(
+            maxAge: const Duration(minutes: 2),
+            load: () => apiRepo.fetchPlayerCards(),
+          ),
+        )
+        .stream;
+  }
 
-  Stream<List<AbuPlayerCard>> watchManagedPlayerCards() => firestore
-      .collection('playerCards')
-      .orderBy('availableFrom', descending: true)
-      .limit(50)
-      .snapshots()
-      .map((s) => s.docs.map(AbuPlayerCard.fromDocument).toList())
-      .handleError((_) => const <AbuPlayerCard>[]);
+  Stream<List<AbuPlayerCard>> watchManagedPlayerCards() =>
+      (_managedPlayerCardsResource ??= _ReplayResource<List<AbuPlayerCard>>(
+        maxAge: const Duration(minutes: 2),
+        load: () => apiRepo.fetchPlayerCards(managed: true),
+      )).stream;
 
-  Future<void> setPlayerCardEnabled(String id, bool enabled) =>
-      firestore.collection('playerCards').doc(id).update({'enabled': enabled});
+  Future<void> setPlayerCardEnabled(String id, bool enabled) async {
+    await apiRepo.setAdminPlayerCardEnabled(cardId: id, enabled: enabled);
+    await Future.wait([
+      ..._playerCardResources.values.map(
+        (resource) => resource.refresh(force: true),
+      ),
+      _managedPlayerCardsResource?.refresh(force: true) ?? Future<void>.value(),
+    ]);
+  }
 
   Future<void> savePlayerCard(AbuPlayerCard model) async {
-    final data = model.toMap();
-    if (model.id.isEmpty) {
-      await firestore.collection('playerCards').add(data);
-    } else {
-      await firestore
-          .collection('playerCards')
-          .doc(model.id)
-          .set(data, SetOptions(merge: true));
-    }
+    await apiRepo.saveAdminPlayerCard(model);
+    await Future.wait([
+      ..._playerCardResources.values.map(
+        (resource) => resource.refresh(force: true),
+      ),
+      _managedPlayerCardsResource?.refresh(force: true) ?? Future<void>.value(),
+    ]);
   }
 
   // ── Advanced Challenges ───────────────────────────────────────────────
@@ -2258,14 +2302,28 @@ class ProductionRepository {
     required AbuChallenge challenge,
     required Map<String, String> answers,
   }) async {
-    final result = await functions
-        .httpsCallable('submitChallengeAnswers')
-        .call<Map<String, dynamic>>({
-          'challengeId': challenge.id,
-          'kind': challenge.kind,
-          'answers': answers,
-        });
-    return result.data;
+    final answer = answers.values
+        .map((value) => value.trim())
+        .firstWhere((value) => value.isNotEmpty, orElse: () => '');
+    if (answer.isEmpty) throw ArgumentError('Enter an answer first.');
+    final result = await apiRepo.submitChallengeAnswer(
+      challengeId: challenge.id,
+      answer: answer,
+    );
+    if (result['correct'] == true) {
+      final uid = auth.currentUser?.uid;
+      if (uid != null) {
+        try {
+          await _playerCardResources[uid]?.refresh(force: true);
+        } catch (error) {
+          debugPrint('[PlayerCards] Unlock refresh deferred: $error');
+        }
+      }
+    }
+    return {
+      ...result,
+      'points': result['points'] ?? result['pointsAwarded'] ?? 0,
+    };
   }
 
   Future<void> createAdvancedChallenge({
@@ -2283,58 +2341,70 @@ class ProductionRepository {
     bool notifyOnLive = false,
     List<dynamic> questions = const [],
   }) async {
-    final collection = kind == 'playerCard' ? 'playerCards' : 'videoQuestions';
-    final docRef = firestore.collection(collection).doc();
-    final uid = auth.currentUser?.uid ?? 'admin';
-    final primaryAnswer = questions.isNotEmpty
-        ? (questions.first is Map
-              ? (questions.first as Map)['answer']?.toString() ?? ''
-              : (questions.first as dynamic).answer?.toString() ?? '')
-        : '';
-    final formattedQuestions = questions.map((q) {
-      if (q is Map) return q;
-      try {
-        return (q as dynamic).toMap();
-      } catch (_) {
-        return <String, dynamic>{};
-      }
-    }).toList();
-
-    final batch = firestore.batch();
-    batch.set(docRef, {
-      'kind': kind,
-      'title': title.trim(),
-      'description': description.trim(),
-      'videoUrl': videoUrl.trim(),
-      'imageUrl': imageUrl.trim(),
-      'rewardPoints': rewardPoints,
-      'availableFrom': Timestamp.fromDate(availableFrom),
-      'availableUntil': Timestamp.fromDate(availableUntil),
-      'status': status,
-      'maximumAttempts': maximumAttempts,
-      'memberOnly': memberOnly,
-      'notifyOnLive': notifyOnLive,
-      'questions': formattedQuestions,
-      'createdBy': uid,
-      'createdAt': FieldValue.serverTimestamp(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
-    batch.set(docRef.collection('private').doc('answer'), {
-      'normalizedAnswer': normalizeChallengeAnswer(primaryAnswer),
-      'answers': questions.map((q) {
-        if (q is Map) {
-          return normalizeChallengeAnswer(q['answer']?.toString() ?? '');
-        }
-        try {
-          return normalizeChallengeAnswer(
-            (q as dynamic).answer?.toString() ?? '',
-          );
-        } catch (_) {
-          return '';
-        }
-      }).toList(),
-    });
-    await batch.commit();
+    final formattedQuestions = questions
+        .map<Map<String, dynamic>>((q) {
+          Map<String, dynamic> data;
+          if (q is AbuChallengeQuestion) {
+            data = <String, dynamic>{
+              ...q.toPublicMap(),
+              'correctAnswer': q.correctAnswer,
+              'acceptedAnswers': q.acceptedAnswers,
+            };
+          } else if (q is Map) {
+            data = Map<String, dynamic>.from(q);
+          } else {
+            try {
+              data = Map<String, dynamic>.from((q as dynamic).toMap() as Map);
+            } catch (_) {
+              data = <String, dynamic>{};
+            }
+          }
+          final answer = (data['correctAnswer'] ?? data['answer'] ?? '')
+              .toString();
+          return <String, dynamic>{
+            'id': (data['id'] ?? 'main').toString(),
+            'prompt': (data['prompt'] ?? title).toString(),
+            'type': (data['type'] ?? 'text').toString(),
+            'options': data['options'] is List
+                ? List<String>.from(
+                    (data['options'] as List).map((value) => value.toString()),
+                  )
+                : const <String>[],
+            'correctAnswer': answer,
+            'acceptedAnswers': data['acceptedAnswers'] is List
+                ? List<String>.from(
+                    (data['acceptedAnswers'] as List).map(
+                      (value) => value.toString(),
+                    ),
+                  )
+                : const <String>[],
+          };
+        })
+        .toList(growable: false);
+    if (formattedQuestions.isEmpty) {
+      throw ArgumentError('Add at least one challenge question.');
+    }
+    await apiRepo.createAdminChallenge(
+      kind: kind,
+      title: title.trim(),
+      description: description.trim(),
+      videoUrl: videoUrl.trim(),
+      imageUrl: imageUrl.trim(),
+      rewardPoints: rewardPoints,
+      availableFrom: availableFrom,
+      availableUntil: availableUntil,
+      status: status,
+      maximumAttempts: maximumAttempts,
+      memberOnly: memberOnly,
+      notifyOnLive: notifyOnLive,
+      questions: formattedQuestions,
+    );
+    await Future.wait([
+      ..._challengeResources.values.map(
+        (resource) => resource.refresh(force: true),
+      ),
+      _managedChallengesResource?.refresh(force: true) ?? Future<void>.value(),
+    ]);
   }
 
   String normalizeChallengeAnswer(String text) {

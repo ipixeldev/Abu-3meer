@@ -87,6 +87,7 @@ class AbuApiClient {
     String path, {
     Map<String, String>? queryParams,
     bool requireAuth = false,
+    bool bypassCache = false,
   }) async {
     final uri = Uri.parse('$baseUrl$path')
         .replace(queryParameters: queryParams);
@@ -94,13 +95,17 @@ class AbuApiClient {
         ? FirebaseAuth.instance.currentUser?.uid ?? 'signed-out'
         : 'public';
     final requestKey = '$identity:$uri';
-    if (!requireAuth) {
+    // A user-initiated/live refresh must not attach itself to an older
+    // in-flight cached request. Forced refreshes still coalesce with one
+    // another, but always perform their own network fetch.
+    final inFlightKey = bypassCache ? '$requestKey:fresh' : requestKey;
+    if (!requireAuth && !bypassCache) {
       final cached = _publicGetCache[requestKey];
       if (cached != null && cached.expiresAt.isAfter(DateTime.now())) {
         return cached.value;
       }
     }
-    final running = _inFlightGets[requestKey];
+    final running = _inFlightGets[inFlightKey];
     if (running != null) return running;
 
     late final Future<dynamic> operation;
@@ -125,12 +130,12 @@ class AbuApiClient {
           message: 'Network connection failed: $error',
         );
       } finally {
-        if (identical(_inFlightGets[requestKey], operation)) {
-          _inFlightGets.remove(requestKey);
+        if (identical(_inFlightGets[inFlightKey], operation)) {
+          _inFlightGets.remove(inFlightKey);
         }
       }
     }();
-    _inFlightGets[requestKey] = operation;
+    _inFlightGets[inFlightKey] = operation;
     return operation;
   }
 

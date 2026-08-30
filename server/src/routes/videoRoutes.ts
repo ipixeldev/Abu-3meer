@@ -2,6 +2,9 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
+import { createNotificationCampaign } from '../services/notificationService.js';
+import { exclusiveVideoNotificationCampaign } from '../services/exclusiveVideoNotification.js';
+import { enqueueNotificationCampaign } from '../queues/workers.js';
 
 export async function videoRoutes(fastify: FastifyInstance) {
   // GET /api/v1/videos/exclusive - List published exclusive videos for app users
@@ -38,6 +41,10 @@ export async function videoRoutes(fastify: FastifyInstance) {
     const videoUrl = `https://www.youtube.com/watch?v=${youtubeId}`;
     const pubDate = publishedAt ? new Date(publishedAt) : new Date();
     const id = `vid_${youtubeId}`;
+    const existingVideo = await query(
+      'SELECT id FROM videos WHERE youtube_id = $1 LIMIT 1',
+      [youtubeId]
+    );
 
     const res = await query(
       `INSERT INTO videos (id, youtube_id, title, description, thumbnail_url, video_url, published_at, is_unlisted, member_only)
@@ -60,7 +67,45 @@ export async function videoRoutes(fastify: FastifyInstance) {
       [request.user!.id, id, JSON.stringify(res.rows[0])]
     );
 
-    return { success: true, video: res.rows[0] };
+    // Editing an existing entry must not notify everyone again. A future
+    // publication is queued as a delayed BullMQ job at its publish timestamp.
+    let notificationScheduled = false;
+    let notificationQueued = false;
+    if (existingVideo.rowCount === 0) {
+      const campaign = await createNotificationCampaign(
+        exclusiveVideoNotificationCampaign({
+          videoId: id,
+          youtubeId,
+          title,
+          thumbnailUrl: autoThumbnail,
+          publishedAt: pubDate,
+          memberOnly,
+          createdBy: request.user!.id,
+        })
+      );
+      if (campaign.campaignId) {
+        notificationScheduled = true;
+        try {
+          await enqueueNotificationCampaign(
+            campaign.campaignId,
+            campaign.scheduledFor
+          );
+          notificationQueued = true;
+        } catch (error) {
+          fastify.log.error(
+            { err: error, campaignId: campaign.campaignId },
+            'Exclusive-video notification left pending for outbox recovery',
+          );
+        }
+      }
+    }
+
+    return {
+      success: true,
+      video: res.rows[0],
+      notificationScheduled,
+      notificationQueued,
+    };
   });
 
   // DELETE /api/v1/admin/videos/:id - Remove video

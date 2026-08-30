@@ -38,4 +38,34 @@ void main() {
       expect(calls, 1, reason: 'the immediate replay must not hit the network');
     },
   );
+
+  test('a forced public GET bypasses and refreshes the local cache', () async {
+    var calls = 0;
+    final transport = MockClient((request) async {
+      calls += 1;
+      return http.Response(
+        '[{"call":$calls}]',
+        200,
+        headers: {'content-type': 'application/json'},
+      );
+    });
+    final api = AbuApiClient(
+      baseUrl: 'https://api.example.test/api/v1',
+      httpClient: transport,
+    );
+
+    expect(await api.get('/matches/one/details'), [
+      <String, dynamic>{'call': 1},
+    ]);
+    expect(await api.get('/matches/one/details'), [
+      <String, dynamic>{'call': 1},
+    ]);
+    expect(await api.get('/matches/one/details', bypassCache: true), [
+      <String, dynamic>{'call': 2},
+    ]);
+    expect(await api.get('/matches/one/details'), [
+      <String, dynamic>{'call': 2},
+    ]);
+    expect(calls, 2);
+  });
 }

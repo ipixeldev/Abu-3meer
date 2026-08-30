@@ -10411,88 +10411,12 @@ class _ProductionSettings extends StatelessWidget {
                   title: abuText(context, 'New challenges', 'التحديات الجديدة'),
                   subtitle: abuText(
                     context,
-                    'Video phrases and Player Cards.',
-                    'عبارات الفيديو وبطاقات اللاعبين.',
+                    'Video phrases, Player Cards, and Exclusive videos.',
+                    'عبارات الفيديو وبطاقات اللاعبين والفيديوهات الحصرية.',
                   ),
                   value: preferences.challengeNotifications,
                   onChanged: preferences.setChallengeNotifications,
                   repository: repository,
-                ),
-                const Divider(height: 1),
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      try {
-                        final granted = await NotificationService.instance
-                            .requestPermission(apiRepo: repository.apiRepo);
-                        if (!context.mounted) return;
-                        if (!granted) {
-                          throw StateError(
-                            abuText(
-                              context,
-                              'Notification access is disabled for Abu 3meer in iPhone settings.',
-                              'إذن الإشعارات معطل لتطبيق أبو عمير في إعدادات الآيفون.',
-                            ),
-                          );
-                        }
-                        final result = await NotificationService.instance
-                            .sendRemoteTest();
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context)
-                            ..clearSnackBars()
-                            ..showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  abuText(
-                                    context,
-                                    'Push result: ${result['sentCount'] ?? 0} sent, ${result['failedCount'] ?? 0} failed.',
-                                    'نتيجة الإشعار: ${result['sentCount'] ?? 0} أُرسل، ${result['failedCount'] ?? 0} فشل.',
-                                  ),
-                                ),
-                              ),
-                            );
-                        }
-                      } catch (error) {
-                        if (context.mounted) {
-                          final pushSetupRequired =
-                              error is AbuApiException &&
-                              error.statusCode == 503 &&
-                              error.message.contains('FCM is not configured');
-                          ScaffoldMessenger.of(context)
-                            ..clearSnackBars()
-                            ..showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  pushSetupRequired
-                                      ? abuText(
-                                          context,
-                                          'Push notifications need one final server setup. Add the Firebase Admin service-account credentials, restart the API, then test again.',
-                                          'تحتاج الإشعارات إلى إعداد أخير في الخادم. أضف بيانات حساب خدمة Firebase Admin، ثم أعد تشغيل الخادم وجرّب مرة أخرى.',
-                                        )
-                                      : productionErrorMessage(error),
-                                ),
-                              ),
-                            );
-                        }
-                      }
-                    },
-                    icon: Icon(
-                      Icons.notifications_active_rounded,
-                      color: primary,
-                    ),
-                    label: Text(
-                      abuText(
-                        context,
-                        'SEND TEST NOTIFICATION',
-                        'إرسال إشعار تجريبي للتأكد',
-                      ),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: primary,
-                      ),
-                    ),
-                  ),
                 ),
               ],
             );
@@ -10722,6 +10646,13 @@ class _ProductionAdmin extends StatelessWidget {
                 icon: Icon(Icons.video_library_rounded),
                 label: Text(
                   abuText(context, 'EXCLUSIVE VIDEOS', 'الفيديوهات الحصرية'),
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => _showNotificationComposer(context),
+                icon: Icon(Icons.notifications_active_rounded),
+                label: Text(
+                  abuText(context, 'SEND NOTIFICATION', 'إرسال إشعار'),
                 ),
               ),
             ],
@@ -11735,6 +11666,282 @@ class _ProductionAdmin extends StatelessWidget {
         ).showSnackBar(SnackBar(content: Text(productionErrorMessage(error))));
       }
     }
+  }
+
+  Future<void> _showNotificationComposer(BuildContext context) async {
+    final titleController = TextEditingController();
+    final bodyController = TextEditingController();
+    XFile? selectedImage;
+    dynamic selectedImageBytes;
+    var scheduleEnabled = false;
+    var scheduledFor = DateTime.now().add(const Duration(hours: 1));
+    var saving = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (modalContext, setModalState) {
+          final canSubmit =
+              titleController.text.trim().length >= 2 &&
+              bodyController.text.trim().length >= 2 &&
+              !saving;
+          void refresh(String _) => setModalState(() {});
+
+          return AlertDialog(
+            backgroundColor: const Color(0xFF111622),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+            ),
+            title: Text(
+              abuText(modalContext, 'Send Notification', 'إرسال إشعار'),
+            ),
+            content: SizedBox(
+              width: 600,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      abuText(
+                        modalContext,
+                        'Send to every active device whose notification access is enabled.',
+                        'يُرسل إلى كل جهاز نشط فعّل إذن الإشعارات.',
+                      ),
+                      style: const TextStyle(color: _muted, height: 1.4),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: titleController,
+                      onChanged: refresh,
+                      maxLength: 100,
+                      decoration: InputDecoration(
+                        labelText: abuText(
+                          modalContext,
+                          'Notification title',
+                          'عنوان الإشعار',
+                        ),
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: bodyController,
+                      onChanged: refresh,
+                      minLines: 3,
+                      maxLines: 5,
+                      maxLength: 500,
+                      decoration: InputDecoration(
+                        labelText: abuText(
+                          modalContext,
+                          'Message',
+                          'نص الإشعار',
+                        ),
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: saving
+                                ? null
+                                : () async {
+                                    final selection = await _selectAdminImage(
+                                      modalContext,
+                                    );
+                                    if (selection == null ||
+                                        !modalContext.mounted) {
+                                      return;
+                                    }
+                                    setModalState(() {
+                                      selectedImage = selection.file;
+                                      selectedImageBytes = selection.bytes;
+                                    });
+                                  },
+                            icon: const Icon(Icons.photo_library_outlined),
+                            label: Text(
+                              selectedImage == null
+                                  ? abuText(
+                                      modalContext,
+                                      'SELECT IMAGE (OPTIONAL)',
+                                      'اختر صورة (اختياري)',
+                                    )
+                                  : selectedImage!.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        if (selectedImage != null)
+                          IconButton(
+                            tooltip: abuText(
+                              modalContext,
+                              'Remove image',
+                              'إزالة الصورة',
+                            ),
+                            onPressed: saving
+                                ? null
+                                : () => setModalState(() {
+                                    selectedImage = null;
+                                    selectedImageBytes = null;
+                                  }),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                      ],
+                    ),
+                    if (selectedImage != null) ...[
+                      const SizedBox(height: 10),
+                      _campaignImagePreview(
+                        context: modalContext,
+                        imageUrl: '',
+                        imageBytes: selectedImageBytes,
+                        height: 170,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        abuText(
+                          modalContext,
+                          'The image appears in supported Android notifications. iPhone receives the text notification; rich images require an iOS media extension that is not enabled yet.',
+                          'تظهر الصورة في إشعارات أندرويد المدعومة. يستقبل الآيفون الإشعار النصي؛ صور الإشعارات الغنية تحتاج إضافة iOS غير مفعلة حالياً.',
+                        ),
+                        style: const TextStyle(
+                          color: _muted,
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        abuText(
+                          modalContext,
+                          'Schedule for later',
+                          'جدولة الإرسال لوقت لاحق',
+                        ),
+                      ),
+                      subtitle: Text(
+                        abuText(
+                          modalContext,
+                          'Turn off to send immediately.',
+                          'أوقف الخيار للإرسال فوراً.',
+                        ),
+                      ),
+                      value: scheduleEnabled,
+                      onChanged: saving
+                          ? null
+                          : (value) => setModalState(() {
+                              scheduleEnabled = value;
+                              if (value &&
+                                  !scheduledFor.isAfter(DateTime.now())) {
+                                scheduledFor = DateTime.now().add(
+                                  const Duration(hours: 1),
+                                );
+                              }
+                            }),
+                    ),
+                    if (scheduleEnabled)
+                      _AdminDateTile(
+                        label: abuText(
+                          modalContext,
+                          'Send date and time',
+                          'تاريخ ووقت الإرسال',
+                        ),
+                        value: scheduledFor,
+                        onChanged: (value) =>
+                            setModalState(() => scheduledFor = value),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: saving ? null : () => Navigator.pop(dialogContext),
+                child: Text(abuText(modalContext, 'CANCEL', 'إلغاء')),
+              ),
+              FilledButton.icon(
+                onPressed: canSubmit
+                    ? () async {
+                        setModalState(() => saving = true);
+                        try {
+                          final title = titleController.text.trim();
+                          final body = bodyController.text.trim();
+                          final imageUrl = selectedImage == null
+                              ? null
+                              : await repository.uploadAnnouncementImage(
+                                  selectedImage!,
+                                );
+                          final result = await repository
+                              .createNotificationBroadcast(
+                                title: title,
+                                body: body,
+                                imageUrl: imageUrl,
+                                scheduledAt: scheduleEnabled
+                                    ? scheduledFor
+                                    : null,
+                              );
+                          if (!dialogContext.mounted) return;
+                          Navigator.pop(dialogContext);
+                          if (!context.mounted) return;
+                          final isScheduled = result['status'] == 'scheduled';
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                isScheduled
+                                    ? abuText(
+                                        context,
+                                        'Notification scheduled successfully.',
+                                        'تمت جدولة الإشعار بنجاح.',
+                                      )
+                                    : abuText(
+                                        context,
+                                        'Notification queued for delivery.',
+                                        'تم وضع الإشعار في قائمة الإرسال.',
+                                      ),
+                              ),
+                            ),
+                          );
+                        } catch (error) {
+                          if (modalContext.mounted) {
+                            setModalState(() => saving = false);
+                            ScaffoldMessenger.of(modalContext).showSnackBar(
+                              SnackBar(
+                                content: Text(productionErrorMessage(error)),
+                              ),
+                            );
+                          }
+                        }
+                      }
+                    : null,
+                icon: saving
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        scheduleEnabled
+                            ? Icons.schedule_send_rounded
+                            : Icons.send_rounded,
+                      ),
+                label: Text(
+                  scheduleEnabled
+                      ? abuText(modalContext, 'SCHEDULE', 'جدولة')
+                      : abuText(modalContext, 'SEND NOW', 'إرسال الآن'),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    titleController.dispose();
+    bodyController.dispose();
   }
 
   void _showExclusiveVideosManager(BuildContext context) {

@@ -40,11 +40,16 @@ export async function verifyFirebaseToken(idToken: string): Promise<admin.auth.D
 
 export type PushBatchResponse = admin.messaging.BatchResponse;
 
+export interface PushNotificationOptions {
+  imageUrl?: string | null;
+}
+
 export async function sendPushNotification(
   tokens: string[],
   title: string,
   body: string,
-  data?: Record<string, string>
+  data?: Record<string, string>,
+  options: PushNotificationOptions = {}
 ): Promise<PushBatchResponse> {
   if (!tokens.length) {
     return { responses: [], successCount: 0, failureCount: 0 };
@@ -59,11 +64,14 @@ export async function sendPushNotification(
   }
   initFirebaseAdmin();
 
+  const imageUrl = options.imageUrl?.trim() || undefined;
+
   const message: admin.messaging.MulticastMessage = {
     tokens,
     notification: {
       title,
       body,
+      ...(imageUrl ? { imageUrl } : {}),
     },
     data: data || {},
     apns: {
@@ -71,13 +79,16 @@ export async function sendPushNotification(
         aps: {
           sound: 'default',
           badge: 1,
+          ...(imageUrl ? { mutableContent: true } : {}),
         },
       },
+      ...(imageUrl ? { fcmOptions: { imageUrl } } : {}),
     },
     android: {
       priority: 'high',
       notification: {
         sound: 'default',
+        ...(imageUrl ? { imageUrl } : {}),
         // Must match the channel created by NotificationService in Flutter.
         channelId: 'abu_3meer_high_importance',
       },

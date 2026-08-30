@@ -18,6 +18,22 @@ export function isPermanentPushTokenError(code?: string): boolean {
   return code != null && permanentTokenErrorCodes.has(code);
 }
 
+const transientPushErrorCodes = new Set([
+  'messaging/internal-error',
+  'messaging/server-unavailable',
+  'messaging/quota-exceeded',
+  'messaging/message-rate-exceeded',
+  'messaging/device-message-rate-exceeded',
+  'messaging/topics-message-rate-exceeded',
+  'messaging/transport-error',
+  'messaging/unknown-error',
+]);
+
+/** Provider/transport failures that can succeed without changing the token. */
+export function isTransientPushError(code?: string): boolean {
+  return code != null && transientPushErrorCodes.has(code);
+}
+
 export interface PushFailureSummary {
   failureCodes: string[];
   requiresTokenRefresh: boolean;
@@ -184,6 +200,19 @@ export function normalizePushData(
       .filter(([, value]) => value != null)
       .map(([key, value]) => [key, String(value)])
   );
+}
+
+/**
+ * BullMQ accepts a millisecond delay. Clamp past schedules to an immediate
+ * job and reject invalid Date instances without allowing NaN into Redis.
+ */
+export function notificationDelayMs(
+  scheduledFor: Date,
+  nowMs: number = Date.now()
+): number {
+  const scheduledMs = scheduledFor.getTime();
+  if (!Number.isFinite(scheduledMs)) return 0;
+  return Math.max(0, scheduledMs - nowMs);
 }
 
 export function notificationPreferenceColumn(category: NotificationCategory): string | null {

@@ -2,6 +2,7 @@ import { query } from '../db/pool.js';
 import { sendPushNotification } from '../firebase/admin.js';
 import {
   isPermanentPushTokenError,
+  isTransientPushError,
   normalizePushData,
   notificationPreferenceColumn,
   safePushFailureCode,
@@ -24,6 +25,144 @@ export interface NotificationPreferences {
   challengeEnabled: boolean;
   rewardEnabled: boolean;
   newsEnabled: boolean;
+}
+
+export type NotificationTargetAudience =
+  | 'all'
+  | 'members_only'
+  | 'team_specific'
+  | 'inactive_users';
+
+export interface CreateNotificationCampaignInput {
+  title: string;
+  body: string;
+  category: NotificationCategory;
+  targetAudience?: NotificationTargetAudience;
+  targetTeam?: string | null;
+  data?: Record<string, unknown>;
+  imageUrl?: string | null;
+  scheduledFor?: Date;
+  createdBy?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
+}
+
+export interface CreatedNotificationCampaign {
+  created: boolean;
+  campaignId: string | null;
+  scheduledFor: Date;
+}
+
+export type NotificationCampaignQueryExecutor = (
+  text: string,
+  params?: any[]
+) => Promise<{ rowCount: number | null; rows: Array<Record<string, unknown>> }>;
+
+/**
+ * Persists the campaign before it is queued, so delayed broadcasts survive
+ * API restarts. Source-backed campaigns (for example an Exclusive video) are
+ * inserted once and cannot notify the same publication twice.
+ */
+export async function createNotificationCampaign(
+  input: CreateNotificationCampaignInput,
+  execute: NotificationCampaignQueryExecutor = query
+): Promise<CreatedNotificationCampaign> {
+  const scheduledFor = input.scheduledFor ?? new Date();
+  const result = await execute(
+    `INSERT INTO notification_campaigns
+       (title, body, target_audience, target_team, category, data_payload,
+        image_url, scheduled_for, created_by, source_type, source_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     ON CONFLICT (source_type, source_id)
+       WHERE source_type IS NOT NULL AND source_id IS NOT NULL
+       DO NOTHING
+     RETURNING id, scheduled_for`,
+    [
+      input.title,
+      input.body,
+      input.targetAudience ?? 'all',
+      input.targetTeam ?? null,
+      input.category,
+      JSON.stringify(input.data ?? {}),
+      input.imageUrl?.trim() || null,
+      scheduledFor,
+      input.createdBy ?? null,
+      input.sourceType ?? null,
+      input.sourceId ?? null,
+    ]
+  );
+  if (result.rowCount === 0) {
+    if (input.sourceType && input.sourceId) {
+      // A source may be scheduled, disabled, then enabled again. Re-arm a
+      // pending/failed/cancelled outbox record instead of creating a second
+      // campaign or leaving the source permanently muted by the unique key.
+      const existing = await execute(
+        `UPDATE notification_campaigns
+         SET title = $3,
+             body = $4,
+             target_audience = $5,
+             target_team = $6,
+             category = $7,
+             data_payload = $8,
+             image_url = $9,
+             scheduled_for = $10,
+             created_by = COALESCE($11, created_by),
+             status = 'pending',
+             processing_started_at = NULL,
+             sent_at = NULL,
+             last_error = NULL,
+             sent_count = 0,
+             failed_count = 0
+         WHERE source_type = $1
+           AND source_id = $2
+           AND status IN ('pending', 'failed', 'cancelled')
+         RETURNING id, scheduled_for`,
+        [
+          input.sourceType,
+          input.sourceId,
+          input.title,
+          input.body,
+          input.targetAudience ?? 'all',
+          input.targetTeam ?? null,
+          input.category,
+          JSON.stringify(input.data ?? {}),
+          input.imageUrl?.trim() || null,
+          scheduledFor,
+          input.createdBy ?? null,
+        ]
+      );
+      if ((existing.rowCount ?? 0) > 0) {
+        return {
+          created: false,
+          campaignId: String(existing.rows[0].id),
+          scheduledFor: new Date(existing.rows[0].scheduled_for as Date),
+        };
+      }
+    }
+    return { created: false, campaignId: null, scheduledFor };
+  }
+  return {
+    created: true,
+    campaignId: String(result.rows[0].id),
+    scheduledFor: new Date(result.rows[0].scheduled_for as Date),
+  };
+}
+
+export async function cancelNotificationCampaignBySource(
+  sourceType: string,
+  sourceId: string,
+  execute: NotificationCampaignQueryExecutor = query,
+): Promise<string[]> {
+  const result = await execute(
+    `UPDATE notification_campaigns
+     SET status = 'cancelled', processing_started_at = NULL, last_error = NULL
+     WHERE source_type = $1
+       AND source_id = $2
+       AND status IN ('pending', 'failed', 'processing')
+     RETURNING id`,
+    [sourceType, sourceId],
+  );
+  return result.rows.map((row) => String(row.id));
 }
 
 export async function registerDeviceToken(userId: string, input: DeviceRegistration) {
@@ -121,6 +260,8 @@ interface CampaignRow {
   target_team: string | null;
   category: NotificationCategory;
   data_payload: Record<string, unknown> | null;
+  image_url: string | null;
+  scheduled_for: Date;
 }
 
 interface TargetDeviceRow {
@@ -183,19 +324,31 @@ export async function processNotificationCampaign(campaignId: string) {
 
     let sentCount = 0;
     let failedCount = 0;
+    let transientFailureCount = 0;
     const data = normalizePushData({
       ...campaign.data_payload,
       campaignId: campaign.id,
       category: campaign.category,
+      imageUrl: campaign.image_url,
     });
 
     for (let i = 0; i < targets.rows.length; i += 500) {
+      // A scheduled source can be disabled after BullMQ has already claimed
+      // the job. Re-check the durable lifecycle before every provider batch.
+      const lifecycle = await query<{ status: string }>(
+        'SELECT status FROM notification_campaigns WHERE id = $1',
+        [campaign.id],
+      );
+      if (lifecycle.rows[0]?.status === 'cancelled') {
+        return { alreadyProcessed: true, sentCount, failedCount };
+      }
       const chunk = targets.rows.slice(i, i + 500);
       const response = await sendPushNotification(
         chunk.map(device => device.fcm_token),
         campaign.title,
         campaign.body,
-        data
+        data,
+        { imageUrl: campaign.image_url }
       );
       sentCount += response.successCount;
       failedCount += response.failureCount;
@@ -203,7 +356,12 @@ export async function processNotificationCampaign(campaignId: string) {
       for (let index = 0; index < chunk.length; index += 1) {
         const device = chunk[index];
         const result = response.responses[index];
-        const errorCode = result?.error?.code || null;
+        const errorCode = result?.success
+          ? null
+          : safePushFailureCode(result?.error);
+        if (isTransientPushError(errorCode || undefined)) {
+          transientFailureCount += 1;
+        }
         await query(
           `INSERT INTO notification_deliveries
              (campaign_id, device_id, status, provider_message_id, error_code, error_message, delivered_at)
@@ -239,6 +397,11 @@ export async function processNotificationCampaign(campaignId: string) {
     );
     sentCount = totals.rows[0].sent_count;
     failedCount = totals.rows[0].failed_count;
+    if (transientFailureCount > 0) {
+      throw new Error(
+        `${transientFailureCount} transient push delivery failure(s); retry scheduled.`,
+      );
+    }
     await query(
       `UPDATE notification_campaigns
        SET status = 'completed', sent_count = $2, failed_count = $3,
@@ -250,7 +413,17 @@ export async function processNotificationCampaign(campaignId: string) {
   } catch (error) {
     await query(
       `UPDATE notification_campaigns
-       SET status = 'failed', last_error = $2, processing_started_at = NULL
+       SET status = 'failed',
+           last_error = $2,
+           processing_started_at = NULL,
+           sent_count = (
+             SELECT COUNT(*)::int FROM notification_deliveries
+             WHERE campaign_id = $1 AND status = 'sent'
+           ),
+           failed_count = (
+             SELECT COUNT(*)::int FROM notification_deliveries
+             WHERE campaign_id = $1 AND status = 'failed'
+           )
        WHERE id = $1`,
       [campaign.id, error instanceof Error ? error.message.slice(0, 1000) : 'Unknown push error']
     );

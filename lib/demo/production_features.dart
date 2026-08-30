@@ -2052,7 +2052,7 @@ class _PlayerCollectionCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(99),
                       ),
                       child: Text(
-                        '${card.rating}',
+                        card.unlocked ? '${card.rating}' : '?',
                         style: _display(18, color: _rarityColor(context)),
                       ),
                     ),
@@ -5462,81 +5462,6 @@ Future<void> _showAdminChallengePreview(
   ),
 );
 
-Future<void> _showAdminPostPreview(
-  BuildContext context, {
-  required String title,
-  required String body,
-  required String imageUrl,
-  required String authorName,
-  dynamic imageBytes,
-}) => showDialog<void>(
-  context: context,
-  builder: (context) => AlertDialog(
-    title: Text(abuText(context, 'POST PREVIEW', 'معاينة المنشور')),
-    content: SizedBox(
-      width: 620,
-      child: SingleChildScrollView(
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (imageUrl.trim().isNotEmpty || imageBytes != null)
-                _campaignImagePreview(
-                  context: context,
-                  imageUrl: imageUrl,
-                  imageBytes: imageBytes,
-                  height: 240,
-                ),
-              Padding(
-                padding: const EdgeInsets.all(22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      authorName.toUpperCase(),
-                      style: TextStyle(
-                        color: _productionPrimary(context),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      title.trim().isEmpty
-                          ? abuText(context, 'Untitled post', 'منشور بلا عنوان')
-                          : title.trim(),
-                      style: _display(27),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      body.trim().isEmpty
-                          ? abuText(
-                              context,
-                              'Add post content before publishing.',
-                              'أضف محتوى المنشور قبل النشر.',
-                            )
-                          : body.trim(),
-                      style: TextStyle(color: _muted, height: 1.6),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: Text(abuText(context, 'CLOSE', 'إغلاق')),
-      ),
-    ],
-  ),
-);
-
 Future<void> _showAdminAnnouncementPreview(
   BuildContext context, {
   required String title,
@@ -5673,17 +5598,6 @@ class _ProductionAdminTools extends StatelessWidget {
           color: _productionPrimary(context),
           primary: true,
           onTap: () => createChallenge(context),
-        ),
-        _AdminQuickAction(
-          icon: Icons.post_add_rounded,
-          label: abuText(context, 'NEW POST', 'منشور جديد'),
-          detail: abuText(
-            context,
-            'Add an article, image, reaction or external link.',
-            'أضف مقالاً أو صورة أو تفاعلاً أو رابطاً خارجياً.',
-          ),
-          color: _blue,
-          onTap: () => createPost(context),
         ),
         _AdminQuickAction(
           icon: Icons.sports_esports_rounded,
@@ -5893,12 +5807,6 @@ class _ProductionAdminTools extends StatelessWidget {
                   color: _productionPrimary(context),
                   emphasized: true,
                   onTap: () => createChallenge(context),
-                ),
-                _AdminMobileAction(
-                  icon: Icons.post_add_rounded,
-                  label: abuText(context, 'NEW POST', 'منشور جديد'),
-                  color: _blue,
-                  onTap: () => createPost(context),
                 ),
                 _AdminMobileAction(
                   icon: Icons.campaign_rounded,
@@ -6589,149 +6497,6 @@ class _ProductionAdminTools extends StatelessWidget {
     }
   }
 
-  Future<void> createPost(BuildContext context) async {
-    final title = TextEditingController();
-    final body = TextEditingController();
-    final link = TextEditingController();
-    XFile? selectedImage;
-    dynamic selectedImageBytes;
-    final submit = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(abuText(context, 'Publish a post', 'نشر منشور')),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: title,
-                    decoration: InputDecoration(
-                      labelText: abuText(context, 'Headline', 'العنوان'),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: body,
-                    maxLines: 6,
-                    decoration: InputDecoration(
-                      labelText: abuText(context, 'Post', 'المنشور'),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      final selection = await _selectAdminImage(context);
-                      if (selection == null || !context.mounted) return;
-                      setDialogState(() {
-                        selectedImage = selection.file;
-                        selectedImageBytes = selection.bytes;
-                      });
-                    },
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: Text(
-                      selectedImage == null
-                          ? abuText(
-                              context,
-                              'SELECT POST IMAGE (OPTIONAL)',
-                              'اختر صورة المنشور (اختياري)',
-                            )
-                          : selectedImage!.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (selectedImage != null) ...[
-                    const SizedBox(height: 10),
-                    _campaignImagePreview(
-                      context: context,
-                      imageUrl: '',
-                      imageBytes: selectedImageBytes,
-                      height: 180,
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: link,
-                    decoration: InputDecoration(
-                      labelText: abuText(
-                        context,
-                        'Clickable link (optional)',
-                        'الرابط القابل للنقر (اختياري)',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(abuText(context, 'CANCEL', 'إلغاء')),
-            ),
-            TextButton.icon(
-              onPressed: () => _showAdminPostPreview(
-                context,
-                title: title.text,
-                body: body.text,
-                imageUrl: '',
-                imageBytes: selectedImageBytes,
-                authorName: profile.displayName,
-              ),
-              icon: Icon(Icons.visibility_rounded),
-              label: Text(abuText(context, 'PREVIEW', 'معاينة')),
-            ),
-            FilledButton(
-              onPressed: () {
-                final linkError =
-                    link.text.trim().isNotEmpty &&
-                    externalHttpUri(link.text) == null;
-                if (title.text.trim().isEmpty ||
-                    body.text.trim().isEmpty ||
-                    linkError) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        abuText(
-                          context,
-                          linkError
-                              ? 'Enter a valid clickable link.'
-                              : 'Add a headline and post content.',
-                          linkError
-                              ? 'أدخل رابطاً صالحاً.'
-                              : 'أضف عنواناً ومحتوى للمنشور.',
-                        ),
-                      ),
-                    ),
-                  );
-                  return;
-                }
-                Navigator.pop(context, true);
-              },
-              child: Text(abuText(context, 'PUBLISH', 'نشر')),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (submit != true || !context.mounted) return;
-    await _adminAction(context, () async {
-      final uploadedImageUrl = selectedImage == null
-          ? ''
-          : await repository.uploadPostImage(selectedImage!);
-      return repository.createPost(
-        title: title.text,
-        body: body.text,
-        imageUrl: uploadedImageUrl,
-        linkUrl: link.text,
-        authorName: profile.displayName,
-      );
-    }, abuText(context, 'Post published.', 'تم نشر المنشور.'));
-  }
-
   Future<void> editAnnouncement(BuildContext context) async {
     LaunchAnnouncement? existing;
     try {
@@ -7098,8 +6863,8 @@ class _ProductionAdminTools extends StatelessWidget {
                             uploading = false;
                             uploadError = abuText(
                               context,
-                              'Image upload is not available. Enable Firebase Storage for this project and try again. ${productionErrorMessage(error)}',
-                              'رفع الصور غير متاح. فعّل Firebase Storage لهذا المشروع ثم حاول مجدداً. ${productionErrorMessage(error)}',
+                              'The media server could not save this image. Check the server upload volume and try again. ${productionErrorMessage(error)}',
+                              'تعذّر على خادم الوسائط حفظ هذه الصورة. تحقق من مساحة رفع الملفات في الخادم ثم حاول مجدداً. ${productionErrorMessage(error)}',
                             );
                           });
                           return;
@@ -7843,18 +7608,6 @@ class _AdminRolesDialogState extends State<_AdminRolesDialog> {
   }
 }
 
-class _AdminRedemptionRecord {
-  const _AdminRedemptionRecord({
-    required this.redemption,
-    required this.userLabel,
-    required this.note,
-  });
-
-  final AbuRewardRedemption redemption;
-  final String userLabel;
-  final String note;
-}
-
 Future<void> _showAdminRedemptionManager(
   BuildContext context,
   ProductionRepository repository,
@@ -7867,45 +7620,8 @@ Future<void> _showAdminRedemptionManager(
     content: SizedBox(
       width: 860,
       height: 580,
-      child: StreamBuilder<List<_AdminRedemptionRecord>>(
-        stream: repository.firestore
-            .collection('loyaltyRedemptions')
-            .orderBy('createdAt', descending: true)
-            .limit(200)
-            .snapshots()
-            .map(
-              (snapshot) => snapshot.docs
-                  .map((document) {
-                    final data = document.data();
-                    final userLabel =
-                        [
-                              data['userDisplayName'],
-                              data['displayName'],
-                              data['userEmail'],
-                              data['email'],
-                              data['userId'],
-                            ]
-                            .whereType<String>()
-                            .map((value) => value.trim())
-                            .firstWhere(
-                              (value) => value.isNotEmpty,
-                              orElse: () => '',
-                            );
-                    final note =
-                        (data['statusNote'] ??
-                                data['adminNote'] ??
-                                data['note'])
-                            as String? ??
-                        '';
-                    return _AdminRedemptionRecord(
-                      redemption: AbuRewardRedemption.fromDocument(document),
-                      userLabel: userLabel,
-                      note: note.trim(),
-                    );
-                  })
-                  .toList(growable: false),
-            )
-            .handleError((_) => const <_AdminRedemptionRecord>[]),
+      child: StreamBuilder<List<AbuRewardRedemption>>(
+        stream: repository.watchManagedRedemptions(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
@@ -7921,8 +7637,8 @@ Future<void> _showAdminRedemptionManager(
               body: productionErrorMessage(snapshot.error!),
             );
           }
-          final records = snapshot.data ?? const <_AdminRedemptionRecord>[];
-          if (records.isEmpty) {
+          final redemptions = snapshot.data ?? const <AbuRewardRedemption>[];
+          if (redemptions.isEmpty) {
             return _ProductionEmpty(
               icon: Icons.receipt_long_rounded,
               title: abuText(
@@ -7939,10 +7655,10 @@ Future<void> _showAdminRedemptionManager(
           }
           return LayoutBuilder(
             builder: (context, constraints) => ListView.separated(
-              itemCount: records.length,
+              itemCount: redemptions.length,
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, index) => _AdminRedemptionTile(
-                record: records[index],
+                redemption: redemptions[index],
                 repository: repository,
                 compact: constraints.maxWidth < 700,
               ),
@@ -7962,22 +7678,21 @@ Future<void> _showAdminRedemptionManager(
 
 class _AdminRedemptionTile extends StatelessWidget {
   const _AdminRedemptionTile({
-    required this.record,
+    required this.redemption,
     required this.repository,
     required this.compact,
   });
 
-  final _AdminRedemptionRecord record;
+  final AbuRewardRedemption redemption;
   final ProductionRepository repository;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final redemption = record.redemption;
     final color = _redemptionStatusColor(context, redemption.status);
-    final userLabel = record.userLabel.isEmpty
+    final userLabel = redemption.userDisplayName.isEmpty
         ? abuText(context, 'Unknown user', 'مستخدم غير معروف')
-        : record.userLabel;
+        : redemption.userDisplayName;
     final status = _ChallengeMetaChip(
       icon: redemption.status == 'fulfilled'
           ? Icons.check_circle_rounded
@@ -7989,8 +7704,10 @@ class _AdminRedemptionTile extends StatelessWidget {
       tooltip: abuText(context, 'Update status', 'تحديث الحالة'),
       onPressed: () => showDialog<void>(
         context: context,
-        builder: (_) =>
-            _RedemptionStatusDialog(repository: repository, record: record),
+        builder: (_) => _RedemptionStatusDialog(
+          repository: repository,
+          redemption: redemption,
+        ),
       ),
       icon: Icon(Icons.edit_note_rounded),
     );
@@ -8017,9 +7734,13 @@ class _AdminRedemptionTile extends StatelessWidget {
               '${_productionDate(redemption.createdAt)} · ${redemption.cost} PTS',
               style: TextStyle(color: _muted, fontSize: 12),
             ),
-            if (record.note.isNotEmpty) ...[
+            if (redemption.note.isNotEmpty) ...[
               const SizedBox(height: 7),
-              Text(record.note, maxLines: 2, overflow: TextOverflow.ellipsis),
+              Text(
+                redemption.note,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
             Align(alignment: AlignmentDirectional.centerEnd, child: editButton),
           ],
@@ -8041,9 +7762,9 @@ class _AdminRedemptionTile extends StatelessWidget {
         [
           userLabel,
           '${_productionDate(redemption.createdAt)} · ${redemption.cost} PTS',
-          if (record.note.isNotEmpty) record.note,
+          if (redemption.note.isNotEmpty) redemption.note,
         ].join('\n'),
-        maxLines: record.note.isEmpty ? 2 : 3,
+        maxLines: redemption.note.isEmpty ? 2 : 3,
         overflow: TextOverflow.ellipsis,
       ),
       trailing: Row(
@@ -8057,11 +7778,11 @@ class _AdminRedemptionTile extends StatelessWidget {
 class _RedemptionStatusDialog extends StatefulWidget {
   const _RedemptionStatusDialog({
     required this.repository,
-    required this.record,
+    required this.redemption,
   });
 
   final ProductionRepository repository;
-  final _AdminRedemptionRecord record;
+  final AbuRewardRedemption redemption;
 
   @override
   State<_RedemptionStatusDialog> createState() =>
@@ -8083,10 +7804,10 @@ class _RedemptionStatusDialogState extends State<_RedemptionStatusDialog> {
   @override
   void initState() {
     super.initState();
-    status = statuses.contains(widget.record.redemption.status)
-        ? widget.record.redemption.status
+    status = statuses.contains(widget.redemption.status)
+        ? widget.redemption.status
         : 'pending';
-    note = TextEditingController(text: widget.record.note);
+    note = TextEditingController(text: widget.redemption.note);
   }
 
   @override
@@ -8099,7 +7820,7 @@ class _RedemptionStatusDialogState extends State<_RedemptionStatusDialog> {
     setState(() => saving = true);
     try {
       await widget.repository.updateRedemptionStatus(
-        widget.record.redemption.id,
+        widget.redemption.id,
         status,
         note: note.text.trim(),
       );
@@ -8135,7 +7856,7 @@ class _RedemptionStatusDialogState extends State<_RedemptionStatusDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            widget.record.redemption.rewardTitle,
+            widget.redemption.rewardTitle,
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 14),
