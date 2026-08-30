@@ -29,9 +29,10 @@ class AbuAppPreferences extends ChangeNotifier {
   Future<void> load() async {
     if (_loaded) return;
     final preferences = await SharedPreferences.getInstance();
-    themeMode = preferences.getString(_themeKey) == 'light'
-        ? ThemeMode.light
-        : ThemeMode.dark;
+    // Abu 3meer is intentionally dark-only. Normalize legacy preferences so
+    // an old light-mode value can never reappear after an upgrade.
+    themeMode = ThemeMode.dark;
+    await preferences.setString(_themeKey, 'dark');
     language = preferences.getString(_languageKey) == 'ar'
         ? AbuLanguage.arabic
         : AbuLanguage.english;
@@ -45,14 +46,12 @@ class AbuAppPreferences extends ChangeNotifier {
   }
 
   Future<void> setThemeMode(ThemeMode value) async {
-    if (themeMode == value) return;
-    themeMode = value;
-    notifyListeners();
+    if (themeMode != ThemeMode.dark) {
+      themeMode = ThemeMode.dark;
+      notifyListeners();
+    }
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(
-      _themeKey,
-      value == ThemeMode.light ? 'light' : 'dark',
-    );
+    await preferences.setString(_themeKey, 'dark');
   }
 
   Future<void> setLanguage(AbuLanguage value) async {

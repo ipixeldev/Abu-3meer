@@ -4495,13 +4495,13 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                                   _CountryFlagWidget(
                                     country: profile.country,
                                     flagEmoji: profile.countryFlag,
-                                    size: 14,
+                                    size: 22,
                                   ),
                                   const SizedBox(height: 6),
                                   _ProductionTeamBadge(
                                     team: profile.supportedTeam,
                                     source: profile.supportedTeamLogo,
-                                    size: 24,
+                                    size: 34,
                                   ),
                                 ],
                               ),

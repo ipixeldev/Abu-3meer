@@ -1990,8 +1990,6 @@ class _ProductionShellState extends State<_ProductionShell>
       _ProductionProfile(repository: widget.repository, profile: profile),
       _ProductionSettings(repository: widget.repository, profile: profile),
       if (profile.canManageContent)
-        _ProductionGames(repository: widget.repository, profile: profile),
-      if (profile.canManageContent)
         _ProductionAdmin(repository: widget.repository, profile: profile),
     ];
     if (index >= pages.length) index = _homeShellPageIndex;
@@ -2007,8 +2005,6 @@ class _ProductionShellState extends State<_ProductionShell>
       (Icons.card_giftcard_rounded, abuText(context, 'Rewards', 'المكافآت')),
       (Icons.person_rounded, abuText(context, 'Profile', 'حسابي')),
       (Icons.settings_rounded, abuText(context, 'Settings', 'الإعدادات')),
-      if (profile.canManageContent)
-        (Icons.sports_esports_rounded, abuText(context, 'Games', 'الألعاب')),
       if (profile.canManageContent)
         (
           Icons.admin_panel_settings_rounded,
@@ -2654,7 +2650,9 @@ class _ProductionHome extends StatelessWidget {
             }
             return Column(
               children: [
-                for (var i = 0; i < matches.length; i++) ...[
+                // Home keeps a compact preview; the Predict tab is the full
+                // fixture list.
+                for (var i = 0; i < matches.take(1).length; i++) ...[
                   if (i > 0) const SizedBox(height: 16),
                   _ProductionMatchCard(
                     event: matches[i],
@@ -10207,22 +10205,10 @@ class _ProductionSettings extends StatelessWidget {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
                   child: SizedBox(
                     width: double.infinity,
-                    child: SegmentedButton<ThemeMode>(
-                      segments: [
-                        ButtonSegment(
-                          value: ThemeMode.dark,
-                          icon: Icon(Icons.dark_mode_rounded),
-                          label: Text(abuText(context, 'Dark', 'داكن')),
-                        ),
-                        ButtonSegment(
-                          value: ThemeMode.light,
-                          icon: Icon(Icons.light_mode_rounded),
-                          label: Text(abuText(context, 'Light', 'فاتح')),
-                        ),
-                      ],
-                      selected: {preferences.themeMode},
-                      onSelectionChanged: (selection) =>
-                          preferences.setThemeMode(selection.first),
+                    child: ListTile(
+                      leading: const Icon(Icons.dark_mode_rounded),
+                      title: Text(abuText(context, 'Dark mode', 'الوضع الداكن')),
+                      subtitle: Text(abuText(context, 'Always enabled', 'مفعّل دائماً')),
                     ),
                   ),
                 ),
@@ -10301,23 +10287,6 @@ class _ProductionSettings extends StatelessWidget {
                   repository: repository,
                 ),
                 const Divider(height: 1),
-                _SettingsNotificationTile(
-                  icon: Icons.article_rounded,
-                  title: abuText(
-                    context,
-                    'News and posts',
-                    'الأخبار والمنشورات',
-                  ),
-                  subtitle: abuText(
-                    context,
-                    'Updates published by Abu 3meer.',
-                    'التحديثات التي ينشرها أبو عمير.',
-                  ),
-                  value: preferences.newsNotifications,
-                  onChanged: preferences.setNewsNotifications,
-                  repository: repository,
-                ),
-                const Divider(height: 1),
                 Padding(
                   padding: const EdgeInsets.all(12),
                   child: OutlinedButton.icon(
@@ -10345,8 +10314,8 @@ class _ProductionSettings extends StatelessWidget {
                                 content: Text(
                                   abuText(
                                     context,
-                                    'Server push sent to ${result['sentCount']} device(s).',
-                                    'أرسل الخادم الإشعار إلى ${result['sentCount']} جهاز.',
+                                    'Push result: ${result['sentCount'] ?? 0} sent, ${result['failedCount'] ?? 0} failed.',
+                                    'نتيجة الإشعار: ${result['sentCount'] ?? 0} أُرسل، ${result['failedCount'] ?? 0} فشل.',
                                   ),
                                 ),
                               ),
