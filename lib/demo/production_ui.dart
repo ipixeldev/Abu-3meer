@@ -10207,8 +10207,12 @@ class _ProductionSettings extends StatelessWidget {
                     width: double.infinity,
                     child: ListTile(
                       leading: const Icon(Icons.dark_mode_rounded),
-                      title: Text(abuText(context, 'Dark mode', 'الوضع الداكن')),
-                      subtitle: Text(abuText(context, 'Always enabled', 'مفعّل دائماً')),
+                      title: Text(
+                        abuText(context, 'Dark mode', 'الوضع الداكن'),
+                      ),
+                      subtitle: Text(
+                        abuText(context, 'Always enabled', 'مفعّل دائماً'),
+                      ),
                     ),
                   ),
                 ),

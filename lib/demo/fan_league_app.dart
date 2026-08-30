@@ -41,25 +41,33 @@ const _muted = Color(0xFF929CAA);
 const _blue = Color(0xFF3878FF);
 const _red = Color(0xFFFF4D62);
 
+// Retained as internal fallbacks for shared theme-building code. The app is
+// locked to ThemeMode.dark and no light-mode control is exposed to users.
+const _lightInk = Color(0xFF172033);
+const _lightCanvas = Color(0xFFF3F6FB);
+const _lightSurface = Color(0xFFFFFFFF);
+const _lightSurface2 = Color(0xFFE9EFF8);
+const _lightLine = Color(0xFFD4DDEA);
+const _lightMuted = Color(0xFF66758A);
+const _lightPrimary = Color(0xFF2457D6);
+const _lightPrimaryDark = Color(0xFF173B98);
+const _lightAccent = Color(0xFFC44762);
+const _lightSuccess = Color(0xFF087F5B);
+
 bool _isDarkTheme(BuildContext context) => true;
 
 /// The production accent deliberately changes with the selected appearance.
 /// Dark mode keeps the original stadium-lime identity, while light mode uses
 /// the higher-contrast royal blue palette requested for daylight surfaces.
-Color _productionPrimary(BuildContext context) =>
-    _lime;
+Color _productionPrimary(BuildContext context) => _lime;
 
-Color _productionOnPrimary(BuildContext context) =>
-    _ink;
+Color _productionOnPrimary(BuildContext context) => _ink;
 
-Color _productionSurface(BuildContext context) =>
-    _surface;
+Color _productionSurface(BuildContext context) => _surface;
 
-Color _productionLine(BuildContext context) =>
-    _line;
+Color _productionLine(BuildContext context) => _line;
 
-Color _productionMuted(BuildContext context) =>
-    _muted;
+Color _productionMuted(BuildContext context) => _muted;
 
 const _latestVideoId = 'u_pHQ5jAoWk';
 const _latestVideoUrl = 'https://www.youtube.com/watch?v=$_latestVideoId';
