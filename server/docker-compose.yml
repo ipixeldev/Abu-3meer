@@ -1,0 +1,217 @@
+services:
+  # Primary PostgreSQL 16 Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: abu3meer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-abu3meer_prod}
+      POSTGRES_USER: ${POSTGRES_USER:-abu3meer_admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    command: >
+      postgres -c shared_buffers=${POSTGRES_SHARED_BUFFERS:-512MB}
+               -c effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-1536MB}
+               -c maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-128MB}
+               -c checkpoint_completion_target=0.9
+               -c wal_buffers=16MB
+               -c default_statistics_target=100
+               -c random_page_cost=1.1
+               -c effective_io_concurrency=200
+               -c work_mem=${POSTGRES_WORK_MEM:-8MB}
+               -c min_wal_size=${POSTGRES_MIN_WAL_SIZE:-256MB}
+               -c max_wal_size=${POSTGRES_MAX_WAL_SIZE:-1GB}
+               -c max_connections=${POSTGRES_MAX_CONNECTIONS:-100}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-abu3meer_admin} -d ${POSTGRES_DB:-abu3meer_prod}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # PgBouncer Connection Pooler (Transaction Mode)
+  pgbouncer:
+    image: edoburu/pgbouncer:latest
+    container_name: abu3meer-pgbouncer
+    restart: unless-stopped
+    environment:
+      DB_USER: ${POSTGRES_USER:-abu3meer_admin}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-abu3meer_prod}
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 5000
+      DEFAULT_POOL_SIZE: 50
+      MIN_POOL_SIZE: 10
+      RESERVE_POOL_SIZE: 10
+      MAX_DB_CONNECTIONS: ${PGBOUNCER_MAX_DB_CONNECTIONS:-90}
+      AUTH_TYPE: plain
+      LISTEN_PORT: 6432
+    networks:
+      - internal-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Redis 7 (Cache, Leaderboards, Distributed Redlock, BullMQ)
+  redis:
+    image: redis:7-alpine
+    container_name: abu3meer-redis
+    restart: unless-stopped
+    # BullMQ requires noeviction; evicting queue metadata can lose scheduled
+    # settlement and push jobs under memory pressure.
+    command: redis-server --appendonly yes --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy noeviction --requirepass ${REDIS_PASSWORD:-redis_secret_password}
+    volumes:
+      - redisdata:/data
+    networks:
+      - internal-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secret_password}", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # A named volume is mounted over the image's /app/uploads directory. Docker
+  # may create that volume as root, hiding the ownership prepared in the
+  # Dockerfile. Normalize it before the unprivileged Node process starts so
+  # avatar and admin image uploads remain writable after fresh installs and
+  # restores.
+  uploads-init:
+    image: alpine:latest
+    container_name: abu3meer-uploads-init
+    restart: "no"
+    command: ["sh", "-c", "mkdir -p /uploads && chown -R 1000:1000 /uploads && chmod 750 /uploads"]
+    volumes:
+      - mediauploads:/uploads
+
+  # Abu 3meer Fastify Backend API & Background Workers
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: abu3meer-api
+    restart: unless-stopped
+    ports:
+      # Cloudflare reaches the service on internal-net. Bind host access to
+      # loopback by default; set API_BIND_ADDRESS=0.0.0.0 only for LAN testing.
+      - "${API_BIND_ADDRESS:-127.0.0.1}:${API_PORT:-3001}:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      HOST: 0.0.0.0
+      DATABASE_URL: postgres://${POSTGRES_USER:-abu3meer_admin}:${POSTGRES_PASSWORD:-change_me_in_production}@pgbouncer:6432/${POSTGRES_DB:-abu3meer_prod}
+      DIRECT_DATABASE_URL: postgres://${POSTGRES_USER:-abu3meer_admin}:${POSTGRES_PASSWORD:-change_me_in_production}@postgres:5432/${POSTGRES_DB:-abu3meer_prod}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis_secret_password}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-abu-3meer-9fd70}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://abu3meer.com,https://www.abu3meer.com,https://abu-3meer-9fd70.web.app,https://abu-3meer-9fd70.firebaseapp.com}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-abu3meer-assets}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-https://assets.abu3meer.com}
+      UPLOAD_DIRECTORY: /app/uploads
+      # Leave blank until a stable tunnel hostname exists. When blank, upload
+      # responses derive the HTTPS host from Cloudflare's forwarded request.
+      UPLOAD_PUBLIC_BASE_URL: ${UPLOAD_PUBLIC_BASE_URL:-}
+      SPORTSDB_API_KEY: ${SPORTSDB_API_KEY:-123}
+      API_FOOTBALL_API_KEY: ${API_FOOTBALL_API_KEY:-}
+      API_FOOTBALL_FEATURED_TEAM_IDS: ${API_FOOTBALL_FEATURED_TEAM_IDS:-541,529}
+      API_FOOTBALL_DAILY_REQUEST_BUDGET: ${API_FOOTBALL_DAILY_REQUEST_BUDGET:-140000}
+      SPORTSDB_EVENT_CACHE_TTL_SECONDS: ${SPORTSDB_EVENT_CACHE_TTL_SECONDS:-300}
+      SPORTSDB_LIVE_CACHE_TTL_SECONDS: ${SPORTSDB_LIVE_CACHE_TTL_SECONDS:-45}
+      SPORTSDB_LINEUP_CACHE_TTL_SECONDS: ${SPORTSDB_LINEUP_CACHE_TTL_SECONDS:-1800}
+      SPORTSDB_STANDINGS_CACHE_TTL_SECONDS: ${SPORTSDB_STANDINGS_CACHE_TTL_SECONDS:-900}
+      SPORTSDB_FIXTURE_CACHE_TTL_SECONDS: ${SPORTSDB_FIXTURE_CACHE_TTL_SECONDS:-300}
+      SPORTSDB_CATALOG_CACHE_TTL_SECONDS: ${SPORTSDB_CATALOG_CACHE_TTL_SECONDS:-21600}
+      SPORTSDB_CATALOG_NEGATIVE_CACHE_TTL_SECONDS: ${SPORTSDB_CATALOG_NEGATIVE_CACHE_TTL_SECONDS:-300}
+      SPORTSDB_NEGATIVE_CACHE_TTL_SECONDS: ${SPORTSDB_NEGATIVE_CACHE_TTL_SECONDS:-20}
+      SPORTSDB_DAILY_REQUEST_BUDGET: ${SPORTSDB_DAILY_REQUEST_BUDGET:-140000}
+      SPORTSDB_FEATURED_TEAM_IDS: ${SPORTSDB_FEATURED_TEAM_IDS:-133738,133739}
+      UPLOAD_MAX_IMAGE_BYTES: ${UPLOAD_MAX_IMAGE_BYTES:-8388608}
+    volumes:
+      - mediauploads:/app/uploads
+    networks:
+      - internal-net
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      uploads-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/ready').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # Cloudflare Tunnel (Exposes api.abu3meer.com outbound securely on production server)
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: abu3meer-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    networks:
+      - internal-net
+    depends_on:
+      api:
+        condition: service_healthy
+    profiles:
+      - production
+
+  # Automated Database Backup Worker (Encrypted daily upload to Cloudflare R2 / S3)
+  backup:
+    image: alpine:latest
+    container_name: abu3meer-backup
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-abu3meer_prod}
+      POSTGRES_USER: ${POSTGRES_USER:-abu3meer_admin}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-change_me_in_production}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET: ${R2_BACKUP_BUCKET:-abu3meer-backups}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
+      TZ: ${TZ:-Europe/Stockholm}
+    volumes:
+      - ./scripts/backup.sh:/backup.sh:ro
+      - backuptmp:/tmp/backups
+      - mediauploads:/uploads:ro
+    networks:
+      - internal-net
+    entrypoint: ["/bin/sh", "-c", "apk add --no-cache postgresql-client aws-cli gnupg curl tzdata && cp /backup.sh /run_backup.sh && chmod +x /run_backup.sh && echo '0 3 * * * /run_backup.sh >> /tmp/backups/cron.log 2>&1' > /etc/crontabs/root && crond -f -d 8"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Start this only after the R2 and encryption variables are configured:
+    # docker compose --profile backup up -d backup
+    profiles:
+      - backup
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  backuptmp:
+    driver: local
+  mediauploads:
+    driver: local
+
+networks:
+  internal-net:
+    driver: bridge

@@ -40,6 +40,78 @@
         {"fieldPath": "matchId", "order": "ASCENDING"},
         {"fieldPath": "bothTeamsScore", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "predictions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "userId", "order": "ASCENDING"},
+        {"fieldPath": "submittedAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "loyaltyRedemptions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "userId", "order": "ASCENDING"},
+        {"fieldPath": "createdAt", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "achievementDefinitions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "enabled", "order": "ASCENDING"},
+        {"fieldPath": "sortOrder", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "levelDefinitions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "enabled", "order": "ASCENDING"},
+        {"fieldPath": "sortOrder", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "suspiciousEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "lastSeen", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "suspiciousEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "userId", "order": "ASCENDING"},
+        {"fieldPath": "lastSeen", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "suspiciousEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "reason", "order": "ASCENDING"},
+        {"fieldPath": "lastSeen", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "matchResultJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "nextAttemptAt", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "matchResultJobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "leaseExpiresAt", "order": "ASCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

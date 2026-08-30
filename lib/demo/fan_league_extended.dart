@@ -211,7 +211,7 @@ class _RegistrationFlowState extends State<_RegistrationFlow> {
                             padding: const EdgeInsets.all(17),
                           ),
                           child: Text(
-                            step == 2 ? 'JOIN THE FAN LEAGUE' : 'CONTINUE',
+                            step == 2 ? 'JOIN THE COMMUNITY' : 'CONTINUE',
                             style: const TextStyle(
                               fontWeight: FontWeight.w900,
                               letterSpacing: 1,
@@ -985,7 +985,7 @@ class _ObsOverlayPageState extends State<_ObsOverlayPage> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('LIVE FAN LEAGUE', style: _display(28)),
+                        Text('LIVE COMMUNITY', style: _display(28)),
                         const Text(
                           'EL CLÁSICO SPECIAL',
                           style: TextStyle(

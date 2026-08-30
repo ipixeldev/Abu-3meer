@@ -57,20 +57,18 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyBeioMEGMeX3ZVDshOFwjpqIDJarXX5jUo',
-    appId: '1:418913638245:android:52c9441f3ac24b78cef38c',
-    messagingSenderId: '418913638245',
-    projectId: 'abu-3meer',
-    storageBucket: 'abu-3meer.firebasestorage.app',
+    apiKey: 'AIzaSyA6Q7rvmvMmsJ6i827r_vnY_nUhqhGN29E',
+    appId: '1:701810344443:android:4d78f9446bc398a25a4b5e',
+    messagingSenderId: '701810344443',
+    projectId: 'abu-3meer-9fd70',
+    storageBucket: 'abu-3meer-9fd70.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyADJTxDTHx-kWjIZp2rD-OaJUGFIl6adyI',
-    appId: '1:418913638245:ios:a3b2f288d71ebfa2cef38c',
-    messagingSenderId: '418913638245',
-    projectId: 'abu-3meer',
-    storageBucket: 'abu-3meer.firebasestorage.app',
-    iosClientId: '418913638245-mvnbj4infs8jkev15109pidlmb8m9j5k.apps.googleusercontent.com',
+    apiKey: 'AIzaSyDN6OBPnm4wqgAcILPqWGG8jYFLZHq63G4',
+    appId: '1:701810344443:ios:d6a1af8e1afb3d725a4b5e',
+    messagingSenderId: '701810344443',
+    projectId: 'abu-3meer-9fd70',
+    storageBucket: 'abu-3meer-9fd70.firebasestorage.app',
     iosBundleId: 'com.abu3meer.app',
   );
 }

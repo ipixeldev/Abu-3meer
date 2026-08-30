@@ -13,6 +13,7 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -31,6 +32,23 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        getByName("debug") {
+            // Use a project-specific debug identity so Firebase/Google OAuth
+            // does not collide with the legacy Firebase project's debug key.
+            // The key is intentionally not committed. Fresh clones fall back
+            // to Gradle's standard per-user debug key until a local project
+            // key is generated and its SHA fingerprints are added to Firebase.
+            val projectDebugKeystore = file("abu3meer-debug.keystore")
+            if (projectDebugKeystore.exists()) {
+                storeFile = projectDebugKeystore
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
             // Replace this with the production Play signing configuration before release.
@@ -39,9 +57,14 @@ android {
     }
 }
 
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+}
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+        freeCompilerArgs.add("-Xannotation-default-target=param-property")
     }
 }
 

@@ -42,7 +42,6 @@ final List<Match> mockMatches = [
     awayScore: 3,
     firstScorerId: 'b_9', // Lamine Yamal
     manOfMatchId: 'b_6', // Pedri
-    bothTeamsScored: true,
     participatingFans: 18420,
     totalXpPool: 3200000,
     createdAt: DateTime(2024, 3, 15),
@@ -84,7 +83,6 @@ final List<Match> mockMatches = [
     awayScore: 2,
     firstScorerId: 'm_9', // Mbappé
     manOfMatchId: 'm_8', // Bellingham
-    bothTeamsScored: true,
     participatingFans: 14200,
     totalXpPool: 2450000,
     createdAt: DateTime(2024, 4, 20),
@@ -108,7 +106,6 @@ final List<Match> mockMatches = [
     awayScore: 1,
     firstScorerId: 'b_11', // Lewandowski
     manOfMatchId: 'b_11', // Lewandowski
-    bothTeamsScored: true,
     participatingFans: 11800,
     totalXpPool: 1980000,
     createdAt: DateTime(2024, 3, 10),
@@ -202,7 +199,6 @@ final Map<String, MatchPredictionConfig> mockPredictionConfigs = {
       PredictionType.correctScore: 50,
       PredictionType.firstScorer: 30,
       PredictionType.manOfMatch: 25,
-      PredictionType.bothTeamsScore: 15,
     },
   ),
   'mtc_clasico_2024_04_21': MatchPredictionConfig(
@@ -212,7 +208,6 @@ final Map<String, MatchPredictionConfig> mockPredictionConfigs = {
       PredictionType.correctScore: 50,
       PredictionType.firstScorer: 30,
       PredictionType.manOfMatch: 25,
-      PredictionType.bothTeamsScore: 15,
     },
   ),
   'mtc_ucl_2024_09_17': MatchPredictionConfig(
@@ -222,7 +217,6 @@ final Map<String, MatchPredictionConfig> mockPredictionConfigs = {
       PredictionType.correctScore: 60,
       PredictionType.firstScorer: 35,
       PredictionType.manOfMatch: 30,
-      PredictionType.bothTeamsScore: 20,
     },
   ),
   'mtc_laliga_atm_2024_05_12': MatchPredictionConfig(
@@ -232,7 +226,6 @@ final Map<String, MatchPredictionConfig> mockPredictionConfigs = {
       PredictionType.correctScore: 50,
       PredictionType.firstScorer: 30,
       PredictionType.manOfMatch: 25,
-      PredictionType.bothTeamsScore: 15,
     },
   ),
   'mtc_cdr_2024_04_06': MatchPredictionConfig(
@@ -242,7 +235,6 @@ final Map<String, MatchPredictionConfig> mockPredictionConfigs = {
       PredictionType.correctScore: 40,
       PredictionType.firstScorer: 25,
       PredictionType.manOfMatch: 20,
-      PredictionType.bothTeamsScore: 10,
     },
   ),
   'mtc_supercup_2025_01_12': MatchPredictionConfig(
@@ -252,7 +244,6 @@ final Map<String, MatchPredictionConfig> mockPredictionConfigs = {
       PredictionType.correctScore: 75,
       PredictionType.firstScorer: 40,
       PredictionType.manOfMatch: 35,
-      PredictionType.bothTeamsScore: 25,
     },
   ),
 };
@@ -273,7 +264,6 @@ Map<PredictionType, dynamic> demoUserLockedPredictionsApr21 = {
   PredictionType.correctScore: '2-3',
   PredictionType.firstScorer: 'b_9', // Lamine Yamal
   PredictionType.manOfMatch: 'b_6', // Pedri
-  PredictionType.bothTeamsScore: true,
 };
 
 /// Demo user's predictions for the Atlético match (May 12).
@@ -282,5 +272,4 @@ Map<PredictionType, dynamic> demoUserLockedPredictionsMay12 = {
   PredictionType.correctScore: '1-2',
   PredictionType.firstScorer: 'm_9', // Mbappé
   PredictionType.manOfMatch: 'm_8', // Bellingham
-  PredictionType.bothTeamsScore: true,
 };

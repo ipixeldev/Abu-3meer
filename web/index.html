@@ -24,21 +24,18 @@
       forced-color-adjust: none; }
     #app-shell { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center;
       overflow: hidden; background: #080b10; color: white; font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-      transition: opacity .5s ease, visibility .5s ease; }
+      transition: opacity .4s ease, visibility .4s ease; }
     #app-shell.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
-    #app-shell::before { content: ''; position: absolute; inset: -20%;
-      background: radial-gradient(circle at 50% 37%, #2c3c19 0, #12180f 20%, #080b10 52%); }
-    #app-shell::after { content: ''; position: absolute; width: min(64vw, 620px); aspect-ratio: 1;
-      border: 1px solid rgba(200,255,56,.08); border-radius: 50%; box-shadow:
-      0 0 0 70px rgba(200,255,56,.025), 0 0 0 150px rgba(200,255,56,.018); }
+    #app-shell::before { content: ''; position: absolute; inset: 0;
+      background: radial-gradient(circle at 50% 40%, rgba(200,255,56,.06) 0%, rgba(8,11,16,.98) 65%, #080b10 100%); }
     .shell-card { position: relative; z-index: 1; width: min(88vw, 430px); text-align: center; }
-    #splash-animation { width: 174px; height: 174px; margin: auto; filter: drop-shadow(0 0 32px rgba(200,255,56,.18)); }
-    #splash-fallback { display: none; width: 122px; height: 122px; margin: 26px auto;
-      place-items: center; border: 1px solid rgba(200,255,56,.34); border-radius: 50%; font-size: 54px; }
-    .shell-title { margin-top: 10px; font-size: clamp(30px, 8vw, 40px); font-weight: 950; letter-spacing: 3px; }
-    .shell-kicker { margin-top: 8px; min-height: 14px; color: #c8ff38; font-size: 10px;
+    #splash-animation { width: 160px; height: 160px; margin: auto; filter: drop-shadow(0 0 32px rgba(200,255,56,.18)); }
+    #splash-fallback { display: none; width: 100px; height: 100px; margin: 20px auto;
+      place-items: center; border: 1px solid rgba(200,255,56,.34); border-radius: 50%; font-size: 24px; font-weight: 900; color: #c8ff38; }
+    .shell-title { margin-top: 14px; font-size: clamp(28px, 7vw, 36px); font-weight: 950; letter-spacing: 2.5px; }
+    .shell-kicker { margin-top: 6px; min-height: 14px; color: #c8ff38; font-size: 10px;
       font-weight: 900; letter-spacing: 2.5px; line-height: 1.5; }
-    #ball-animation { width: 72px; height: 72px; margin: 20px auto 0; }
+    #ball-animation { width: 64px; height: 64px; margin: 24px auto 0; }
     #startup-actions { display: none; margin-top: 18px; }
     #startup-actions.visible { display: block; }
     #startup-detail { margin: 0 auto 14px; max-width: 390px; color: #929caa; font-size: 11px;
@@ -74,7 +71,7 @@
   <div id="app-shell" role="status" aria-live="polite">
     <div class="shell-card">
       <div id="splash-animation" aria-hidden="true"></div>
-      <div id="splash-fallback" aria-hidden="true">⚽</div>
+      <div id="splash-fallback" aria-hidden="true">3</div>
       <div class="shell-title">ABU 3MEER</div>
       <div id="shell-status" class="shell-kicker">THE MATCH NEVER ENDS</div>
       <div id="ball-animation" aria-hidden="true"></div>

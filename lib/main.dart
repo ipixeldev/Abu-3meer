@@ -5,24 +5,45 @@ import 'package:flutter/material.dart';
 
 import 'demo/fan_league_app.dart';
 import 'firebase_options.dart';
+import 'production/app_check_config.dart';
 import 'production/app_preferences.dart';
-import 'production/temporary_mock_data.dart';
+import 'production/notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  NotificationService.registerBackgroundHandler();
   runApp(
     Abu3meerBootstrap(
       initializeFirebase: () async {
-        await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        ).timeout(const Duration(seconds: 6));
+        try {
+          await Firebase.initializeApp(
+            options: DefaultFirebaseOptions.currentPlatform,
+          ).timeout(const Duration(seconds: 4));
+        } catch (_) {}
+
+        try {
+          await AbuAppCheckConfig.activate().timeout(
+            const Duration(seconds: 2),
+          );
+        } catch (_) {}
+
         if (kIsWeb) {
-          await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+          try {
+            await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+          } catch (_) {}
         }
-        await Future.wait([
-          AbuAppPreferences.instance.load(),
-          TemporaryMockData.instance.load(),
-        ]);
+
+        try {
+          await AbuAppPreferences.instance.load().timeout(
+            const Duration(seconds: 2),
+          );
+        } catch (_) {}
+
+        try {
+          await NotificationService.instance.initialize().timeout(
+            const Duration(seconds: 3),
+          );
+        } catch (_) {}
       },
     ),
   );

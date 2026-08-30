@@ -1,0 +1,10 @@
+.env
+uploads/
+dist/
+node_modules/
+transfer/
+backups/
+*.dump
+*.sql.gz
+*.tar.gz
+*.enc

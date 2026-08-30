@@ -1,0 +1,579 @@
+import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { requirePermission, requireSuperAdmin } from '../middleware/auth.js';
+import { getClient, query } from '../db/pool.js';
+import { awardPoints } from '../services/pointsService.js';
+import { matchSettlementQueue, notificationQueue } from '../queues/workers.js';
+import { notificationCategories } from '../services/notificationDomain.js';
+import { config } from '../config.js';
+
+const manageableRoles = ['fan', 'member', 'moderator', 'admin', 'super_admin'] as const;
+
+async function resolveUserId(identifier: string): Promise<string | null> {
+  const result = await query(
+    `SELECT id
+     FROM users
+     WHERE id::text = $1 OR firebase_uid = $1
+     ORDER BY (id::text = $1) DESC
+     LIMIT 1`,
+    [identifier],
+  );
+  return result.rows[0]?.id ?? null;
+}
+
+function primaryRole(roles: string[]): string {
+  for (const role of ['super_admin', 'admin', 'moderator', 'member', 'fan']) {
+    if (roles.includes(role)) return role;
+  }
+  return 'fan';
+}
+
+export async function adminRoutes(fastify: FastifyInstance) {
+  // PostgreSQL is the account source of truth. Returning both the database ID
+  // and Firebase UID lets migrated clients move to the stable database ID
+  // without hiding users that never had a Firestore profile document.
+  fastify.get('/admin/users', { preHandler: [requirePermission('users.view')] }, async (request, reply) => {
+    const schema = z.object({
+      search: z.string().trim().max(100).optional(),
+      q: z.string().trim().max(100).optional(),
+      role: z.enum(manageableRoles).optional(),
+      status: z.enum(['active', 'suspended', 'banned', 'pending_deletion']).optional(),
+      limit: z.coerce.number().int().min(1).max(200).default(100),
+      offset: z.coerce.number().int().min(0).default(0),
+    });
+    const parsed = schema.safeParse(request.query);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
+    }
+
+    const search = parsed.data.search || parsed.data.q || null;
+    const result = await query(
+      `SELECT u.id, u.firebase_uid, u.email, u.username, u.display_name,
+              u.avatar_url, u.country, u.country_code, u.supported_team,
+              u.supported_team_logo, u.is_youtube_member, u.account_status,
+              u.onboarding_completed, u.created_at, u.last_active_at,
+              p.total_points, p.monthly_points, p.season_points,
+              p.loyalty_points, p.level, p.is_guest,
+              COALESCE(
+                array_agg(DISTINCT ur.role_id) FILTER (WHERE ur.role_id IS NOT NULL),
+                '{}'
+              ) AS roles,
+              COUNT(*) OVER() AS total_count
+       FROM users u
+       JOIN user_profiles p ON p.user_id = u.id
+       LEFT JOIN user_roles ur ON ur.user_id = u.id
+       WHERE (
+         $1::text IS NULL OR
+         u.email ILIKE '%' || $1 || '%' OR
+         u.username ILIKE '%' || $1 || '%' OR
+         u.display_name ILIKE '%' || $1 || '%' OR
+         u.firebase_uid = $1 OR
+         u.id::text = $1
+       )
+       AND ($2::text IS NULL OR EXISTS (
+         SELECT 1 FROM user_roles filtered_role
+         WHERE filtered_role.user_id = u.id AND filtered_role.role_id = $2
+       ))
+       AND ($3::text IS NULL OR u.account_status = $3)
+       GROUP BY u.id, p.user_id
+       ORDER BY u.created_at DESC, u.id
+       LIMIT $4 OFFSET $5`,
+      [search, parsed.data.role ?? null, parsed.data.status ?? null, parsed.data.limit, parsed.data.offset],
+    );
+
+    const users = result.rows.map((row) => {
+      const roles = Array.isArray(row.roles) ? row.roles : [];
+      return {
+        id: row.id,
+        uid: row.firebase_uid,
+        firebaseUid: row.firebase_uid,
+        email: row.email,
+        username: row.username,
+        displayName: row.display_name,
+        avatarUrl: row.avatar_url,
+        country: row.country,
+        countryCode: row.country_code,
+        supportedTeam: row.supported_team,
+        supportedTeamLogo: row.supported_team_logo,
+        isYouTubeMember: row.is_youtube_member,
+        accountStatus: row.account_status,
+        suspended: row.account_status === 'suspended' || row.account_status === 'banned',
+        onboardingCompleted: row.onboarding_completed,
+        roles,
+        role: primaryRole(roles),
+        totalPoints: Number(row.total_points || 0),
+        monthlyPoints: Number(row.monthly_points || 0),
+        seasonPoints: Number(row.season_points || 0),
+        loyaltyPoints: Number(row.loyalty_points || 0),
+        level: Number(row.level || 1),
+        isGuest: row.is_guest,
+        createdAt: row.created_at,
+        lastActiveAt: row.last_active_at,
+      };
+    });
+    const total = Number(result.rows[0]?.total_count || 0);
+    return {
+      users,
+      total,
+      limit: parsed.data.limit,
+      offset: parsed.data.offset,
+      hasMore: parsed.data.offset + users.length < total,
+    };
+  });
+
+  // 1. Matches & Settlement (Permission: matches.manage)
+  fastify.post('/admin/matches', { preHandler: [requirePermission('matches.manage')] }, async (request, reply) => {
+    const schema = z.object({
+      id: z.string().trim().min(1).max(100),
+      competitionName: z.string().trim().min(1).max(150).default('La Liga'),
+      homeTeam: z.string().trim().min(1).max(150),
+      awayTeam: z.string().trim().min(1).max(150),
+      homeLogoUrl: z.string().url().max(500).optional().nullable(),
+      awayLogoUrl: z.string().url().max(500).optional().nullable(),
+      kickoffAt: z.string().datetime(),
+      predictionsOpenAt: z.string().datetime(),
+      predictionsCloseAt: z.string().datetime(),
+      firstScorerOptions: z.array(z.string()).default([]),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
+    }
+
+    const b = parsed.data;
+    const res = await query(
+      `INSERT INTO matches (id, competition_name, home_team, away_team, home_logo_url, away_logo_url, kickoff_at, predictions_open_at, predictions_close_at, first_scorer_options)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (id) DO UPDATE SET
+         competition_name = EXCLUDED.competition_name,
+         home_team = EXCLUDED.home_team,
+         away_team = EXCLUDED.away_team,
+         home_logo_url = EXCLUDED.home_logo_url,
+         away_logo_url = EXCLUDED.away_logo_url,
+         kickoff_at = EXCLUDED.kickoff_at,
+         predictions_open_at = EXCLUDED.predictions_open_at,
+         predictions_close_at = EXCLUDED.predictions_close_at,
+         first_scorer_options = EXCLUDED.first_scorer_options,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [
+        b.id,
+        b.competitionName,
+        b.homeTeam,
+        b.awayTeam,
+        b.homeLogoUrl || null,
+        b.awayLogoUrl || null,
+        new Date(b.kickoffAt),
+        new Date(b.predictionsOpenAt),
+        new Date(b.predictionsCloseAt),
+        JSON.stringify(b.firstScorerOptions),
+      ]
+    );
+
+    // Audit log
+    await query(
+      `INSERT INTO admin_audit_logs (admin_user_id, action, target_entity, target_id, after_state)
+       VALUES ($1, 'matches.upsert', 'match', $2, $3)`,
+      [request.user!.id, b.id, JSON.stringify(res.rows[0])]
+    );
+
+    return { success: true, match: res.rows[0] };
+  });
+
+  fastify.post('/admin/matches/:id/settle', { preHandler: [requirePermission('matches.manage')] }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const schema = z.object({
+      homeScore: z.number().int().min(0).max(30),
+      awayScore: z.number().int().min(0).max(30),
+      firstScorer: z.string().trim().max(150).default('No scorer'),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
+    }
+
+    const { homeScore, awayScore, firstScorer } = parsed.data;
+
+    await query(
+      `UPDATE matches
+       SET home_score = $1, away_score = $2, first_scorer = $3, status = 'finished', updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4`,
+      [homeScore, awayScore, firstScorer, id]
+    );
+
+    // Audit log
+    await query(
+      `INSERT INTO admin_audit_logs (admin_user_id, action, target_entity, target_id, after_state)
+       VALUES ($1, 'matches.settle', 'match', $2, $3)`,
+      [request.user!.id, id, JSON.stringify({ homeScore, awayScore, firstScorer })]
+    );
+
+    // Queue settlement worker
+    await matchSettlementQueue.add('settle', { matchId: id });
+    return { success: true, message: 'Match settlement job queued.' };
+  });
+
+  // 2. Manual Point Adjustments (Permission: points.adjust) - Requires Mandatory Reason & Audit Trail
+  fastify.post('/admin/users/:id/points', { preHandler: [requirePermission('points.adjust')] }, async (request, reply) => {
+    const { id: identifier } = request.params as { id: string };
+    const schema = z.object({
+      amount: z.number().int().min(-5000).max(5000).refine(n => n !== 0, 'Amount cannot be zero'),
+      reason: z.string().trim().min(5).max(255),
+      idempotencyKey: z.string().trim().min(8).max(120).regex(/^[A-Za-z0-9:_-]+$/).optional(),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
+    }
+
+    const { amount, reason } = parsed.data;
+    const adminUser = request.user!;
+    const id = await resolveUserId(identifier);
+    if (!id) {
+      return reply.status(404).send({ error: 'NotFound', message: 'User not found.' });
+    }
+    const idempotencyKey = parsed.data.idempotencyKey || `admin_adj:${id}:${Date.now()}`;
+
+    const awardRes = await awardPoints({
+      userId: id,
+      sourceType: 'admin_adjustment',
+      sourceId: `admin_${adminUser.id}`,
+      basePoints: amount,
+      multiplier: 1.0,
+      description: `Admin adjustment by ${adminUser.displayName}: ${reason}`,
+      idempotencyKey,
+    });
+
+    const balanceRes = await query(
+      `SELECT total_points, monthly_points, season_points
+       FROM user_profiles
+       WHERE user_id = $1`,
+      [id],
+    );
+    const balance = balanceRes.rows[0];
+    if (!balance) {
+      return reply.status(404).send({ error: 'NotFound', message: 'User profile not found.' });
+    }
+
+    // Retrying the same mobile request must not create a second ledger entry
+    // or a duplicate audit receipt.
+    if (!awardRes.alreadyAwarded) {
+      await query(
+        `INSERT INTO admin_audit_logs (admin_user_id, action, target_entity, target_id, after_state)
+         VALUES ($1, 'points.adjust', 'user', $2, $3)`,
+        [
+          adminUser.id,
+          id,
+          JSON.stringify({
+            amount,
+            reason,
+            pointsAwarded: awardRes.pointsAwarded,
+            idempotencyKey,
+            totalPoints: Number(balance.total_points || 0),
+            monthlyPoints: Number(balance.monthly_points || 0),
+            seasonPoints: Number(balance.season_points || 0),
+          }),
+        ],
+      );
+    }
+
+    return {
+      success: true,
+      adjustmentId: idempotencyKey,
+      targetUserId: identifier,
+      delta: amount,
+      pointsAwarded: awardRes.pointsAwarded,
+      totalPoints: Number(balance.total_points || 0),
+      monthlyPoints: Number(balance.monthly_points || 0),
+      seasonPoints: Number(balance.season_points || 0),
+      duplicate: awardRes.alreadyAwarded === true,
+      periodFloorApplied: false,
+    };
+  });
+
+  fastify.get(
+    '/admin/point-adjustments',
+    { preHandler: [requirePermission('points.adjust')] },
+    async () => {
+      const result = await query(
+        `SELECT a.id, a.target_id, a.created_at, a.after_state,
+                admin.firebase_uid AS admin_uid,
+                admin.display_name AS admin_display_name,
+                target.firebase_uid AS target_uid,
+                target.display_name AS target_display_name,
+                target.username AS target_username
+         FROM admin_audit_logs a
+         JOIN users admin ON admin.id = a.admin_user_id
+         LEFT JOIN users target ON target.id::text = a.target_id
+         WHERE a.action = 'points.adjust'
+         ORDER BY a.created_at DESC
+         LIMIT 50`,
+      );
+      return result.rows.map((row) => {
+        const state = row.after_state || {};
+        const delta = Number(state.amount || state.pointsAwarded || 0);
+        const totalAfter = Number(state.totalPoints || 0);
+        const monthlyAfter = Number(state.monthlyPoints || 0);
+        const seasonAfter = Number(state.seasonPoints || 0);
+        return {
+          id: row.id,
+          adminId: row.admin_uid || '',
+          adminDisplayName: row.admin_display_name || '',
+          targetUserId: row.target_uid || row.target_id || '',
+          targetDisplayName: row.target_display_name || '',
+          targetUsername: row.target_username || '',
+          delta,
+          reason: String(state.reason || ''),
+          totalBefore: Math.max(0, totalAfter - delta),
+          totalAfter,
+          monthlyBefore: Math.max(0, monthlyAfter - delta),
+          monthlyAfter,
+          seasonBefore: Math.max(0, seasonAfter - delta),
+          seasonAfter,
+          periodFloorApplied: false,
+          monthlyRolledOver: false,
+          seasonRolledOver: false,
+          monthlyPeriod: '',
+          seasonId: '',
+          createdAt: row.created_at,
+        };
+      });
+    },
+  );
+
+  // 3. User Moderation (Ban / Suspend / Activate) (Permission: users.ban / users.suspend)
+  fastify.post('/admin/users/:id/status', { preHandler: [requirePermission('users.suspend')] }, async (request, reply) => {
+    const { id: identifier } = request.params as { id: string };
+    const schema = z.object({
+      status: z.enum(['active', 'suspended', 'banned']),
+      reason: z.string().trim().min(5).max(255),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
+    }
+
+    const { status, reason } = parsed.data;
+    const id = await resolveUserId(identifier);
+    if (!id) {
+      return reply.status(404).send({ error: 'NotFound', message: 'User not found.' });
+    }
+
+    // Check if banning an admin (only Super Admin can ban admins)
+    const targetRolesRes = await query('SELECT role_id FROM user_roles WHERE user_id = $1', [id]);
+    const targetRoles = targetRolesRes.rows.map(r => r.role_id);
+    if ((targetRoles.includes('admin') || targetRoles.includes('super_admin')) && !request.user!.isSuperAdmin) {
+      return reply.status(403).send({ error: 'Forbidden', message: 'Only Super Administrators can moderate admin accounts.' });
+    }
+
+    await query('UPDATE users SET account_status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [status, id]);
+
+    // Audit log
+    await query(
+      `INSERT INTO admin_audit_logs (admin_user_id, action, target_entity, target_id, after_state)
+       VALUES ($1, 'user.status_update', 'user', $2, $3)`,
+      [request.user!.id, id, JSON.stringify({ status, reason })]
+    );
+
+    return { success: true, status };
+  });
+
+  // 4. Role Management (SUPER_ADMIN ONLY)
+  fastify.post('/admin/users/:id/roles', { preHandler: [requireSuperAdmin] }, async (request, reply) => {
+    const { id: identifier } = request.params as { id: string };
+    const schema = z.object({
+      roles: z.array(z.enum(manageableRoles)).min(1).max(manageableRoles.length),
+      reason: z.string().trim().min(5).max(255),
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
+    }
+
+    const roles = [...new Set(parsed.data.roles)];
+    if (!roles.includes('fan')) roles.unshift('fan');
+    const client = await getClient();
+    try {
+      await client.query('BEGIN');
+      // Serialize role mutations so two simultaneous demotions cannot both
+      // pass the final-super-admin check.
+      await client.query(`SELECT pg_advisory_xact_lock(hashtext('abu3meer.role-management'))`);
+      const targetRes = await client.query(
+        `SELECT id, email
+         FROM users
+         WHERE id::text = $1 OR firebase_uid = $1
+         ORDER BY (id::text = $1) DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [identifier],
+      );
+      if (targetRes.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return reply.status(404).send({ error: 'NotFound', message: 'User not found.' });
+      }
+      const id = targetRes.rows[0].id;
+      const targetEmail = String(targetRes.rows[0].email || '').toLowerCase();
+      if (targetEmail === config.adminEmails[0] && !roles.includes('super_admin')) {
+        await client.query('ROLLBACK');
+        return reply.status(400).send({
+          error: 'SafetyError',
+          message: 'The configured bootstrap Super Administrator cannot be demoted.',
+        });
+      }
+      const existingRes = await client.query(
+        'SELECT role_id FROM user_roles WHERE user_id = $1 ORDER BY role_id',
+        [id],
+      );
+      const previousRoles = existingRes.rows.map((row) => String(row.role_id));
+
+      if (previousRoles.includes('super_admin') && !roles.includes('super_admin')) {
+        const superAdminCountRes = await client.query(
+          `SELECT COUNT(*) FROM user_roles WHERE role_id = 'super_admin' AND user_id != $1`,
+          [id],
+        );
+        if (Number(superAdminCountRes.rows[0].count) === 0) {
+          await client.query('ROLLBACK');
+          return reply.status(400).send({
+            error: 'SafetyError',
+            message: 'Cannot remove the last remaining Super Administrator.',
+          });
+        }
+      }
+
+      await client.query('DELETE FROM user_roles WHERE user_id = $1', [id]);
+      await client.query(
+        `INSERT INTO user_roles (user_id, role_id, assigned_by)
+         SELECT $1, role_id, $3
+         FROM unnest($2::varchar[]) AS role_id`,
+        [id, roles, request.user!.id],
+      );
+      await client.query(
+        `INSERT INTO admin_audit_logs
+           (admin_user_id, action, target_entity, target_id, before_state, after_state)
+         VALUES ($1, 'roles.assign', 'user', $2, $3, $4)`,
+        [
+          request.user!.id,
+          id,
+          JSON.stringify({ roles: previousRoles }),
+          JSON.stringify({ roles, reason: parsed.data.reason }),
+        ],
+      );
+      await client.query('COMMIT');
+      return { success: true, userId: id, roles };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  });
+
+  // 5. Point Rules Configuration (Permission: settings.manage)
+  fastify.put('/admin/point-rules', { preHandler: [requirePermission('settings.manage')] }, async (request, reply) => {
+    const schema = z.record(z.string(), z.number().int().min(1).max(500));
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
+    }
+
+    for (const [key, basePoints] of Object.entries(parsed.data)) {
+      await query(
+        `UPDATE point_rules SET base_points = $1, updated_at = CURRENT_TIMESTAMP WHERE key = $2`,
+        [basePoints, key]
+      );
+    }
+
+    // Audit log
+    await query(
+      `INSERT INTO admin_audit_logs (admin_user_id, action, target_entity, target_id, after_state)
+       VALUES ($1, 'point_rules.update', 'settings', 'point_rules', $2)`,
+      [request.user!.id, JSON.stringify(parsed.data)]
+    );
+
+    return { success: true, updatedRules: parsed.data };
+  });
+
+  // 6. Security & Audit Logs (Permission: audit.view)
+  fastify.get('/admin/audit-logs', { preHandler: [requirePermission('audit.view')] }, async (request, reply) => {
+    const res = await query(
+      `SELECT a.*, u.display_name as admin_name, u.email as admin_email
+       FROM admin_audit_logs a
+       JOIN users u ON u.id = a.admin_user_id
+       ORDER BY a.created_at DESC
+       LIMIT 50`
+    );
+    return res.rows;
+  });
+
+  fastify.get('/admin/suspicious-activity', { preHandler: [requirePermission('audit.view')] }, async (request, reply) => {
+    const res = await query(
+      `SELECT s.*, u.username, u.display_name, u.account_status
+       FROM suspicious_activity_logs s
+       LEFT JOIN users u ON u.id = s.user_id
+       ORDER BY s.created_at DESC
+       LIMIT 50`
+    );
+    return res.rows;
+  });
+
+  // 7. Notification Broadcast (Permission: notifications.send)
+  fastify.post('/admin/notifications/broadcast', { preHandler: [requirePermission('notifications.send')] }, async (request, reply) => {
+    const schema = z.object({
+      title: z.string().trim().min(2).max(100),
+      body: z.string().trim().min(2).max(500),
+      data: z.record(z.string(), z.string()).optional(),
+      category: z.enum(notificationCategories).default('general'),
+      targetAudience: z.enum(['all', 'members_only', 'team_specific', 'inactive_users']).default('all'),
+      targetTeam: z.string().trim().min(2).max(100).optional(),
+    }).superRefine((value, ctx) => {
+      if (value.targetAudience === 'team_specific' && !value.targetTeam) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['targetTeam'],
+          message: 'targetTeam is required for a team_specific notification.',
+        });
+      }
+    });
+
+    const parsed = schema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
+    }
+
+    const campaign = await query(
+      `INSERT INTO notification_campaigns
+         (title, body, target_audience, target_team, category, data_payload, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [
+        parsed.data.title,
+        parsed.data.body,
+        parsed.data.targetAudience,
+        parsed.data.targetTeam || null,
+        parsed.data.category,
+        JSON.stringify(parsed.data.data || {}),
+        request.user!.id,
+      ]
+    );
+    const campaignId = campaign.rows[0].id;
+    await notificationQueue.add(
+      'broadcast',
+      { campaignId },
+      { jobId: `notification-${campaignId}`, attempts: 3, backoff: { type: 'exponential', delay: 5000 } }
+    );
+
+    // Audit log
+    await query(
+      `INSERT INTO admin_audit_logs (admin_user_id, action, target_entity, target_id, after_state)
+       VALUES ($1, 'notifications.broadcast', 'campaign', 'broadcast', $2)`,
+      [request.user!.id, JSON.stringify({ campaignId, ...parsed.data })]
+    );
+
+    return { success: true, campaignId, message: 'Broadcast notification queued.' };
+  });
+}

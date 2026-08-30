@@ -33,19 +33,33 @@ Recommended campaign settings:
 - Add pagination and filters to activity, leaderboard, community, and admin tables.
 - Add account-wide popup delivery receipts instead of device-only local receipts.
 
-## Phase 2 — engagement and operations
+## Phase 2 — core product UI (completed in source)
+
+- Saved prediction state, editable open picks, filterable prediction history, result correctness, and awarded-point breakdowns.
+- Monthly, season, and all-time leaderboard views with season selection and a pinned exact current-user rank.
+- Configurable achievements and levels with progress, perks, bilingual content, and admin builders.
+- Loyalty reward catalogue, spendable balance, stock/member restrictions, transactional redemption, and redemption history.
+- Server-verified achievement claims with idempotent point awards, plus an admin redemption queue with fulfillment and cancellation refunds.
+- Player Card catalogue, locked/collected states, full details and stats, challenge-linked ownership, and admin management.
+- Video phrase, Player Card, multiple-choice, true/false, and multi-question challenges with private answers.
+- Admin controls for attempts, reward points, schedules, status, member-only access, notification intent, and previews.
+
+The Flutter release build, Firestore rules, indexes, and callable source are complete and locally verified. Live callable-backed submissions and redemptions still depend on the deferred Cloud Functions deployment in Phase 4.
+
+## Remaining engagement and operations
 
 - Persist real streak check-ins and milestone awards on the server.
-- Complete achievements, levels, loyalty catalogue, redemption history, and prize fulfillment.
+- Add top-rank prize configuration, winner records, and delivery operations (loyalty-reward fulfillment is already included in Phase 2).
 - Add notification preference enforcement, push-token registration, and admin campaigns.
 - Add admin user search, suspension, manual point adjustments with reasons, audit-log views, and suspicious-activity tools.
-- Expand match and challenge analytics, prediction history, saved-pick editing, and user rank outside the top 100.
+- Move locked Player Card details and secret achievement definitions to server-redacted/private projections, then migrate any legacy public card links before public launch.
+- Replace the initial client-side 1,000-entry ranking window with scalable server-maintained ranks and aggregate counts.
 
 ## Phase 3 — content and data integrations
 
 - Replace direct third-party football calls with a licensed, server-cached team/match provider.
 - Replace the public YouTube RSS bridge with a first-party scheduled sync and resilient cache.
-- Add reusable event types, multi-question quizzes, richer Player Cards, prizes, and media management.
+- Add reusable non-challenge event types, prizes, and richer media management.
 - Add real push notifications for match openings, challenge launches, results, rewards, and posts.
 
 ## Phase 4 — deferred infrastructure and external verification

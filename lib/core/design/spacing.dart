@@ -1,4 +1,4 @@
-// Consistent spacing, radii, elevation tokens for the Fan League demo.
+// Consistent spacing, radii, elevation tokens for the Abu 3meer Community demo.
 // All values are multiples of 4px (the base unit).
 
 class AppSpacing {

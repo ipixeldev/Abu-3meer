@@ -229,7 +229,7 @@ final List<Achievement> mockAchievements = [
   Achievement(
     id: 'ach_season_winner',
     name: 'Season Champion',
-    description: 'Win the Fan League season.',
+    description: 'Win the Community season.',
     iconName: 'season_champ',
     category: AchievementCategory.special,
     requirement: 1,

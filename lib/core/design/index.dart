@@ -1,4 +1,4 @@
-// Fan League Design System — single import for the whole design language.
+// Abu 3meer Community Design System — single import for the whole design language.
 export 'colors.dart';
 export 'typography.dart';
 export 'spacing.dart';

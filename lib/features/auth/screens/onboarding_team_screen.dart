@@ -78,7 +78,7 @@ class _OnboardingTeamScreenState extends State<OnboardingTeamScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Welcome to the Fan League, ${appState.currentUser!.displayName}!',
+              'Welcome to the Community, ${appState.currentUser!.displayName}!',
             ),
             backgroundColor: AppColors.success,
             behavior: SnackBarBehavior.floating,
@@ -159,7 +159,7 @@ class _OnboardingTeamScreenState extends State<OnboardingTeamScreen>
 
                   // Continue button
                   PrimaryButton(
-                    label: 'Join the Fan League',
+                    label: 'Join the Community',
                     onPressed: _selectedTeam != null
                         ? _completeOnboarding
                         : null,

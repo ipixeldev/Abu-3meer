@@ -134,6 +134,33 @@ void main() {
       },
     );
   });
+
+  group('AbuUserProfile location data', () {
+    test(
+      'keeps the ISO country code through copyWith and uses it for flags',
+      () {
+        const profile = AbuUserProfile(
+          uid: 'location-user',
+          email: 'location@example.com',
+          username: 'location_user',
+          displayName: 'Location User',
+          country: 'Sverige',
+          countryCode: 'SE',
+          supportedTeam: 'Real Madrid',
+          avatarUrl: '',
+          role: 'user',
+          membershipMultiplier: 1,
+          totalPoints: 50,
+          monthlyPoints: 50,
+          seasonPoints: 50,
+          suspended: false,
+        );
+
+        expect(profile.countryFlag, '🇸🇪');
+        expect(profile.copyWith(displayName: 'Saved').countryCode, 'SE');
+      },
+    );
+  });
 }
 
 AbuUserProfile _profile({

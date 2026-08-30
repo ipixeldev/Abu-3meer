@@ -978,7 +978,6 @@ class AppState extends ChangeNotifier {
         awayScore: awayScore,
         firstScorerId: firstScorerId,
         manOfMatchId: manOfMatchId,
-        bothTeamsScored: homeScore > 0 && awayScore > 0,
       );
       _recordAdminAction(
         'enterResult',

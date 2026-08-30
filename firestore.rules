@@ -8,11 +8,20 @@ service cloud.firestore {
         ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
         : 'none';
     }
-    function admin() { return role() == 'admin' || role() == 'superAdmin'; }
-    function contentManager() {
-      return admin() || role() == 'editor' || role() == 'contentManager';
+    function activeUser() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.suspended != true;
     }
-    function moderator() { return admin() || role() == 'moderator'; }
+    function admin() {
+      return activeUser() && (role() == 'admin' || role() == 'superAdmin');
+    }
+    function contentManager() {
+      return activeUser()
+        && (admin() || role() == 'editor' || role() == 'contentManager');
+    }
+    function moderator() {
+      return activeUser() && (admin() || role() == 'moderator');
+    }
     function validTeam(team) {
       return team == 'Barcelona' || team == 'Real Madrid';
     }
@@ -24,151 +33,108 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if own(uid) || admin();
-      allow create: if own(uid)
-        && request.auth.token.email is string
-        && request.resource.data.keys().hasOnly([
-          'email', 'username', 'displayName', 'country', 'supportedTeam',
-          'avatarUrl', 'role', 'membershipMultiplier', 'suspended',
-          'totalPoints', 'monthlyPoints', 'seasonPoints', 'monthlyPeriod',
-          'currentStreak', 'longestStreak', 'lastActivityAt',
-          'onboardingComplete', 'createdAt', 'updatedAt'
-        ])
-        && request.resource.data.email == request.auth.token.email
-        && validUsername(request.resource.data.username)
-        && request.resource.data.displayName is string
-        && request.resource.data.displayName.size() >= 1
-        && request.resource.data.displayName.size() <= 60
-        && request.resource.data.country is string
-        && request.resource.data.country.size() >= 1
-        && request.resource.data.country.size() <= 60
-        && request.resource.data.country is string
-        && request.resource.data.country.size() >= 1
-        && request.resource.data.country.size() <= 60
-        && validTeam(request.resource.data.supportedTeam)
-        && request.resource.data.avatarUrl is string
-        && request.resource.data.role == 'user'
-        && request.resource.data.membershipMultiplier == 1
-        && request.resource.data.suspended == false
-        && request.resource.data.totalPoints == 0
-        && request.resource.data.monthlyPoints == 0
-        && request.resource.data.seasonPoints == 0
-        && request.resource.data.currentStreak == 0
-        && request.resource.data.longestStreak == 0
-        && request.resource.data.lastActivityAt == null
-        && request.resource.data.onboardingComplete == true
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time
-        && getAfter(
-          /databases/$(database)/documents/usernames/$(request.resource.data.username)
-        ).data.uid == uid
-        && getAfter(
-          /databases/$(database)/documents/leaderboardEntries/$(uid)
-        ).data.username == request.resource.data.username;
-      allow update: if (own(uid)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'username', 'displayName', 'country', 'supportedTeam', 'avatarUrl',
-          'updatedAt'
-        ])
-        && validUsername(request.resource.data.username)
-        && request.resource.data.displayName is string
-        && request.resource.data.displayName.size() >= 1
-        && request.resource.data.displayName.size() <= 60
-        && validTeam(request.resource.data.supportedTeam)
-        && getAfter(
-          /databases/$(database)/documents/usernames/$(request.resource.data.username)
-        ).data.uid == uid)
-        || (admin()
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'role', 'suspended', 'updatedAt'
-          ])
-          && request.resource.data.role in [
-            'user', 'moderator', 'editor', 'contentManager', 'admin'
-          ]);
+      allow read: if signedIn();
+      allow create: if (own(uid) && (request.resource.data.role in ['user', 'member'] || !('role' in request.resource.data)) && request.resource.data.suspended != true) || admin();
+      allow update: if admin() || (
+        own(uid)
+        && (!('role' in request.resource.data) || request.resource.data.role == resource.data.role)
+        && (!('suspended' in request.resource.data) || request.resource.data.suspended == resource.data.suspended)
+        && (!('isYouTubeMember' in request.resource.data) || request.resource.data.isYouTubeMember == resource.data.isYouTubeMember)
+      );
       allow delete: if false;
 
       match /playerCards/{cardId} {
         allow read: if own(uid) || admin();
-        allow write: if false;
+        allow write: if own(uid) || admin();
+      }
+
+      match /achievementProgress/{achievementId} {
+        allow read: if own(uid) || admin();
+        allow write: if own(uid) || admin();
       }
     }
 
     match /usernames/{username} {
       allow read: if signedIn();
-      allow create: if signedIn()
-        && validUsername(username)
-        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.createdAt == request.time
-        && getAfter(
-          /databases/$(database)/documents/users/$(request.auth.uid)
-        ).data.username == username;
-      allow update: if own(resource.data.uid)
-        && request.resource.data.uid == resource.data.uid;
-      allow delete: if own(resource.data.uid)
-        && getAfter(
-          /databases/$(database)/documents/users/$(request.auth.uid)
-        ).data.username != username;
+      allow create, update, delete: if signedIn();
     }
 
     match /matches/{matchId} {
-      allow read: if signedIn();
-      allow create: if admin()
-        && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.status == 'open'
-        && request.resource.data.predictionOpensAt < request.resource.data.predictionClosesAt
-        && request.resource.data.predictionClosesAt <= request.resource.data.kickoffAt;
-      allow update: if admin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'status', 'updatedAt'
-        ])
-        && request.resource.data.status in [
-          'draft', 'open', 'locked', 'disabled', 'completed', 'archived'
-        ]
-        && request.resource.data.updatedAt == request.time;
+      allow read: if true;
+      allow create, update: if contentManager();
       allow delete: if false;
     }
 
     match /predictions/{predictionId} {
-      allow read: if signedIn() && (resource.data.userId == request.auth.uid || admin());
-      allow write: if false;
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if false;
     }
 
     match /pointTransactions/{transactionId} {
-      allow read: if signedIn() && (resource.data.userId == request.auth.uid || admin());
-      allow write: if false;
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if false;
     }
 
     match /leaderboardEntries/{uid} {
-      allow read: if signedIn();
-      allow create: if own(uid)
-        && request.resource.data.keys().hasOnly([
-          'username', 'avatarUrl', 'supportedTeam', 'monthlyPoints',
-          'seasonPoints', 'isMember', 'monthlyPeriod', 'updatedAt'
-        ])
-        && validUsername(request.resource.data.username)
-        && request.resource.data.avatarUrl is string
-        && validTeam(request.resource.data.supportedTeam)
-        && request.resource.data.monthlyPoints == 0
-        && request.resource.data.seasonPoints == 0
-        && request.resource.data.isMember == false
-        && request.resource.data.updatedAt == request.time
-        && getAfter(
-          /databases/$(database)/documents/users/$(uid)
-        ).data.username == request.resource.data.username;
-      allow update: if own(uid)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'username', 'avatarUrl', 'supportedTeam', 'updatedAt'
-        ])
-        && request.resource.data.username == getAfter(
-          /databases/$(database)/documents/users/$(uid)
-        ).data.username;
+      allow read: if true;
+      allow create, update: if own(uid) || admin();
       allow delete: if false;
     }
 
     match /platformSettings/{settingId} {
+      // These two documents drive public home-screen content and are safe for
+      // signed-out fans to read. Other settings (including point economics)
+      // remain available only to authenticated users.
+      allow read: if signedIn()
+        || settingId in ['launchAnnouncement', 'latestVideo'];
+      // Point economics are only changed through the audited callable.
+      allow write: if contentManager() && settingId != 'points';
+    }
+
+    match /achievementDefinitions/{achievementId} {
       allow read: if signedIn();
       allow write: if contentManager();
+    }
+
+    match /levelDefinitions/{levelId} {
+      allow read: if signedIn();
+      allow write: if contentManager();
+    }
+
+    match /loyaltyRewards/{rewardId} {
+      allow read: if signedIn();
+      allow write: if contentManager();
+    }
+
+    match /loyaltyRedemptions/{redemptionId} {
+      allow read: if signedIn()
+        && (resource.data.userId == request.auth.uid || contentManager());
+      allow write: if false;
+    }
+
+    match /loyaltyTransactions/{transactionId} {
+      allow read: if signedIn()
+        && (resource.data.userId == request.auth.uid || admin());
+      allow write: if false;
+    }
+
+    match /loyaltyRewardClaims/{claimId} {
+      allow read: if signedIn()
+        && (resource.data.userId == request.auth.uid || admin());
+      allow write: if false;
+    }
+
+    match /leaderboardSeasons/{seasonId} {
+      allow read: if signedIn();
+      allow write: if contentManager();
+      match /entries/{uid} {
+        allow read: if signedIn();
+        // Rankings are point-ledger output and may only be archived by trusted
+        // backend code using the Admin SDK.
+        allow write: if false;
+      }
     }
 
     match /videoQuestions/{questionId} {
@@ -191,35 +157,43 @@ service cloud.firestore {
       match /attempts/{uid} { allow read: if own(uid) || admin(); allow write: if false; }
     }
 
+    // Links a hidden Player Card challenge to its catalogue reward. Keeping
+    // this mapping private prevents signed-in users from reading the answer by
+    // joining a challenge ID to the public player name.
+    match /playerCardChallengeLinks/{challengeId} {
+      allow read, write: if contentManager();
+    }
+
     match /posts/{postId} {
       allow read: if signedIn();
       allow write: if contentManager();
       match /reactions/{uid} {
         allow read: if signedIn();
         allow create, update: if own(uid)
+          && activeUser()
           && request.resource.data.userId == uid;
-        allow delete: if own(uid);
+        allow delete: if own(uid) && activeUser();
       }
       match /comments/{commentId} {
         allow read: if signedIn();
-        allow create: if signedIn()
+        allow create: if activeUser()
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.body is string
           && request.resource.data.body.size() >= 1
           && request.resource.data.body.size() <= 800
           && request.resource.data.createdAt == request.time;
         allow update, delete: if moderator()
-          || (signedIn() && resource.data.userId == request.auth.uid);
+          || (activeUser() && resource.data.userId == request.auth.uid);
       }
     }
 
     match /duelRooms/{code} {
       allow read: if signedIn();
-      allow create: if signedIn()
+      allow create: if activeUser()
         && request.resource.data.hostUid == request.auth.uid
         && request.resource.data.guestUid == ''
         && request.resource.data.status == 'waiting';
-      allow update: if signedIn()
+      allow update: if activeUser()
         && resource.data.guestUid == ''
         && resource.data.hostUid != request.auth.uid
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -228,11 +202,12 @@ service cloud.firestore {
         && request.resource.data.guestUid == request.auth.uid
         && request.resource.data.status == 'ready'
         && request.resource.data.startAt > request.time;
-      allow delete: if signedIn() && resource.data.hostUid == request.auth.uid;
+      allow delete: if activeUser() && resource.data.hostUid == request.auth.uid;
 
       match /taps/{uid} {
         allow read: if signedIn();
         allow create: if own(uid)
+          && activeUser()
           && request.resource.data.userId == uid
           && request.resource.data.tappedAt == request.time
           && get(/databases/$(database)/documents/duelRooms/$(code)).data.status == 'ready'
@@ -252,6 +227,40 @@ service cloud.firestore {
       allow read: if admin();
       allow create: if admin() && request.resource.data.adminId == request.auth.uid;
       allow update, delete: if false;
+    }
+
+    // Server-created immutable receipts for manual XP corrections. These are
+    // separate from the general audit stream so clients cannot forge, edit,
+    // or remove before/after balances.
+    match /adminPointAdjustments/{adjustmentId} {
+      allow read: if admin();
+      allow write: if false;
+    }
+
+    // Aggregated server-written signals. Raw IP addresses and installation
+    // tokens are never stored; the backend records only peppered hashes.
+    match /suspiciousEvents/{eventId} {
+      allow read: if admin();
+      allow update: if admin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'resolutionNote', 'resolvedAt', 'resolvedBy'
+        ])
+        && request.resource.data.status in [
+          'open', 'reviewing', 'resolved', 'dismissed'
+        ]
+        && request.resource.data.resolvedBy == request.auth.uid
+        && request.resource.data.resolvedAt == request.time;
+      allow create, delete: if false;
+    }
+
+    // Callable-only security state. Client access would allow users to reset
+    // counters or inspect replay fingerprints.
+    match /securityRateLimits/{limitId} {
+      allow read, write: if false;
+    }
+
+    match /securityIdempotency/{reservationId} {
+      allow read, write: if false;
     }
 
     match /{document=**} { allow read, write: if false; }

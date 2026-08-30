@@ -2,13 +2,15 @@ name: abu_3meer
 description: "Abu 3meer — predict exact scores, answer video questions, find Player Cards, and climb the leaderboard."
 publish_to: 'none'
 
-version: 1.1.0+2
+version: 1.1.0+3
 
 environment:
   sdk: ^3.13.0
 
 dependencies:
   flutter:
+    sdk: flutter
+  flutter_localizations:
     sdk: flutter
 
   cupertino_icons: ^1.0.8
@@ -35,6 +37,12 @@ dependencies:
   http: ^1.6.0
   image_picker: ^1.2.3
   web: ^1.1.1
+  liquid_glass_widgets:
+    path: packages/liquid_glass_widgets
+  geolocator: ^14.0.3
+  firebase_messaging: ^16.6.0
+  flutter_local_notifications: ^22.3.0
+  glass_liquid_navbar: ^0.2.0
 
 dev_dependencies:
   flutter_test:

@@ -1,27 +1,33 @@
 enum PointSource {
   exactPrediction,
   firstScorer,
-  bothTeamsScore,
+  winnerOutcome,
   videoQuestion,
   playerCard,
+  dailyStreak,
+  signUpBonus,
   adminAdjustment,
 }
 
 abstract final class PointRuleDefaults {
-  static const exactPrediction = 100;
-  static const firstScorer = 250;
-  static const bothTeamsScore = 150;
-  static const videoQuestion = 40;
-  static const playerCard = 20;
+  static const exactPrediction = 30;
+  static const firstScorer = 20;
+  static const winnerOutcome = 10;
+  static const videoQuestion = 10;
+  static const playerCard = 10;
+  static const dailyStreak = 5;
+  static const signUpBonus = 50;
   static const normalMultiplier = 1.0;
   static const memberMultiplier = 2.0;
 
   static int baseFor(PointSource source) => switch (source) {
     PointSource.exactPrediction => exactPrediction,
     PointSource.firstScorer => firstScorer,
-    PointSource.bothTeamsScore => bothTeamsScore,
+    PointSource.winnerOutcome => winnerOutcome,
     PointSource.videoQuestion => videoQuestion,
     PointSource.playerCard => playerCard,
+    PointSource.dailyStreak => dailyStreak,
+    PointSource.signUpBonus => signUpBonus,
     PointSource.adminAdjustment => 0,
   };
 }

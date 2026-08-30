@@ -364,7 +364,7 @@ class _AdminShellState extends State<AdminShell>
           ),
           if (_isRailExtended) ...[
             const SizedBox(width: AppSpacing.sm),
-            Text('Fan League', style: AppTextStyles.headlineSmall()),
+            Text('Community', style: AppTextStyles.headlineSmall()),
           ],
           const Spacer(),
           // Collapse/Expand button

@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -15,7 +17,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>GIDClientID</key>
-	<string>418913638245-mvnbj4infs8jkev15109pidlmb8m9j5k.apps.googleusercontent.com</string>
+	<string>701810344443-l6tgomd9ftjpair1lsck5jvebdas9ngb.apps.googleusercontent.com</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -23,7 +25,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.418913638245-mvnbj4infs8jkev15109pidlmb8m9j5k</string>
+				<string>com.googleusercontent.apps.701810344443-l6tgomd9ftjpair1lsck5jvebdas9ngb</string>
 			</array>
 		</dict>
 	</array>
@@ -40,7 +42,20 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Choose a temporary photo to preview on your Abu 3meer fan card.</string>
+	<string>Choose a photo from your library for your Abu 3meer profile avatar and fan card.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save photos and cards to your photo library.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a photo for your Abu 3meer profile avatar and fan card.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Abu 3meer uses your location to automatically detect your country for regional rankings and match kickoff times.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Abu 3meer uses your location to automatically detect your country for regional rankings and match kickoff times.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

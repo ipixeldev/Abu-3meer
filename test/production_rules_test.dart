@@ -8,11 +8,9 @@ void main() {
       expect(calculatePoints(basePoints: 100, multiplier: 2), 200);
     });
 
-    test('first scorer and both-teams-score use independent bonus rules', () {
-      expect(PointRuleDefaults.baseFor(PointSource.firstScorer), 250);
-      expect(PointRuleDefaults.baseFor(PointSource.bothTeamsScore), 150);
-      expect(calculatePoints(basePoints: 250, multiplier: 2), 500);
-      expect(calculatePoints(basePoints: 150, multiplier: 2), 300);
+    test('first scorer uses its independent bonus rule', () {
+      expect(PointRuleDefaults.baseFor(PointSource.firstScorer), 20);
+      expect(calculatePoints(basePoints: 20, multiplier: 2), 40);
     });
 
     test('normal and member video questions award 40 and 80', () {

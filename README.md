@@ -2,31 +2,39 @@
 
 Abu 3meer is a production Flutter fan platform for web, iOS, and Android. The active application uses Firebase Authentication, Cloud Firestore, callable Cloud Functions, and a server-owned points ledger. Its existing premium dark/lime interface is preserved while the former demo flows are replaced by live data.
 
-## Current production flows
+## Implemented production flows
 
 - Email registration, email verification, sign-in, password reset, and Google sign-in
 - Profile onboarding with a unique username, country, and supported club
 - Admin-created match events with server-enforced prediction windows
-- Exact-score predictions worth 100 points, or 200 for verified members
-- Server-owned point transactions and season/monthly leaderboards
+- Saved exact-score and first-scorer predictions with history and result breakdowns
+- Server-owned point transactions and monthly, season, and all-time leaderboards
+- Multi-type challenges with schedules, attempt limits, member access, and private answer keys
+- Configurable achievements and levels with server-verified claims, plus Player Cards and loyalty rewards with redemption operations
 - Admin result publishing and editable launch point rules
 - Strict Firestore and Storage security rules
 
+The Phase 2 schema and feature contract are documented in
+[`docs/PHASE_2_CORE_PRODUCT.md`](docs/PHASE_2_CORE_PRODUCT.md).
+Ubuntu production migration, backups, Cloudflare Tunnel cutover, and Firebase
+push setup are documented in
+[`docs/UBUNTU_SERVER_DEPLOYMENT.md`](docs/UBUNTU_SERVER_DEPLOYMENT.md).
+
 ## Run locally
 
-Flutter is installed at `/Users/ipixeldev/flutter/bin/flutter` on this machine.
+Install Flutter and make sure `flutter` is available on your `PATH`, then run
+these commands from the repository root:
 
 ```bash
-cd "/Users/ipixeldev/Desktop/Abu3meer Demo"
-/Users/ipixeldev/flutter/bin/flutter pub get
-/Users/ipixeldev/flutter/bin/flutter run -d chrome
+flutter pub get
+flutter run -d chrome
 ```
 
 To use Brave, Flutter still targets the `chrome` web device while the executable is overridden:
 
 ```bash
 CHROME_EXECUTABLE="/Applications/Brave Browser.app/Contents/MacOS/Brave Browser" \
-  /Users/ipixeldev/flutter/bin/flutter run -d chrome
+  flutter run -d chrome
 ```
 
 Do not open `web/index.html` directly. Flutter Web must be served over HTTP.
@@ -34,16 +42,26 @@ Do not open `web/index.html` directly. Flutter Web must be served over HTTP.
 ## Verification
 
 ```bash
-/Users/ipixeldev/flutter/bin/flutter analyze
-/Users/ipixeldev/flutter/bin/flutter test
+flutter analyze
+flutter test
 npm test --prefix functions
-/Users/ipixeldev/flutter/bin/flutter build web --release --no-wasm-dry-run
+flutter build web --release --no-wasm-dry-run
 ```
 
 ## Firebase
 
-The repository is linked to Firebase project `abu-3meer`. Production Android and iOS use bundle/package ID `com.abu3meer.app`; the web app keeps the existing Firebase Hosting identity.
+The repository is linked to Firebase project `abu-3meer-9fd70`. Production Android and iOS use bundle/package ID `com.abu3meer.app`.
 
 Backend source lives in `functions/src`, database access rules in `firestore.rules`, indexes in `firestore.indexes.json`, and upload rules in `storage.rules`.
 
+The native production app uses the self-hosted PostgreSQL API in `server/` for
+profiles, predictions, points, admin operations, football data, uploads, and
+push campaigns. The remaining Firebase Functions sources are legacy/optional
+web infrastructure and are not a substitute for deploying that API.
+
 Before public launch, enable Email/Password and Google providers in Firebase Authentication, add Android signing fingerprints, select the Apple signing team in Xcode, and replace the placeholder support/social URLs in `lib/production/brand.dart`.
+
+The project-specific Android debug keystore is intentionally ignored. A fresh
+clone can build with Gradle's per-user debug key; add that key's SHA-1/SHA-256
+fingerprints to Firebase before testing Google Sign-In. Production releases
+must use a separate Play signing key supplied outside Git.
