@@ -935,6 +935,34 @@ class ProductionRepository {
   Future<List<AbuUserProfile>> fetchAdminUsers({String search = ''}) =>
       apiRepo.fetchAdminUsers(search: search);
 
+  Future<List<LeaderboardSeason>> fetchAdminLeaderboardSeasons() =>
+      apiRepo.fetchAdminLeaderboardSeasons();
+
+  Future<LeaderboardSeason> saveAdminLeaderboardSeason({
+    required String id,
+    required String displayName,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    required String reason,
+    required bool create,
+  }) async {
+    final season = await apiRepo.saveAdminLeaderboardSeason(
+      id: id,
+      displayName: displayName,
+      startsAt: startsAt,
+      endsAt: endsAt,
+      reason: reason,
+      create: create,
+    );
+    await Future.wait([
+      for (final resource in _leaderboardResources.values)
+        resource.refresh(force: true),
+      for (final resource in _leaderboardViewResources.values)
+        resource.refresh(force: true),
+    ]);
+    return season;
+  }
+
   Stream<List<AbuUserProfile>> watchUsers({String search = ''}) {
     final normalized = search.trim().toLowerCase();
     return _adminUserResources
@@ -1273,7 +1301,6 @@ class ProductionRepository {
           totalPoints: newTotal,
           monthlyPoints: current.monthlyPoints + pointsAwarded,
           seasonPoints: current.seasonPoints + pointsAwarded,
-          loyaltyPoints: current.loyaltyPoints + pointsAwarded,
           lastCheckInDate: DateTime.now()
               .toUtc()
               .toIso8601String()

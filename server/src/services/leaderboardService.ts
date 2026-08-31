@@ -1,6 +1,8 @@
 import { getClient, query } from '../db/pool.js';
 
 export const eligibleLeaderboardSourceTypes = [
+  'signup_bonus',
+  'daily_streak',
   'prediction_exact',
   'prediction_scorer',
   'prediction_winner',
@@ -32,6 +34,16 @@ export interface LeaderboardSeason {
   startsAt: string;
   endsAt: string | null;
   active: boolean;
+  managementMode: 'automatic' | 'manual';
+  updatedAt: string;
+}
+
+export interface ManualLeaderboardSeasonInput {
+  id: string;
+  displayName: string;
+  startsAt: Date | string;
+  endsAt: Date | string;
+  reason: string;
 }
 
 export interface LeaderboardPeriod {
@@ -82,6 +94,8 @@ interface SeasonRow {
   startsAt: Date | string;
   endsAt: Date | string | null;
   active: boolean;
+  managementMode: 'automatic' | 'manual';
+  updatedAt: Date | string;
 }
 
 export interface FootballSeasonMatchRow {
@@ -118,6 +132,63 @@ const eligibleSourceSql = eligibleLeaderboardSourceTypes
 
 function iso(value: Date | string): string {
   return (value instanceof Date ? value : new Date(value)).toISOString();
+}
+
+function requestError(
+  name: string,
+  message: string,
+  statusCode: number,
+): Error & { statusCode: number } {
+  return Object.assign(new Error(message), { name, statusCode });
+}
+
+function parseFiniteDate(value: Date | string, field: string): Date {
+  const parsed = value instanceof Date
+    ? new Date(value.getTime())
+    : new Date(value);
+  if (!Number.isFinite(parsed.getTime())) {
+    throw requestError('ValidationError', `${field} must be a valid date.`, 400);
+  }
+  return parsed;
+}
+
+export function validateManualLeaderboardSeasonWindow(
+  startsAt: Date | string,
+  endsAt: Date | string,
+): { startsAt: Date; endsAt: Date } {
+  const start = parseFiniteDate(startsAt, 'startsAt');
+  const end = parseFiniteDate(endsAt, 'endsAt');
+  if (start.getTime() >= end.getTime()) {
+    throw requestError(
+      'ValidationError',
+      'The season start must be before the season end.',
+      400,
+    );
+  }
+  return { startsAt: start, endsAt: end };
+}
+
+export function leaderboardSeasonWindowsOverlap(
+  leftStartsAt: Date | string,
+  leftEndsAt: Date | string,
+  rightStartsAt: Date | string,
+  rightEndsAt: Date | string,
+): boolean {
+  const left = validateManualLeaderboardSeasonWindow(leftStartsAt, leftEndsAt);
+  const right = validateManualLeaderboardSeasonWindow(rightStartsAt, rightEndsAt);
+  return left.startsAt < right.endsAt && right.startsAt < left.endsAt;
+}
+
+function mappedSeason(row: SeasonRow): LeaderboardSeason {
+  return {
+    id: row.id,
+    displayName: row.displayName,
+    startsAt: iso(row.startsAt),
+    endsAt: row.endsAt == null ? null : iso(row.endsAt),
+    active: row.active,
+    managementMode: row.managementMode,
+    updatedAt: iso(row.updatedAt),
+  };
 }
 
 function monthDisplayName(value: Date): string {
@@ -209,10 +280,20 @@ async function refreshDiscoveredLeaderboardSeasons(): Promise<void> {
     for (const season of discoverFutureLeaderboardSeasons(footballRows.rows)) {
       // Never update starts_at on conflict. Once a period is discovered, later
       // fixture edits or postponements must not rewrite historical XP windows.
+      // A manually configured window always wins: discovery will neither
+      // mutate it nor insert another automatic period inside it.
       await client.query(
         `INSERT INTO leaderboard_periods
-           (id, type, name, starts_at, ends_at, is_current)
-         VALUES ($1, 'season', $2, $3, NULL, FALSE)
+           (id, type, name, starts_at, ends_at, is_current, management_mode)
+         SELECT $1, 'season', $2, $3, NULL, FALSE, 'automatic'
+         WHERE NOT EXISTS (
+           SELECT 1
+           FROM leaderboard_periods manual_period
+           WHERE manual_period.type = 'season'
+             AND manual_period.management_mode = 'manual'
+             AND manual_period.starts_at <= $3
+             AND manual_period.ends_at > $3
+         )
          ON CONFLICT (id) DO NOTHING`,
         [season.id, season.displayName, season.startsAt],
       );
@@ -224,9 +305,7 @@ async function refreshDiscoveredLeaderboardSeasons(): Promise<void> {
       `UPDATE leaderboard_periods
        SET is_current = FALSE
        WHERE type = 'season'
-         AND starts_at >= $1
          AND is_current = TRUE`,
-      [new Date(initialLeaderboardSeasonStart)],
     );
     await client.query(
       `WITH ordered AS (
@@ -237,9 +316,11 @@ async function refreshDiscoveredLeaderboardSeasons(): Promise<void> {
            AND starts_at >= $1
        )
        UPDATE leaderboard_periods period
-       SET ends_at = ordered.next_start
+       SET ends_at = ordered.next_start,
+           updated_at = CURRENT_TIMESTAMP
        FROM ordered
        WHERE period.id = ordered.id
+         AND period.management_mode = 'automatic'
          AND period.ends_at IS DISTINCT FROM ordered.next_start`,
       [new Date(initialLeaderboardSeasonStart)],
     );
@@ -252,12 +333,11 @@ async function refreshDiscoveredLeaderboardSeasons(): Promise<void> {
          SELECT id
          FROM leaderboard_periods
          WHERE type = 'season'
-           AND starts_at >= $1
            AND starts_at <= CURRENT_TIMESTAMP
-         ORDER BY starts_at DESC, id DESC
+           AND (ends_at IS NULL OR ends_at > CURRENT_TIMESTAMP)
+         ORDER BY (management_mode = 'manual') DESC, starts_at DESC, id DESC
          LIMIT 1
        )`,
-      [new Date(initialLeaderboardSeasonStart)],
     );
     await client.query('COMMIT');
   } catch (error) {
@@ -300,18 +380,203 @@ export async function listLeaderboardSeasons(): Promise<LeaderboardSeason[]> {
             name AS "displayName",
             starts_at AS "startsAt",
             ends_at AS "endsAt",
-            is_current AS active
+            is_current AS active,
+            management_mode AS "managementMode",
+            updated_at AS "updatedAt"
      FROM leaderboard_periods
      WHERE type = 'season'
      ORDER BY starts_at DESC, id DESC`,
   );
-  return result.rows.map(row => ({
-    id: row.id,
-    displayName: row.displayName,
-    startsAt: iso(row.startsAt),
-    endsAt: row.endsAt == null ? null : iso(row.endsAt),
-    active: row.active,
-  }));
+  return result.rows.map(mappedSeason);
+}
+
+async function selectSeasonForUpdate(
+  client: Awaited<ReturnType<typeof getClient>>,
+  id: string,
+): Promise<SeasonRow | null> {
+  const result = await client.query<SeasonRow>(
+    `SELECT id,
+            name AS "displayName",
+            starts_at AS "startsAt",
+            ends_at AS "endsAt",
+            is_current AS active,
+            management_mode AS "managementMode",
+            updated_at AS "updatedAt"
+     FROM leaderboard_periods
+     WHERE id = $1 AND type = 'season'
+     FOR UPDATE`,
+    [id],
+  );
+  return result.rows[0] ?? null;
+}
+
+async function assertSeasonWindowDoesNotOverlap(
+  client: Awaited<ReturnType<typeof getClient>>,
+  startsAt: Date,
+  endsAt: Date,
+  excludedId?: string,
+): Promise<void> {
+  const overlap = await client.query<{ id: string; displayName: string }>(
+    `SELECT id, name AS "displayName"
+     FROM leaderboard_periods
+     WHERE type = 'season'
+       AND ($3::text IS NULL OR id <> $3)
+       AND tstzrange(starts_at, COALESCE(ends_at, 'infinity'::timestamptz), '[)')
+           && tstzrange($1::timestamptz, $2::timestamptz, '[)')
+     ORDER BY starts_at, id
+     LIMIT 1`,
+    [startsAt, endsAt, excludedId ?? null],
+  );
+  if ((overlap.rowCount ?? 0) > 0) {
+    throw requestError(
+      'SeasonWindowConflict',
+      `This season overlaps ${overlap.rows[0].displayName} (${overlap.rows[0].id}). Edit the existing period boundaries first.`,
+      409,
+    );
+  }
+}
+
+async function recalculateCurrentSeason(
+  client: Awaited<ReturnType<typeof getClient>>,
+): Promise<void> {
+  await client.query(
+    `UPDATE leaderboard_periods
+     SET is_current = FALSE
+     WHERE type = 'season' AND is_current = TRUE`,
+  );
+  await client.query(
+    `UPDATE leaderboard_periods
+     SET is_current = TRUE
+     WHERE id = (
+       SELECT id
+       FROM leaderboard_periods
+       WHERE type = 'season'
+         AND starts_at <= CURRENT_TIMESTAMP
+         AND (ends_at IS NULL OR ends_at > CURRENT_TIMESTAMP)
+       ORDER BY (management_mode = 'manual') DESC, starts_at DESC, id DESC
+       LIMIT 1
+     )`,
+  );
+}
+
+/**
+ * Creates or explicitly edits a season window. Switching an automatically
+ * discovered period to manual is intentional and permanent: background
+ * discovery only updates rows that remain in automatic mode.
+ */
+export async function saveManualLeaderboardSeason(
+  input: ManualLeaderboardSeasonInput,
+  adminUserId: string,
+  existingId?: string,
+): Promise<LeaderboardSeason> {
+  const id = input.id.trim();
+  const displayName = input.displayName.trim();
+  const reason = input.reason.trim();
+  const window = validateManualLeaderboardSeasonWindow(input.startsAt, input.endsAt);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$/.test(id)) {
+    throw requestError(
+      'ValidationError',
+      'Season ID must use 1-50 letters, numbers, dots, underscores, or hyphens.',
+      400,
+    );
+  }
+  if (!displayName || displayName.length > 100) {
+    throw requestError('ValidationError', 'Season name must use 1-100 characters.', 400);
+  }
+  if (reason.length < 3 || reason.length > 255) {
+    throw requestError('ValidationError', 'An audit reason of 3-255 characters is required.', 400);
+  }
+
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtextextended('leaderboard-season-discovery', 0))`,
+    );
+    const currentId = existingId?.trim();
+    const before = currentId ? await selectSeasonForUpdate(client, currentId) : null;
+    if (currentId && !before) {
+      throw requestError('NotFound', 'Leaderboard season not found.', 404);
+    }
+    if (!currentId) {
+      const duplicate = await client.query(
+        `SELECT 1 FROM leaderboard_periods WHERE id = $1 FOR UPDATE`,
+        [id],
+      );
+      if ((duplicate.rowCount ?? 0) > 0) {
+        throw requestError('Conflict', 'A leaderboard period already uses this ID.', 409);
+      }
+    } else if (id !== currentId) {
+      throw requestError('ValidationError', 'An existing season ID cannot be changed.', 400);
+    }
+
+    await assertSeasonWindowDoesNotOverlap(
+      client,
+      window.startsAt,
+      window.endsAt,
+      currentId,
+    );
+
+    const persisted = currentId
+      ? await client.query<SeasonRow>(
+          `UPDATE leaderboard_periods
+           SET name = $2,
+               starts_at = $3,
+               ends_at = $4,
+               management_mode = 'manual',
+               updated_at = CURRENT_TIMESTAMP,
+               updated_by = $5
+           WHERE id = $1 AND type = 'season'
+           RETURNING id,
+                     name AS "displayName",
+                     starts_at AS "startsAt",
+                     ends_at AS "endsAt",
+                     is_current AS active,
+                     management_mode AS "managementMode",
+                     updated_at AS "updatedAt"`,
+          [id, displayName, window.startsAt, window.endsAt, adminUserId],
+        )
+      : await client.query<SeasonRow>(
+          `INSERT INTO leaderboard_periods
+             (id, type, name, starts_at, ends_at, is_current,
+              management_mode, updated_at, updated_by)
+           VALUES ($1, 'season', $2, $3, $4, FALSE, 'manual', CURRENT_TIMESTAMP, $5)
+           RETURNING id,
+                     name AS "displayName",
+                     starts_at AS "startsAt",
+                     ends_at AS "endsAt",
+                     is_current AS active,
+                     management_mode AS "managementMode",
+                     updated_at AS "updatedAt"`,
+          [id, displayName, window.startsAt, window.endsAt, adminUserId],
+        );
+
+    await recalculateCurrentSeason(client);
+    const saved = await selectSeasonForUpdate(client, id);
+    if (!saved || persisted.rowCount === 0) {
+      throw new Error('The leaderboard season could not be persisted.');
+    }
+    const after = mappedSeason(saved);
+    await client.query(
+      `INSERT INTO admin_audit_logs
+         (admin_user_id, action, target_entity, target_id, before_state, after_state)
+       VALUES ($1, $2, 'leaderboard_period', $3, $4, $5)`,
+      [
+        adminUserId,
+        currentId ? 'leaderboard_season.update' : 'leaderboard_season.create',
+        id,
+        before == null ? null : JSON.stringify(mappedSeason(before)),
+        JSON.stringify({ ...after, reason }),
+      ],
+    );
+    await client.query('COMMIT');
+    return after;
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 function resolveSeasonWindow(

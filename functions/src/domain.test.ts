@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  DEFAULT_POINTS,
   LoyaltyRedemptionError,
   adminMembershipState,
   achievementClaimId,
@@ -26,6 +27,13 @@ import {
   rewardClaimId,
   rewardLedgerId,
 } from "./domain.js";
+
+test("signup and daily login have fixed non-member defaults", () => {
+  assert.equal(DEFAULT_POINTS.signUpBonus, 50);
+  assert.equal(DEFAULT_POINTS.dailyStreak, 5);
+  assert.equal(memberMultiplierForSource("signUpBonus", 2), 1);
+  assert.equal(memberMultiplierForSource("dailyStreak", 2), 1);
+});
 
 test("launch point rules apply normal and member multipliers", () => {
   assert.equal(calculatePoints(100, 1), 100);

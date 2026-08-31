@@ -5614,6 +5614,18 @@ class _ProductionAdminTools extends StatelessWidget {
           color: _blue,
           onTap: () => managePlayerCards(context),
         ),
+        if (profile.isAdmin)
+          _AdminQuickAction(
+            icon: Icons.date_range_rounded,
+            label: abuText(context, 'LEADERBOARD SEASONS', 'مواسم الترتيب'),
+            detail: abuText(
+              context,
+              'Set the season name and exact XP leaderboard dates.',
+              'حدد اسم الموسم وتواريخ ترتيب XP بدقة.',
+            ),
+            color: _productionPrimary(context),
+            onTap: () => manageLeaderboardSeasons(context),
+          ),
         if (profile.canManageRoles)
           _AdminQuickAction(
             icon: Icons.manage_accounts_rounded,
@@ -5746,6 +5758,17 @@ class _ProductionAdminTools extends StatelessWidget {
                   color: _blue,
                   onTap: () => managePlayerCards(context),
                 ),
+                if (profile.isAdmin)
+                  _AdminMobileAction(
+                    icon: Icons.date_range_rounded,
+                    label: abuText(
+                      context,
+                      'LEADERBOARD SEASONS',
+                      'مواسم الترتيب',
+                    ),
+                    color: _productionPrimary(context),
+                    onTap: () => manageLeaderboardSeasons(context),
+                  ),
                 if (profile.canManageRoles)
                   _AdminMobileAction(
                     icon: Icons.manage_accounts_rounded,
@@ -7007,6 +7030,12 @@ class _ProductionAdminTools extends StatelessWidget {
   Future<void> managePlayerCards(BuildContext context) =>
       createChallenge(context, initialKind: 'playerCard');
 
+  Future<void> manageLeaderboardSeasons(BuildContext context) =>
+      showDialog<void>(
+        context: context,
+        builder: (_) => _AdminLeaderboardSeasonsDialog(repository: repository),
+      );
+
   Future<void> manageRoles(BuildContext context) => showDialog<void>(
     context: context,
     builder: (_) =>
@@ -7032,6 +7061,479 @@ class _ProductionAdminTools extends StatelessWidget {
       }
     }
   }
+}
+
+class _AdminLeaderboardSeasonsDialog extends StatefulWidget {
+  const _AdminLeaderboardSeasonsDialog({required this.repository});
+
+  final ProductionRepository repository;
+
+  @override
+  State<_AdminLeaderboardSeasonsDialog> createState() =>
+      _AdminLeaderboardSeasonsDialogState();
+}
+
+class _AdminLeaderboardSeasonsDialogState
+    extends State<_AdminLeaderboardSeasonsDialog> {
+  late Future<List<LeaderboardSeason>> _seasons;
+
+  @override
+  void initState() {
+    super.initState();
+    _seasons = widget.repository.fetchAdminLeaderboardSeasons();
+  }
+
+  void _refresh() {
+    if (!mounted) return;
+    setState(() {
+      _seasons = widget.repository.fetchAdminLeaderboardSeasons();
+    });
+  }
+
+  Future<void> _openEditor([LeaderboardSeason? season]) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => _AdminLeaderboardSeasonEditorDialog(
+        repository: widget.repository,
+        season: season,
+      ),
+    );
+    if (saved == true) _refresh();
+  }
+
+  String _date(DateTime? value) {
+    if (value == null) return abuText(context, 'Not set', 'غير محدد');
+    final local = value.toLocal();
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
+    title: Text(abuText(context, 'Leaderboard seasons', 'مواسم الترتيب')),
+    content: SizedBox(
+      width: 720,
+      height: math.min(MediaQuery.sizeOf(context).height * .68, 610),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            abuText(
+              context,
+              'Dates are shown in your local time. Automatic football discovery remains the fallback; saving a season here makes its dates a protected manual override.',
+              'تُعرض التواريخ حسب توقيتك المحلي. يبقى الاكتشاف التلقائي لكرة القدم احتياطياً، وحفظ الموسم هنا يجعل تواريخه يدوية ومحمية.',
+            ),
+            style: TextStyle(color: _muted, height: 1.45),
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: FutureBuilder<List<LeaderboardSeason>>(
+              future: _seasons,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return _ProductionEmpty(
+                    icon: Icons.cloud_off_rounded,
+                    title: abuText(
+                      context,
+                      'Seasons could not be loaded',
+                      'تعذر تحميل المواسم',
+                    ),
+                    body: productionErrorMessage(snapshot.error!),
+                  );
+                }
+                final seasons = snapshot.data ?? const <LeaderboardSeason>[];
+                if (seasons.isEmpty) {
+                  return _ProductionEmpty(
+                    icon: Icons.date_range_rounded,
+                    title: abuText(
+                      context,
+                      'No seasons configured',
+                      'لا توجد مواسم معدة',
+                    ),
+                    body: abuText(
+                      context,
+                      'Create the first leaderboard season.',
+                      'أنشئ أول موسم للترتيب.',
+                    ),
+                  );
+                }
+                return RefreshIndicator(
+                  onRefresh: () async => _refresh(),
+                  child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: seasons.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final season = seasons[index];
+                      final manual = season.managementMode == 'manual';
+                      return Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: _surface2,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: season.active
+                                ? _productionPrimary(context)
+                                      .withValues(alpha: .65)
+                                : _line,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              manual
+                                  ? Icons.edit_calendar_rounded
+                                  : Icons.auto_awesome_rounded,
+                              color: manual
+                                  ? _productionPrimary(context)
+                                  : _blue,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      Text(
+                                        season.displayName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      _ChallengeMetaChip(
+                                        icon: manual
+                                            ? Icons.lock_outline_rounded
+                                            : Icons.sync_rounded,
+                                        label: manual
+                                            ? abuText(context, 'MANUAL', 'يدوي')
+                                            : abuText(
+                                                context,
+                                                'AUTOMATIC',
+                                                'تلقائي',
+                                              ),
+                                      ),
+                                      if (season.active)
+                                        _LiveDot(
+                                          text: abuText(
+                                            context,
+                                            'CURRENT',
+                                            'الحالي',
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    '${season.id} · ${_date(season.startsAt)} → ${_date(season.endsAt)}',
+                                    style: TextStyle(
+                                      color: _muted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: abuText(
+                                context,
+                                'Edit season',
+                                'تعديل الموسم',
+                              ),
+                              onPressed: () => _openEditor(season),
+                              icon: const Icon(Icons.edit_rounded),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(abuText(context, 'CLOSE', 'إغلاق')),
+      ),
+      FilledButton.icon(
+        onPressed: () => _openEditor(),
+        icon: const Icon(Icons.add_rounded),
+        label: Text(abuText(context, 'NEW SEASON', 'موسم جديد')),
+      ),
+    ],
+  );
+}
+
+class _AdminLeaderboardSeasonEditorDialog extends StatefulWidget {
+  const _AdminLeaderboardSeasonEditorDialog({
+    required this.repository,
+    this.season,
+  });
+
+  final ProductionRepository repository;
+  final LeaderboardSeason? season;
+
+  @override
+  State<_AdminLeaderboardSeasonEditorDialog> createState() =>
+      _AdminLeaderboardSeasonEditorDialogState();
+}
+
+class _AdminLeaderboardSeasonEditorDialogState
+    extends State<_AdminLeaderboardSeasonEditorDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _id;
+  late final TextEditingController _name;
+  late final TextEditingController _reason;
+  late DateTime _startsAt;
+  late DateTime _endsAt;
+  bool _saving = false;
+  String? _error;
+
+  bool get _creating => widget.season == null;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    final season = widget.season;
+    _id = TextEditingController(text: season?.id ?? '');
+    _name = TextEditingController(text: season?.displayName ?? '');
+    _reason = TextEditingController(
+      text: season == null
+          ? 'Created leaderboard season from Admin Studio.'
+          : 'Updated leaderboard season from Admin Studio.',
+    );
+    _startsAt = (season?.startsAt ?? now).toLocal();
+    _endsAt = (season?.endsAt ?? _startsAt.add(const Duration(days: 365)))
+        .toLocal();
+  }
+
+  @override
+  void dispose() {
+    _id.dispose();
+    _name.dispose();
+    _reason.dispose();
+    super.dispose();
+  }
+
+  String _date(DateTime value) {
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${value.year}-${two(value.month)}-${two(value.day)} '
+        '${two(value.hour)}:${two(value.minute)}';
+  }
+
+  Future<void> _pickDate({required bool start}) async {
+    final current = start ? _startsAt : _endsAt;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+    );
+    if (time == null || !mounted) return;
+    final selected = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    setState(() {
+      if (start) {
+        _startsAt = selected;
+      } else {
+        _endsAt = selected;
+      }
+      _error = null;
+    });
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (!_startsAt.isBefore(_endsAt)) {
+      setState(() {
+        _error = abuText(
+          context,
+          'The season start must be before its end.',
+          'يجب أن تكون بداية الموسم قبل نهايته.',
+        );
+      });
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.repository.saveAdminLeaderboardSeason(
+        id: _id.text,
+        displayName: _name.text,
+        startsAt: _startsAt,
+        endsAt: _endsAt,
+        reason: _reason.text,
+        create: _creating,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = productionErrorMessage(error);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+    title: Text(
+      _creating
+          ? abuText(context, 'Create season', 'إنشاء موسم')
+          : abuText(context, 'Edit season', 'تعديل الموسم'),
+    ),
+    content: Form(
+      key: _formKey,
+      child: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _id,
+                enabled: _creating && !_saving,
+                decoration: InputDecoration(
+                  labelText: abuText(context, 'Season ID', 'معرف الموسم'),
+                  hintText: '2026-2027',
+                ),
+                validator: (value) {
+                  final id = value?.trim() ?? '';
+                  if (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$')
+                      .hasMatch(id)) {
+                    return abuText(
+                      context,
+                      'Use 1–50 letters, numbers, dots, underscores or hyphens.',
+                      'استخدم 1–50 حرفاً أو رقماً أو نقطة أو شرطة.',
+                    );
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _name,
+                enabled: !_saving,
+                maxLength: 100,
+                decoration: InputDecoration(
+                  labelText: abuText(context, 'Display name', 'اسم العرض'),
+                  hintText: '2026/27 Season',
+                ),
+                validator: (value) => (value?.trim().isEmpty ?? true)
+                    ? abuText(
+                        context,
+                        'Enter a display name.',
+                        'أدخل اسم العرض.',
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _saving ? null : () => _pickDate(start: true),
+                      icon: const Icon(Icons.event_available_rounded),
+                      label: Text(
+                        '${abuText(context, 'START', 'البداية')}\n${_date(_startsAt)}',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _saving ? null : () => _pickDate(start: false),
+                      icon: const Icon(Icons.event_busy_rounded),
+                      label: Text(
+                        '${abuText(context, 'END', 'النهاية')}\n${_date(_endsAt)}',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _reason,
+                enabled: !_saving,
+                maxLength: 255,
+                decoration: InputDecoration(
+                  labelText: abuText(context, 'Audit reason', 'سبب التعديل'),
+                ),
+                validator: (value) => (value?.trim().length ?? 0) < 3
+                    ? abuText(
+                        context,
+                        'Enter a short reason.',
+                        'أدخل سبباً مختصراً.',
+                      )
+                    : null,
+              ),
+              if (!_creating) ...[
+                const SizedBox(height: 4),
+                Text(
+                  abuText(
+                    context,
+                    'Saving explicitly changes this season to manual mode. Automatic discovery will no longer change its name or dates.',
+                    'الحفظ يحول هذا الموسم إلى الوضع اليدوي، ولن يغير الاكتشاف التلقائي اسمه أو تواريخه.',
+                  ),
+                  style: TextStyle(color: _gold, fontSize: 12, height: 1.4),
+                ),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(_error!, style: const TextStyle(color: _red, height: 1.4)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: _saving ? null : () => Navigator.pop(context, false),
+        child: Text(abuText(context, 'CANCEL', 'إلغاء')),
+      ),
+      FilledButton.icon(
+        onPressed: _saving ? null : _save,
+        icon: _saving
+            ? const SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.save_rounded),
+        label: Text(abuText(context, 'SAVE SEASON', 'حفظ الموسم')),
+      ),
+    ],
+  );
 }
 
 class _AdminMembershipDialog extends StatefulWidget {

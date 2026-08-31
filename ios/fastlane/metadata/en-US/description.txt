@@ -4,8 +4,8 @@ Abu 3meer brings football predictions, video questions, exclusive content, and f
 • Match center: Follow fixtures, results, match facts, lineups, and league tables when the official data provider publishes them.
 • Video questions: Answer questions from Abu 3meer videos and guess featured players.
 • Exclusive videos: Watch special video releases made available to app users.
-• XP and rankings: Earn XP for correct football predictions and correct video-question or player-guess answers. Compare fan progress on current-month, previous-month, and season leaderboards.
-• YouTube membership: Verified channel members receive 2× XP on those eligible prediction and video-question actions only.
+• XP and rankings: Receive 50 XP once at signup, 5 XP for the first login each UTC day, and XP for correct football predictions and correct video-question or player-guess answers. Compare fan progress on current-month, previous-month, and season leaderboards.
+• YouTube membership: Verified channel members receive 2× XP on eligible prediction and video-question actions only. Signup and daily-login XP are not doubled.
 
 Choose Arabic or English and control notifications for match reminders, new questions, exclusive videos, prediction results, and important announcements.
 

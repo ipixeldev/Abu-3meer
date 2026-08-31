@@ -192,14 +192,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
        LIMIT 50`,
       [
         user.id,
-        [
-          'prediction_exact',
-          'prediction_scorer',
-          'prediction_winner',
-          'prediction_win',
-          'video_phrase',
-          'player_card',
-        ],
+        eligibleXpSources,
       ]
     );
     return res.rows;

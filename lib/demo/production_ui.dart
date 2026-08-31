@@ -2069,9 +2069,34 @@ class _ProductionShellState extends State<_ProductionShell>
     if (!widget.profile.isGuest) {
       widget.repository
           .checkInDailyStreak(widget.profile.uid)
-          // Check-in maintains the activity streak only. Daily login never
-          // awards XP, so a legacy backend response must not imply otherwise.
-          .then<void>((_) {})
+          .then((pointsAwarded) {
+            if (pointsAwarded > 0 && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  backgroundColor: const Color(0xFF1B2A1E),
+                  content: Row(
+                    children: [
+                      const Text('🔥', style: TextStyle(fontSize: 18)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          abuText(
+                            context,
+                            'Daily login streak updated! +$pointsAwarded XP',
+                            'تم تحديث سلسلة الدخول اليومي! +$pointsAwarded XP',
+                          ),
+                          style: TextStyle(
+                            color: _productionPrimary(context),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+          })
           .catchError((Object error) {
             debugPrint(
               '[Streak] Startup check-in could not be completed: $error',
@@ -6955,27 +6980,53 @@ class _ProductionLeaderboard extends StatefulWidget {
 class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
   LeaderboardPeriod period = LeaderboardPeriod.currentMonth;
   String? selectedSeasonId;
+  bool _previousMonthAvailable = false;
 
-  Widget _periodControl(BuildContext context) =>
-      SegmentedButton<LeaderboardPeriod>(
-        segments: [
-          ButtonSegment(
-            value: LeaderboardPeriod.currentMonth,
-            label: Text(abuText(context, 'THIS MONTH', 'هذا الشهر')),
-          ),
+  Widget _periodControl(
+    BuildContext context, {
+    required bool previousMonthAvailable,
+  }) {
+    final selectedPeriod =
+        !previousMonthAvailable && period == LeaderboardPeriod.previousMonth
+        ? LeaderboardPeriod.currentMonth
+        : period;
+    return SegmentedButton<LeaderboardPeriod>(
+      segments: [
+        ButtonSegment(
+          value: LeaderboardPeriod.currentMonth,
+          label: Text(abuText(context, 'THIS MONTH', 'هذا الشهر')),
+        ),
+        if (previousMonthAvailable)
           ButtonSegment(
             value: LeaderboardPeriod.previousMonth,
             label: Text(abuText(context, 'LAST MONTH', 'الشهر الماضي')),
           ),
-          ButtonSegment(
-            value: LeaderboardPeriod.season,
-            label: Text(abuText(context, 'SEASON', 'الموسم')),
-          ),
-        ],
-        showSelectedIcon: false,
-        selected: {period},
-        onSelectionChanged: (value) => setState(() => period = value.first),
-      );
+        ButtonSegment(
+          value: LeaderboardPeriod.season,
+          label: Text(abuText(context, 'SEASON', 'الموسم')),
+        ),
+      ],
+      showSelectedIcon: false,
+      selected: {selectedPeriod},
+      onSelectionChanged: (value) => setState(() => period = value.first),
+    );
+  }
+
+  void _synchronizePreviousMonthAvailability(bool available) {
+    if (_previousMonthAvailable == available &&
+        (available || period != LeaderboardPeriod.previousMonth)) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _previousMonthAvailable = available;
+        if (!available && period == LeaderboardPeriod.previousMonth) {
+          period = LeaderboardPeriod.currentMonth;
+        }
+      });
+    });
+  }
 
   Widget _seasonControl(BuildContext context, LeaderboardSnapshot snapshot) {
     if (period != LeaderboardPeriod.season || snapshot.seasons.isEmpty) {
@@ -7006,18 +7057,30 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
   Widget _mobileLeaderboard(
     BuildContext context,
     LeaderboardSnapshot snapshot,
+    bool previousMonthAvailable,
   ) {
     final entries = snapshot.entries;
+    final top3 = entries.take(3).toList(growable: false);
+    final remaining = entries.skip(3).toList(growable: false);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _periodControl(context),
+        _periodControl(context, previousMonthAvailable: previousMonthAvailable),
         if (period == LeaderboardPeriod.season &&
             snapshot.seasons.isNotEmpty) ...[
           const SizedBox(height: 12),
           _seasonControl(context, snapshot),
         ],
         const SizedBox(height: 16),
+        if (top3.isNotEmpty) ...[
+          _LeaderboardPodium(
+            top3: top3,
+            currentUid: widget.profile.uid,
+            onTapUser: (uid) =>
+                _showOtherUserProfileDialog(context, uid, widget.repository),
+          ),
+          const SizedBox(height: 16),
+        ],
         if (entries.isEmpty)
           _ProductionEmpty(
             icon: Icons.leaderboard_rounded,
@@ -7028,18 +7091,18 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
             ),
             body: abuText(
               context,
-              'XP from correct predictions and video answers will appear here.',
-              'ستظهر هنا نقاط الخبرة من التوقعات وإجابات الفيديو الصحيحة.',
+              'Eligible activity XP will appear here after signup, daily login, correct predictions, or video answers.',
+              'ستظهر هنا XP من التسجيل والدخول اليومي والتوقعات أو إجابات الفيديو الصحيحة.',
             ),
           )
-        else
+        else if (remaining.isNotEmpty)
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: entries.length,
+            itemCount: remaining.length,
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, i) {
-              final ranked = entries[i];
+              final ranked = remaining[i];
               final entry = ranked.entry;
               final mine = entry.uid == widget.profile.uid;
               return _LeaderboardRowCard(
@@ -7067,8 +7130,11 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
   Widget _desktopLeaderboard(
     BuildContext context,
     LeaderboardSnapshot snapshot,
+    bool previousMonthAvailable,
   ) {
     final entries = snapshot.entries;
+    final top3 = entries.take(3).toList(growable: false);
+    final remaining = entries.skip(3).toList(growable: false);
     final currentUser = snapshot.currentUser;
     final leaderPoints = entries.isEmpty ? 0 : entries.first.points;
     final myPoints = currentUser?.points ?? 0;
@@ -7081,7 +7147,13 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
         children: [
           Row(
             children: [
-              SizedBox(width: 390, child: _periodControl(context)),
+              SizedBox(
+                width: 390,
+                child: _periodControl(
+                  context,
+                  previousMonthAvailable: previousMonthAvailable,
+                ),
+              ),
               if (period == LeaderboardPeriod.season &&
                   snapshot.seasons.isNotEmpty) ...[
                 const SizedBox(width: 12),
@@ -7135,10 +7207,28 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
             children: [
               Expanded(
                 flex: 7,
-                child: _ProductionLeaderboardTable(
-                  entries: entries,
-                  profileUid: widget.profile.uid,
-                  repository: widget.repository,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (top3.isNotEmpty) ...[
+                      _LeaderboardPodium(
+                        top3: top3,
+                        currentUid: widget.profile.uid,
+                        onTapUser: (uid) => _showOtherUserProfileDialog(
+                          context,
+                          uid,
+                          widget.repository,
+                        ),
+                      ),
+                      if (remaining.isNotEmpty) const SizedBox(height: 14),
+                    ],
+                    if (remaining.isNotEmpty || entries.isEmpty)
+                      _ProductionLeaderboardTable(
+                        entries: remaining,
+                        profileUid: widget.profile.uid,
+                        repository: widget.repository,
+                      ),
+                  ],
                 ),
               ),
               const SizedBox(width: 18),
@@ -7262,7 +7352,13 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(width: 300, child: _periodControl(context)),
+              SizedBox(
+                width: 300,
+                child: _periodControl(
+                  context,
+                  previousMonthAvailable: _previousMonthAvailable,
+                ),
+              ),
               const SizedBox(height: 16),
               const _ProductionSkeleton(height: 300),
             ],
@@ -7276,7 +7372,10 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                 alignment: AlignmentDirectional.centerStart,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 390),
-                  child: _periodControl(context),
+                  child: _periodControl(
+                    context,
+                    previousMonthAvailable: _previousMonthAvailable,
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -7296,13 +7395,23 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
         if (leaderboard == null) {
           return const _ProductionSkeleton(height: 300);
         }
+        final previousMonthAvailable = leaderboardPreviousMonthAvailable(
+          seasons: leaderboard.seasons,
+          activeSeasonId: leaderboard.activeSeasonId,
+          now: DateTime.now(),
+        );
+        _synchronizePreviousMonthAvailability(previousMonthAvailable);
         final desktop = MediaQuery.sizeOf(context).width >= 1100;
         if (desktop) {
-          return _desktopLeaderboard(context, leaderboard);
+          return _desktopLeaderboard(
+            context,
+            leaderboard,
+            previousMonthAvailable,
+          );
         }
         return Stack(
           children: [
-            _mobileLeaderboard(context, leaderboard),
+            _mobileLeaderboard(context, leaderboard, previousMonthAvailable),
             if (leaderboard.currentUser != null)
               Positioned(
                 left: 0,
@@ -7320,14 +7429,10 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
   );
 }
 
-// Kept temporarily for compatibility with saved hot-reload states. It is not
-// used by the recognition-only ranking and is removed from release builds.
-// ignore: unused_element
 class _LeaderboardPodium extends StatelessWidget {
   const _LeaderboardPodium({
     required this.top3,
     required this.currentUid,
-    // ignore: unused_element_parameter
     this.onTapUser,
   });
 
@@ -7870,7 +7975,7 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
             ),
           ),
           Text(
-            '${currentUser.points} pts',
+            '${currentUser.points} XP',
             style: _display(18, color: _productionPrimary(context)),
           ),
         ],
@@ -10448,8 +10553,8 @@ class _ProductionSettings extends StatelessWidget {
                       Text(
                         abuText(
                           context,
-                          'Verified members receive 2× XP on correct predictions and video questions, including player guesses. Signup and daily login award no XP. XP cannot be bought, transferred, redeemed, or used to unlock anything.',
-                          'يحصل الأعضاء الموثقون على XP مضاعف للتوقعات وأسئلة الفيديو الصحيحة، بما فيها تخمين اللاعب. التسجيل والدخول اليومي لا يمنحان XP. لا يمكن شراء XP أو نقلها أو استبدالها ولا تفتح أي مزايا.',
+                          'Verified members receive 2× XP on correct predictions and video questions, including player guesses. Signup gives 50 XP once and the first login each UTC day gives 5 XP; neither is doubled. XP cannot be bought, transferred, redeemed, or used to unlock anything.',
+                          'يحصل الأعضاء الموثقون على XP مضاعف للتوقعات وأسئلة الفيديو الصحيحة، بما فيها تخمين اللاعب. يمنح التسجيل 50 XP مرة واحدة، ويمنح أول دخول كل يوم UTC عدد 5 XP، ولا يضاعف أي منهما. لا يمكن شراء XP أو نقلها أو استبدالها ولا تفتح أي مزايا.',
                         ),
                         style: TextStyle(color: _muted, height: 1.45),
                       ),
@@ -10895,16 +11000,16 @@ _LegalDocument _competitionLegalDocument(BuildContext context) =>
           abuText(context, 'How XP Is Earned', 'كيف تُكتسب XP'),
           abuText(
             context,
-            'XP is awarded only for correct football predictions and correct video-question answers, including player guesses. Signup, opening the app, and daily streak activity award no XP.',
-            'تُمنح XP فقط للتوقعات الكروية الصحيحة وإجابات أسئلة الفيديو الصحيحة، بما فيها تخمين اللاعب. التسجيل وفتح التطبيق ونشاط السلسلة اليومية لا يمنح XP.',
+            'XP is awarded for account signup (50 XP once), the first app login each UTC day (5 XP), correct football predictions, and correct video-question answers including player guesses.',
+            'تُمنح XP عند التسجيل (50 XP مرة واحدة)، وأول دخول للتطبيق كل يوم UTC (5 XP)، والتوقعات الكروية الصحيحة، وإجابات أسئلة الفيديو الصحيحة بما فيها تخمين اللاعب.',
           ),
         ),
         (
           abuText(context, 'YouTube Member Multiplier', 'مضاعف أعضاء يوتيوب'),
           abuText(
             context,
-            'Verified members of the Abu 3meer YouTube channel receive 2× XP on the same eligible correct predictions and video-question answers. The multiplier changes only a recognition score and never produces money, goods, access, prizes, or any redeemable benefit.',
-            'يحصل أعضاء قناة أبو عمير الموثقون على XP مضاعف لنفس التوقعات وإجابات الفيديو الصحيحة المؤهلة. يغيّر المضاعف درجة ترتيب تقديرية فقط ولا ينتج مالاً أو سلعاً أو وصولاً أو جوائز أو أي منفعة قابلة للاستبدال.',
+            'Verified members of the Abu 3meer YouTube channel receive 2× XP only on eligible correct predictions and video-question answers. Signup and daily-login XP always stay at their base amounts. The multiplier changes only a recognition score and never produces money, goods, access, prizes, or any redeemable benefit.',
+            'يحصل أعضاء قناة أبو عمير الموثقون على XP مضاعف فقط للتوقعات وإجابات الفيديو الصحيحة المؤهلة. تبقى XP التسجيل والدخول اليومي بقيمتها الأساسية دائماً. يغيّر المضاعف درجة ترتيب تقديرية فقط ولا ينتج مالاً أو سلعاً أو وصولاً أو جوائز أو أي منفعة قابلة للاستبدال.',
           ),
         ),
         (
@@ -10923,8 +11028,8 @@ _LegalDocument _competitionLegalDocument(BuildContext context) =>
           ),
           abuText(
             context,
-            'The leaderboard shows current-month XP, previous-month XP, and season XP for recognition only. Monthly ranking starts again each calendar month. A football season starts with the first configured Real Madrid or Barcelona match. Abu 3meer may correct provider data and remove fraudulent activity so XP remains accurate.',
-            'تعرض لوحة الترتيب XP للشهر الحالي والشهر السابق والموسم للتقدير فقط. يبدأ ترتيب شهري جديد مع كل شهر ميلادي. يبدأ موسم كرة القدم مع أول مباراة مضبوطة لريال مدريد أو برشلونة. يجوز لأبو عمير تصحيح بيانات المزود وإزالة النشاط الاحتيالي للحفاظ على دقة XP.',
+            'The leaderboard shows current-month XP, previous-month XP, and season XP for recognition only. Monthly ranking starts again each calendar month. Each season uses its administrator-configured start and end dates, and completed seasons remain available as archived rankings. Abu 3meer may correct provider data and remove fraudulent activity so XP remains accurate.',
+            'تعرض لوحة الترتيب XP للشهر الحالي والشهر السابق والموسم للتقدير فقط. يبدأ ترتيب شهري جديد مع كل شهر ميلادي. يعتمد كل موسم على تاريخي البداية والنهاية اللذين يحددهما المشرف، وتبقى المواسم المكتملة متاحة كترتيبات مؤرشفة. يجوز لأبو عمير تصحيح بيانات المزود وإزالة النشاط الاحتيالي للحفاظ على دقة XP.',
           ),
         ),
       ],

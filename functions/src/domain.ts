@@ -16,8 +16,8 @@ export const DEFAULT_POINTS = Object.freeze({
   winnerOutcome: 10,
   videoQuestion: 10,
   playerCard: 10,
-  dailyStreak: 0,
-  signUpBonus: 0,
+  dailyStreak: 5,
+  signUpBonus: 50,
   memberMultiplier: 2,
 });
 

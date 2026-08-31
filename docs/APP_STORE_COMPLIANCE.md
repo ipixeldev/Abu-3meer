@@ -18,8 +18,8 @@ Updated: 31 August 2026
 - Account deletion is available in Settings.
 - Privacy Policy, Terms of Use, XP & Leaderboard Rules, and Support are available in Settings and on the public website.
 - The app is completely free and has no purchases, paid entry, betting, wagering, prizes, rewards, or leaderboard winners.
-- XP is awarded only for correct football predictions and correct video-question or player-guess answers.
-- Verified YouTube members receive 2× XP only for those eligible actions. Signup, daily login, and passive activity are not multiplied.
+- XP is awarded once at signup (50 XP), for the first login each UTC day (5 XP), and for correct football predictions and correct video-question or player-guess answers.
+- Verified YouTube members receive 2× XP only for eligible prediction and video-answer actions. Signup and daily-login XP remain at their base amounts, and passive activity earns nothing.
 - XP has no monetary value, cannot be bought, transferred, or redeemed, and unlocks nothing.
 - Current-month, previous-month, and season leaderboards provide recognition only. Monthly XP resets while the completed month remains visible, and completed seasons remain available as archived rankings.
 - The public XP & Leaderboard Rules state that Apple does not sponsor, administer, or participate in XP scoring or rankings.

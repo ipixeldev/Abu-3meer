@@ -142,6 +142,7 @@ void main() {
       });
 
       expect(profile.uid, 'firebase-id');
+      expect(profile.email, 'admin@example.com');
       expect(profile.role, 'superAdmin');
       expect(profile.isYouTubeMember, isTrue);
       expect(profile.totalPoints, 120);

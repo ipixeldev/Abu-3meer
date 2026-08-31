@@ -472,7 +472,26 @@ export const completeOnboarding = onCall(phase3CallableOptions(region), async (r
       updatedAt: now,
     }, {merge: true});
   });
-  return {ok: true};
+  const rules = await pointSettings();
+  const signupAward = await awardPoints({
+    userId: auth.uid,
+    sourceType: "signUpBonus",
+    sourceId: "signup",
+    basePoints: configuredInteger(
+      rules.signUpBonus,
+      "Signup bonus",
+      DEFAULT_POINTS.signUpBonus,
+      0,
+      500,
+    ),
+    reason: "One-time signup XP",
+    applyMembershipMultiplier: false,
+  });
+  return {
+    ok: true,
+    pointsAwarded: signupAward.awarded ? signupAward.finalPoints : 0,
+    alreadyAwarded: !signupAward.awarded,
+  };
 });
 
 export const submitPrediction = onCall(phase3CallableOptions(region), async (request) => {

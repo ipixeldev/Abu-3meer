@@ -1419,6 +1419,8 @@ class LeaderboardSeason {
     this.startsAt,
     this.endsAt,
     this.active = false,
+    this.managementMode = 'automatic',
+    this.updatedAt,
   });
 
   final String id;
@@ -1426,6 +1428,8 @@ class LeaderboardSeason {
   final DateTime? startsAt;
   final DateTime? endsAt;
   final bool active;
+  final String managementMode;
+  final DateTime? updatedAt;
 
   factory LeaderboardSeason.fromDocument(
     DocumentSnapshot<Map<String, dynamic>> doc,
@@ -1437,6 +1441,8 @@ class LeaderboardSeason {
       startsAt: _optionalDate(data['startsAt']),
       endsAt: _optionalDate(data['endsAt']),
       active: data['active'] as bool? ?? false,
+      managementMode: data['managementMode'] as String? ?? 'automatic',
+      updatedAt: _optionalDate(data['updatedAt']),
     );
   }
 
@@ -1453,8 +1459,61 @@ class LeaderboardSeason {
       startsAt: parseDate(data['startsAt'] ?? data['starts_at']),
       endsAt: parseDate(data['endsAt'] ?? data['ends_at']),
       active: data['active'] == true || data['isCurrent'] == true,
+      managementMode:
+          (data['managementMode'] ?? data['management_mode'] ?? 'automatic')
+              .toString(),
+      updatedAt: parseDate(data['updatedAt'] ?? data['updated_at']),
     );
   }
+}
+
+DateTime leaderboardSeasonFirstMonthEndsAt(DateTime startsAt) {
+  final start = startsAt.toUtc();
+  final targetYear = start.month == DateTime.december
+      ? start.year + 1
+      : start.year;
+  final targetMonth = start.month == DateTime.december
+      ? DateTime.january
+      : start.month + 1;
+  final lastTargetDay = DateTime.utc(targetYear, targetMonth + 1, 0).day;
+  final targetDay = start.day > lastTargetDay ? lastTargetDay : start.day;
+  return DateTime.utc(
+    targetYear,
+    targetMonth,
+    targetDay,
+    start.hour,
+    start.minute,
+    start.second,
+    start.millisecond,
+    start.microsecond,
+  );
+}
+
+bool leaderboardPreviousMonthAvailable({
+  required Iterable<LeaderboardSeason> seasons,
+  required String? activeSeasonId,
+  required DateTime now,
+}) {
+  LeaderboardSeason? activeSeason;
+  if (activeSeasonId != null && activeSeasonId.isNotEmpty) {
+    for (final season in seasons) {
+      if (season.id == activeSeasonId) {
+        activeSeason = season;
+        break;
+      }
+    }
+  }
+  if (activeSeason == null) {
+    for (final season in seasons) {
+      if (season.active) {
+        activeSeason = season;
+        break;
+      }
+    }
+  }
+  final startsAt = activeSeason?.startsAt;
+  if (startsAt == null) return true;
+  return !now.toUtc().isBefore(leaderboardSeasonFirstMonthEndsAt(startsAt));
 }
 
 class RankedLeaderboardEntry {

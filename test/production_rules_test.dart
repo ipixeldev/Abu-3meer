@@ -3,6 +3,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('production point rules', () {
+    test('signup and daily login use fixed, non-member defaults', () {
+      expect(PointRuleDefaults.signUpBonus, 50);
+      expect(PointRuleDefaults.dailyStreak, 5);
+      expect(isMemberMultiplierEligible(PointSource.signUpBonus), isFalse);
+      expect(isMemberMultiplierEligible(PointSource.dailyStreak), isFalse);
+    });
+
     test('normal and member exact predictions award 100 and 200', () {
       expect(calculatePoints(basePoints: 100, multiplier: 1), 100);
       expect(

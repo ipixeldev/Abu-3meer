@@ -1364,6 +1364,67 @@ class ApiProductionRepository {
         .toList(growable: false);
   }
 
+  Future<List<LeaderboardSeason>> fetchAdminLeaderboardSeasons() async {
+    final response = await api.get(
+      '/admin/leaderboard-seasons',
+      requireAuth: true,
+      bypassCache: true,
+    );
+    if (response is! Map || response['seasons'] is! List) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid season directory.',
+        details: response,
+      );
+    }
+    return (response['seasons'] as List)
+        .whereType<Map>()
+        .map(
+          (season) =>
+              LeaderboardSeason.fromMap(Map<String, dynamic>.from(season)),
+        )
+        .toList(growable: false);
+  }
+
+  Future<LeaderboardSeason> saveAdminLeaderboardSeason({
+    required String id,
+    required String displayName,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    required String reason,
+    required bool create,
+  }) async {
+    final encodedId = Uri.encodeComponent(id.trim());
+    final body = <String, dynamic>{
+      if (create) 'id': id.trim(),
+      'displayName': displayName.trim(),
+      'startsAt': startsAt.toUtc().toIso8601String(),
+      'endsAt': endsAt.toUtc().toIso8601String(),
+      'reason': reason.trim(),
+    };
+    final response = create
+        ? await api.post(
+            '/admin/leaderboard-seasons',
+            body: body,
+            requireAuth: true,
+          )
+        : await api.put(
+            '/admin/leaderboard-seasons/$encodedId',
+            body: body,
+            requireAuth: true,
+          );
+    if (response is! Map || response['season'] is! Map) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server did not confirm the season update.',
+        details: response,
+      );
+    }
+    return LeaderboardSeason.fromMap(
+      Map<String, dynamic>.from(response['season'] as Map),
+    );
+  }
+
   Future<void> setAdminUserStatus({
     required String userId,
     required bool suspended,

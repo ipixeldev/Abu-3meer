@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { deriveStreakCount } from '../services/streakService.js';
+import {
+  dailyStreakIdempotencyKey,
+  deriveStreakCount,
+} from '../services/streakService.js';
 
 describe('daily streak derivation', () => {
   const now = new Date('2026-08-27T22:30:00.000Z');
@@ -27,6 +30,21 @@ describe('daily streak derivation', () => {
     assert.deepEqual(
       deriveStreakCount(9, new Date('2026-08-24T23:59:00.000Z'), now),
       { alreadyCheckedIn: false, nextStreak: 1 },
+    );
+  });
+
+  it('uses one stable idempotency key per user and UTC day', () => {
+    assert.equal(
+      dailyStreakIdempotencyKey('user_1', new Date('2026-09-01T00:00:00Z')),
+      'streak:user_1:2026-09-01',
+    );
+    assert.equal(
+      dailyStreakIdempotencyKey('user_1', new Date('2026-09-01T23:59:59Z')),
+      'streak:user_1:2026-09-01',
+    );
+    assert.notEqual(
+      dailyStreakIdempotencyKey('user_1', new Date('2026-09-02T00:00:00Z')),
+      'streak:user_1:2026-09-01',
     );
   });
 });

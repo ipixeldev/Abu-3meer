@@ -4,12 +4,16 @@ import {
   discoverFutureLeaderboardSeasons,
   eligibleLeaderboardSourceTypes,
   isTrackedLeaderboardClubName,
+  leaderboardSeasonWindowsOverlap,
   utcMonthWindow,
+  validateManualLeaderboardSeasonWindow,
 } from '../services/leaderboardService.js';
 
 describe('XP-only leaderboard periods', () => {
-  it('allows only prediction and video-answer ledger sources', () => {
+  it('allows activity, prediction, and video-answer ledger sources', () => {
     assert.deepEqual([...eligibleLeaderboardSourceTypes], [
+      'signup_bonus',
+      'daily_streak',
       'prediction_exact',
       'prediction_scorer',
       'prediction_winner',
@@ -19,8 +23,6 @@ describe('XP-only leaderboard periods', () => {
     ]);
 
     const excluded = [
-      'signup_bonus',
-      'daily_streak',
       'achievement_bonus',
       'admin_adjustment',
       'loyalty_redemption',
@@ -62,6 +64,43 @@ describe('XP-only leaderboard periods', () => {
     assert.throws(
       () => utcMonthWindow('current_month', new Date(Number.NaN)),
       /invalid/i,
+    );
+  });
+
+  it('validates explicit season windows and rejects reversed dates', () => {
+    const window = validateManualLeaderboardSeasonWindow(
+      '2026-08-30T15:00:00.000Z',
+      '2027-08-15T19:00:00.000Z',
+    );
+    assert.equal(window.startsAt.toISOString(), '2026-08-30T15:00:00.000Z');
+    assert.equal(window.endsAt.toISOString(), '2027-08-15T19:00:00.000Z');
+    assert.throws(
+      () => validateManualLeaderboardSeasonWindow(
+        '2027-08-15T19:00:00.000Z',
+        '2026-08-30T15:00:00.000Z',
+      ),
+      /start must be before/i,
+    );
+  });
+
+  it('treats adjacent manual seasons as non-overlapping', () => {
+    assert.equal(
+      leaderboardSeasonWindowsOverlap(
+        '2026-08-30T15:00:00.000Z',
+        '2027-08-15T19:00:00.000Z',
+        '2027-08-15T19:00:00.000Z',
+        '2028-08-20T19:00:00.000Z',
+      ),
+      false,
+    );
+    assert.equal(
+      leaderboardSeasonWindowsOverlap(
+        '2026-08-30T15:00:00.000Z',
+        '2027-08-16T19:00:00.000Z',
+        '2027-08-15T19:00:00.000Z',
+        '2028-08-20T19:00:00.000Z',
+      ),
+      true,
     );
   });
 

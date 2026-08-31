@@ -1,4 +1,9 @@
 import { getClient } from '../db/pool.js';
+import { config } from '../config.js';
+import {
+  awardPointsInTransaction,
+  invalidatePointCaches,
+} from './pointsService.js';
 
 export interface StreakResult {
   streakCount: number;
@@ -8,6 +13,10 @@ export interface StreakResult {
 
 function utcDateKey(value: Date): string {
   return value.toISOString().slice(0, 10);
+}
+
+export function dailyStreakIdempotencyKey(userId: string, value: Date): string {
+  return `streak:${userId}:${utcDateKey(value)}`;
 }
 
 export function deriveStreakCount(
@@ -34,16 +43,16 @@ export function deriveStreakCount(
 }
 
 /**
- * Updates attendance streak state without awarding XP. A profile row lock
- * makes concurrent app launches safe while keeping streaks separate from the
- * recognition-only XP ranking.
+ * Updates the attendance streak and fixed daily XP in one transaction. A
+ * profile row lock plus the UTC-day ledger key makes concurrent launches safe.
+ * Daily attendance deliberately never receives the YouTube member multiplier.
  */
 export async function checkInDailyStreak(
   userId: string,
 ): Promise<StreakResult> {
   const now = new Date();
-  const today = utcDateKey(now);
   const client = await getClient();
+  let didAwardPoints = false;
 
   try {
     await client.query('BEGIN');
@@ -75,6 +84,24 @@ export async function checkInDailyStreak(
       };
     }
 
+    const ruleRes = await client.query(
+      `SELECT base_points
+       FROM point_rules
+       WHERE key = 'dailyStreak'`,
+    );
+    const award = await awardPointsInTransaction(client, {
+      userId,
+      sourceType: 'daily_streak',
+      sourceId: utcDateKey(now),
+      basePoints: Number(
+        ruleRes.rows[0]?.base_points ?? config.pointDefaults.dailyStreak,
+      ),
+      multiplier: 1,
+      description: `Daily login XP (Day ${derived.nextStreak})`,
+      idempotencyKey: dailyStreakIdempotencyKey(userId, now),
+    });
+    didAwardPoints = award.alreadyAwarded !== true && award.pointsAwarded > 0;
+
     const profileUpdate = await client.query(
       `UPDATE user_profiles
        SET streak_count = $1,
@@ -89,11 +116,12 @@ export async function checkInDailyStreak(
     }
 
     await client.query('COMMIT');
+    if (didAwardPoints) await invalidatePointCaches();
 
     return {
       streakCount: derived.nextStreak,
-      pointsAwarded: 0,
-      alreadyCheckedIn: false,
+      pointsAwarded: didAwardPoints ? award.pointsAwarded : 0,
+      alreadyCheckedIn: award.alreadyAwarded === true,
     };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);

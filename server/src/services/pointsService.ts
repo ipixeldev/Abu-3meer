@@ -24,9 +24,19 @@ const memberMultiplierSources = new Set<PointSourceType>([
   'player_card',
 ]);
 
+const xpEarningSources = new Set<PointSourceType>([
+  'signup_bonus',
+  'daily_streak',
+  ...memberMultiplierSources,
+]);
+
 /** The only actions that may create XP in the product. */
 export function isXpEarningSource(sourceType: PointSourceType): boolean {
-  return memberMultiplierSources.has(sourceType);
+  return xpEarningSources.has(sourceType);
+}
+
+export function signupBonusIdempotencyKey(userId: string): string {
+  return `signup_bonus_${userId}`;
 }
 
 export function isMemberMultiplierEligible(sourceType: PointSourceType): boolean {

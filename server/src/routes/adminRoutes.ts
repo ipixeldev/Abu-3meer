@@ -13,8 +13,23 @@ import {
 } from '../services/notificationService.js';
 import { config } from '../config.js';
 import { redis } from '../redis/client.js';
+import {
+  listLeaderboardSeasons,
+  saveManualLeaderboardSeason,
+} from '../services/leaderboardService.js';
 
 const manageableRoles = ['fan', 'member', 'moderator', 'admin', 'super_admin'] as const;
+const leaderboardSeasonBodySchema = z.object({
+  displayName: z.string().trim().min(1).max(100),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+  reason: z.string().trim().min(3).max(255).default('Configured from Admin Studio.'),
+});
+const leaderboardSeasonIdSchema = z.string()
+  .trim()
+  .min(1)
+  .max(50)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 
 async function resolveUserId(identifier: string): Promise<string | null> {
   const result = await query(
@@ -127,6 +142,67 @@ export async function adminRoutes(fastify: FastifyInstance) {
       hasMore: parsed.data.offset + users.length < total,
     };
   });
+
+  fastify.get(
+    '/admin/leaderboard-seasons',
+    { preHandler: [requirePermission('leaderboards.manage')] },
+    async () => {
+      const seasons = await listLeaderboardSeasons();
+      return {
+        seasons,
+        activeSeasonId: seasons.find(season => season.active)?.id ?? null,
+      };
+    },
+  );
+
+  fastify.post(
+    '/admin/leaderboard-seasons',
+    { preHandler: [requirePermission('leaderboards.manage')] },
+    async (request, reply) => {
+      const parsed = leaderboardSeasonBodySchema.extend({
+        id: leaderboardSeasonIdSchema,
+      }).safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'ValidationError',
+          message: 'Check the season name and dates, then try again.',
+          issues: parsed.error.issues,
+        });
+      }
+      const season = await saveManualLeaderboardSeason(
+        parsed.data,
+        request.user!.id,
+      );
+      return reply.status(201).send({ success: true, season });
+    },
+  );
+
+  fastify.put(
+    '/admin/leaderboard-seasons/:id',
+    { preHandler: [requirePermission('leaderboards.manage')] },
+    async (request, reply) => {
+      const id = leaderboardSeasonIdSchema.safeParse(
+        (request.params as { id?: string }).id,
+      );
+      const body = leaderboardSeasonBodySchema.safeParse(request.body);
+      if (!id.success || !body.success) {
+        return reply.status(400).send({
+          error: 'ValidationError',
+          message: 'Check the season name and dates, then try again.',
+          issues: [
+            ...(!id.success ? id.error.issues : []),
+            ...(!body.success ? body.error.issues : []),
+          ],
+        });
+      }
+      const season = await saveManualLeaderboardSeason(
+        { id: id.data, ...body.data },
+        request.user!.id,
+        id.data,
+      );
+      return { success: true, season };
+    },
+  );
 
   // 1. Matches & Settlement (Permission: matches.manage)
   // Admin Studio needs terminal and locked rows too. The public upcoming feed
@@ -359,7 +435,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
   fastify.post('/admin/users/:id/points', { preHandler: [requirePermission('points.adjust')] }, async (request, reply) => {
     return reply.status(410).send({
       error: 'XpAdjustmentsDisabled',
-      message: 'XP can only be earned from correct predictions and video-question answers.',
+      message: 'XP is earned from signup, daily login, correct predictions, and correct video-question answers; manual XP awards are disabled.',
     });
   });
 

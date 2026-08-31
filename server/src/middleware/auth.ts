@@ -2,6 +2,11 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { verifyFirebaseToken } from '../firebase/admin.js';
 import { getClient, query } from '../db/pool.js';
 import { config } from '../config.js';
+import {
+  awardPointsInTransaction,
+  invalidatePointCaches,
+  signupBonusIdempotencyKey,
+} from '../services/pointsService.js';
 
 export interface AuthenticatedUser {
   id: string;
@@ -120,8 +125,9 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
     }
 
     if (res.rows.length === 0) {
-      // Provision identity, a zero-XP profile, and roles atomically. This
-      // also repairs accounts left half-created by an interrupted older build.
+      // Provision identity, profile, one-time signup award, and roles
+      // atomically. This also repairs accounts left half-created by an
+      // interrupted older build.
       const initialUsername = (email ? email.split('@')[0] : `fan_${firebaseUid.slice(0, 6)}`)
         .toLowerCase()
         .replace(/[^a-z0-9_]/g, '');
@@ -137,6 +143,7 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
       else if (isAdminEmail) assignedRoles.push('admin');
 
       const client = await getClient();
+      let didAwardSignupBonus = false;
       try {
         await client.query('BEGIN');
         const newUserRes = await client.query(
@@ -166,6 +173,24 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
            ON CONFLICT (user_id) DO NOTHING`,
           [userId],
         );
+        const signupRule = await client.query(
+          `SELECT base_points
+           FROM point_rules
+           WHERE key = 'signUpBonus'`,
+        );
+        const signupAward = await awardPointsInTransaction(client, {
+          userId,
+          sourceType: 'signup_bonus',
+          sourceId: 'signup',
+          basePoints: Number(
+            signupRule.rows[0]?.base_points ?? config.pointDefaults.signUpBonus,
+          ),
+          multiplier: 1,
+          description: 'One-time signup XP',
+          idempotencyKey: signupBonusIdempotencyKey(userId),
+        });
+        didAwardSignupBonus =
+          signupAward.alreadyAwarded !== true && signupAward.pointsAwarded > 0;
         for (const roleId of assignedRoles) {
           await client.query(
             `INSERT INTO user_roles (user_id, role_id)
@@ -175,6 +200,7 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
           );
         }
         await client.query('COMMIT');
+        if (didAwardSignupBonus) await invalidatePointCaches();
       } catch (error) {
         await client.query('ROLLBACK').catch(() => undefined);
         throw error;

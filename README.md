@@ -13,7 +13,7 @@ Abu 3meer is a production Flutter fan platform for web, iOS, and Android. The ac
 - Admin result publishing and editable launch point rules
 - Strict Firestore and Storage security rules
 
-The app is completely free. XP is granted only for correct football predictions and correct video-question or player-guess answers. Verified YouTube members receive 2× XP on those eligible actions. XP has no monetary value, cannot be bought, transferred, or redeemed, and unlocks nothing. Leaderboards are for recognition only and have no winners, prizes, or rewards.
+The app is completely free. XP is granted once at signup (50 XP), for the first login each UTC day (5 XP), and for correct football predictions and correct video-question or player-guess answers. Verified YouTube members receive 2× XP only on eligible prediction and video-answer actions; signup and daily-login XP are never doubled. XP has no monetary value, cannot be bought, transferred, or redeemed, and unlocks nothing. Leaderboards are for recognition only and have no winners, prizes, or rewards.
 
 The Phase 2 schema and feature contract are documented in
 [`docs/PHASE_2_CORE_PRODUCT.md`](docs/PHASE_2_CORE_PRODUCT.md).
