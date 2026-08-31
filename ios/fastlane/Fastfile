@@ -33,6 +33,15 @@ platform :ios do
       run_precheck_before_submit: false,
       force: true
     )
+
+    app = Spaceship::ConnectAPI::App.find("com.abu3meer.app")
+    app.fetch_edit_app_info
+      .fetch_age_rating_declaration
+      .update(
+        attributes: {
+          developer_age_rating_info_url: "https://ipixeldev.github.io/Abu-3meer/age-suitability/"
+        }
+      )
   end
 
   lane :check_testflight do
