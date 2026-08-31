@@ -10690,6 +10690,24 @@ class _ProductionSettings extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 _SettingsActionTile(
+                  icon: Icons.family_restroom_rounded,
+                  title: abuText(
+                    context,
+                    'Age Suitability (13+)',
+                    'ملاءمة العمر (+13)',
+                  ),
+                  subtitle: abuText(
+                    context,
+                    'Information for users, parents, and App Store review.',
+                    'معلومات للمستخدمين والأهل ومراجعة متجر التطبيقات.',
+                  ),
+                  onTap: () => launchUrl(
+                    Uri.parse(AbuBrand.ageSuitabilityUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+                const Divider(height: 1),
+                _SettingsActionTile(
                   icon: Icons.support_agent_rounded,
                   title: abuText(context, 'Support', 'الدعم'),
                   subtitle: AbuBrand.supportEmail,
@@ -10993,11 +11011,27 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       ),
     ),
     (
+      abuText(context, 'Location', 'الموقع'),
+      abuText(
+        context,
+        'With permission, location may be used briefly to suggest your country. If permission is declined, the app may use an IP-derived country or device locale. Abu 3meer stores the selected country, not a continuous location history.',
+        'بعد موافقتك قد يستخدم الموقع مؤقتاً لاقتراح دولتك. إذا رفضت الإذن فقد يستخدم التطبيق الدولة المستنتجة من عنوان IP أو إعدادات الجهاز. يخزن أبو عمير الدولة المختارة ولا يحتفظ بسجل مستمر للموقع.',
+      ),
+    ),
+    (
       abuText(context, 'Your Controls', 'خياراتك'),
       abuText(
         context,
         'You can change notification preferences in Settings, link Google for membership verification, and delete your account from Settings. Account deletion removes the profile and personal account data handled by Abu 3meer, subject to fraud prevention and legal retention requirements.',
         'يمكنك تغيير تفضيلات الإشعارات في الإعدادات وربط Google للتحقق من العضوية وحذف حسابك من الإعدادات. حذف الحساب يزيل الملف والبيانات الشخصية التي يديرها أبو عمير مع مراعاة متطلبات منع الاحتيال والاحتفاظ القانوني.',
+      ),
+    ),
+    (
+      abuText(context, 'Age and Contact', 'العمر والتواصل'),
+      abuText(
+        context,
+        'Abu 3meer is intended for users aged 13 or older. For privacy rights or questions, contact ${AbuBrand.supportEmail}.',
+        'أبو عمير مخصص للمستخدمين بعمر 13 سنة فأكثر. لطلبات حقوق الخصوصية أو الأسئلة تواصل عبر ${AbuBrand.supportEmail}.',
       ),
     ),
   ],
@@ -11033,16 +11067,16 @@ _LegalDocument _competitionLegalDocument(BuildContext context) =>
           abuText(context, 'Points and Multipliers', 'النقاط والمضاعفات'),
           abuText(
             context,
-            'Points are awarded for correct predictions, video questions, and player-guess challenges. Verified YouTube channel members receive 2x points on predictions and video challenges only. Signup and daily streak points are not multiplied.',
-            'تمنح النقاط للتوقعات الصحيحة وأسئلة الفيديو وتحديات تخمين اللاعب. يحصل أعضاء قناة يوتيوب الموثقون على نقاط مضاعفة للتوقعات وتحديات الفيديو فقط. لا تتضاعف نقاط التسجيل أو السلسلة اليومية.',
+            'Ordinary XP, streaks, achievements, and leaderboards are fan-progression features and do not themselves promise a real-world prize. Points have no cash value. Verified YouTube members receive bonus XP on predictions and video challenges, but that paid-member multiplier is excluded from real-prize scoring unless an equal free scoring opportunity is offered.',
+            'نقاط الخبرة والسلاسل والإنجازات وقوائم الترتيب العادية مخصصة لتقدم المشجع ولا تعد بحد ذاتها بجائزة واقعية. لا قيمة نقدية للنقاط. يحصل أعضاء يوتيوب الموثقون على نقاط إضافية للتوقعات وتحديات الفيديو، لكن مضاعف العضوية المدفوعة يستبعد من نقاط الجوائز الواقعية ما لم تتوفر فرصة مجانية مكافئة.',
           ),
         ),
         (
           abuText(context, 'Prizes and Countries', 'الجوائز والدول'),
           abuText(
             context,
-            'Real-world prizes may be offered only where lawful. Users located in Morocco, Afghanistan, or any country where prize competitions are restricted may use Abu 3meer for predictions, XP, streaks, badges, and leaderboards, but are not eligible to claim real-world prizes unless Abu 3meer publishes lawful local rules for that territory.',
-            'قد تقدم الجوائز الواقعية فقط حيث يسمح القانون. يمكن للمستخدمين الموجودين في المغرب أو أفغانستان أو أي دولة تقيد مسابقات الجوائز استخدام أبو عمير للتوقعات والنقاط والسلاسل والشارات والترتيب، لكنهم غير مؤهلين للمطالبة بجوائز واقعية ما لم ينشر أبو عمير قواعد محلية قانونية لذلك البلد.',
+            'A real-world prize exists only when Abu 3meer publishes a Promotion Notice stating its dates, free entry method, eligible countries and ages, prize, scoring, tie-breaks, and claim process. Promotions are void where prohibited. App availability does not guarantee prize eligibility.',
+            'لا توجد جائزة واقعية إلا عند نشر إشعار عرض يحدد التواريخ وطريقة الدخول المجانية والدول والأعمار المؤهلة والجائزة والنقاط وكسر التعادل والاستلام. تلغى العروض حيث يمنع القانون، وتوفر التطبيق لا يعني الأهلية للجائزة.',
           ),
         ),
         (

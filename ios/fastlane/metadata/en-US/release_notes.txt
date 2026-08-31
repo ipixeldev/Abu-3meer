@@ -1,1 +1,1 @@
-This update improves content publishing, notifications, match data, and prediction rewards. It also refreshes the app icon, branding, popup experience, and exclusive-video player.
+This update adds Sign in with Apple on iOS, Google linking for existing email and Apple accounts, in-app account deletion, and a bilingual Legal & Privacy center. It also improves content publishing, notifications, match data, prediction rewards, branding, popups, and exclusive videos.

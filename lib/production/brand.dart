@@ -15,6 +15,8 @@ abstract final class AbuBrand {
   static const termsUrl = '${websiteUrl}terms/';
   static const competitionRulesUrl = '${websiteUrl}competition-rules/';
   static const supportUrl = '${websiteUrl}support/';
+  static const accountDeletionUrl = '${websiteUrl}delete-account/';
+  static const ageSuitabilityUrl = '${websiteUrl}age-suitability/';
 
   static const logoAsset = 'assets/images/latest_abu3meer.jpg';
   static const channelImageAsset = 'assets/images/latest_abu3meer.jpg';
