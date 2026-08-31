@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { authenticateUser, requirePermission } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { deleteAccountData } from '../services/accountDeletionService.js';
+import {
+  eligibleLeaderboardSourceTypes,
+  listLeaderboardSeasons,
+} from '../services/leaderboardService.js';
+
+const eligibleXpSources = [...eligibleLeaderboardSourceTypes];
 
 const updateProfileSchema = z.object({
   displayName: z.string().trim().min(2).max(50).optional(),
@@ -40,14 +46,43 @@ export async function profileRoutes(fastify: FastifyInstance) {
   // GET /api/v1/profile/me - Fetch authenticated user's own profile
   fastify.get('/profile/me', { preHandler: [authenticateUser] }, async (request, reply) => {
     const user = request.user!;
+    await listLeaderboardSeasons();
     const profileRes = await query(
-      `SELECT total_points, monthly_points, season_points, loyalty_points,
-              streak_count, streak_best, streak_last_checkin, level,
-              exact_predictions_count, challenges_completed_count, player_cards_collected_count,
-              is_guest
-       FROM user_profiles
-       WHERE user_id = $1`,
-      [user.id]
+      `SELECT COALESCE(xp.total_points, 0)::integer AS total_points,
+              COALESCE(xp.monthly_points, 0)::integer AS monthly_points,
+              COALESCE(xp.season_points, 0)::integer AS season_points,
+              0::integer AS loyalty_points,
+              profile.streak_count, profile.streak_best,
+              profile.streak_last_checkin, profile.level,
+              profile.exact_predictions_count,
+              profile.challenges_completed_count,
+              profile.player_cards_collected_count,
+              profile.is_guest
+       FROM user_profiles profile
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(pt.final_points), 0) AS total_points,
+                COALESCE(SUM(pt.final_points) FILTER (
+                  WHERE pt.created_at >= (
+                    date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+                    AT TIME ZONE 'UTC'
+                  )
+                ), 0) AS monthly_points,
+                COALESCE(SUM(pt.final_points) FILTER (
+                  WHERE pt.created_at >= season.starts_at
+                    AND (season.ends_at IS NULL OR pt.created_at < season.ends_at)
+                ), 0) AS season_points
+         FROM point_transactions pt
+         LEFT JOIN LATERAL (
+           SELECT starts_at, ends_at
+           FROM leaderboard_periods
+           WHERE type = 'season' AND is_current = TRUE
+           LIMIT 1
+         ) season ON TRUE
+         WHERE pt.user_id = profile.user_id
+           AND pt.source_type = ANY($2::varchar[])
+       ) xp ON TRUE
+       WHERE profile.user_id = $1`,
+      [user.id, eligibleXpSources]
     );
 
     return {
@@ -76,18 +111,44 @@ export async function profileRoutes(fastify: FastifyInstance) {
   // GET /api/v1/profile/:id - Fetch public fan profile (by user ID or Firebase UID)
   fastify.get('/profile/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
+    await listLeaderboardSeasons();
     const res = await query(
       `SELECT u.id, u.firebase_uid, u.username, u.display_name, u.avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
               u.is_youtube_member,
-              p.total_points, p.monthly_points, p.season_points, p.loyalty_points,
+              COALESCE(xp.total_points, 0)::integer AS total_points,
+              COALESCE(xp.monthly_points, 0)::integer AS monthly_points,
+              COALESCE(xp.season_points, 0)::integer AS season_points,
+              0::integer AS loyalty_points,
               p.streak_count, p.streak_best, p.level, p.exact_predictions_count,
               p.challenges_completed_count, p.player_cards_collected_count
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(pt.final_points), 0) AS total_points,
+                COALESCE(SUM(pt.final_points) FILTER (
+                  WHERE pt.created_at >= (
+                    date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+                    AT TIME ZONE 'UTC'
+                  )
+                ), 0) AS monthly_points,
+                COALESCE(SUM(pt.final_points) FILTER (
+                  WHERE pt.created_at >= season.starts_at
+                    AND (season.ends_at IS NULL OR pt.created_at < season.ends_at)
+                ), 0) AS season_points
+         FROM point_transactions pt
+         LEFT JOIN LATERAL (
+           SELECT starts_at, ends_at
+           FROM leaderboard_periods
+           WHERE type = 'season' AND is_current = TRUE
+           LIMIT 1
+         ) season ON TRUE
+         WHERE pt.user_id = p.user_id
+           AND pt.source_type = ANY($2::varchar[])
+       ) xp ON TRUE
        WHERE u.id::text = $1 OR u.firebase_uid = $1 OR LOWER(u.username) = LOWER($1)
        LIMIT 1`,
-      [id]
+      [id, eligibleXpSources]
     );
 
     if (res.rows.length === 0) {
@@ -122,37 +183,24 @@ export async function profileRoutes(fastify: FastifyInstance) {
   // GET /api/v1/profile/point-history - Fetch user's verified point ledger history
   fastify.get('/profile/point-history', { preHandler: [authenticateUser] }, async (request, reply) => {
     const user = request.user!;
-    let res = await query(
+    const res = await query(
       `SELECT id, source_type, base_points, multiplier, final_points, description, created_at
        FROM point_transactions
        WHERE user_id = $1
+         AND source_type = ANY($2::varchar[])
        ORDER BY created_at DESC
        LIMIT 50`,
-      [user.id]
-    );
-
-    const signupRule = await query(
-      `SELECT base_points FROM point_rules WHERE key = 'signUpBonus'`,
-    );
-    const signupPoints = Number(signupRule.rows[0]?.base_points || 50);
-    await query(
-      `INSERT INTO point_transactions
-         (user_id, source_type, source_id, base_points, multiplier,
-          final_points, description, idempotency_key)
-       VALUES ($1, 'signup_bonus', 'signup', $2, 1.0, $2,
-               'Signup bonus', $3)
-       ON CONFLICT (idempotency_key) DO NOTHING`,
-      [user.id, signupPoints, `signup_bonus_${user.id}`],
-    );
-    // Re-read so legacy accounts see their backfilled sign-up entry on this
-    // very response, alongside the newly durable daily-streak transactions.
-    res = await query(
-      `SELECT id, source_type, base_points, multiplier, final_points, description, created_at
-       FROM point_transactions
-       WHERE user_id = $1
-       ORDER BY created_at DESC
-       LIMIT 50`,
-      [user.id]
+      [
+        user.id,
+        [
+          'prediction_exact',
+          'prediction_scorer',
+          'prediction_winner',
+          'prediction_win',
+          'video_phrase',
+          'player_card',
+        ],
+      ]
     );
     return res.rows;
   });

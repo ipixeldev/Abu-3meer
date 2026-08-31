@@ -832,30 +832,12 @@ class ProductionRepository {
   }
 
   Future<int> fetchUserRank(String uid) async {
-    if (uid.isEmpty || uid == 'guest') return 1;
+    if (uid.isEmpty || uid == 'guest') return 0;
     try {
-      final snap = await firestore
-          .collection('leaderboardEntries')
-          .orderBy('totalPoints', descending: true)
-          .limit(100)
-          .get();
-      for (var i = 0; i < snap.docs.length; i++) {
-        if (snap.docs[i].id == uid) {
-          return i + 1;
-        }
-      }
-      final userSnap = await firestore
-          .collection('users')
-          .orderBy('totalPoints', descending: true)
-          .limit(100)
-          .get();
-      for (var i = 0; i < userSnap.docs.length; i++) {
-        if (userSnap.docs[i].id == uid) {
-          return i + 1;
-        }
-      }
+      final rank = await apiRepo.fetchMySeasonRank();
+      if (rank > 0) return rank;
     } catch (_) {}
-    return 1;
+    return 0;
   }
 
   Future<double> fetchUserAccuracy(String uid) async {
@@ -1324,7 +1306,6 @@ class ProductionRepository {
           totalPoints: current.totalPoints + pointsAwarded,
           monthlyPoints: current.monthlyPoints + pointsAwarded,
           seasonPoints: current.seasonPoints + pointsAwarded,
-          loyaltyPoints: current.loyaltyPoints + pointsAwarded,
           challengesCompleted: current.challengesCompleted + 1,
         );
         _localProfiles[uid] = updated;
@@ -2423,41 +2404,23 @@ class ProductionRepository {
           key,
           () => _ReplayResource<LeaderboardSnapshot>(
             maxAge: const Duration(minutes: 2),
-            load: () => _fetchLeaderboardSnapshot(period),
+            load: () => _fetchLeaderboardSnapshot(period, seasonId: seasonId),
           ),
         )
         .stream;
   }
 
   Future<LeaderboardSnapshot> _fetchLeaderboardSnapshot(
-    LeaderboardPeriod period,
-  ) async {
-    final uid = auth.currentUser?.uid ?? '';
-    final list = await apiRepo.fetchTopLeaderboard(
-      period: period == LeaderboardPeriod.monthly ? 'monthly' : 'season',
-    );
-    final entries = <RankedLeaderboardEntry>[];
-    for (var i = 0; i < list.length; i++) {
-      final entry = list[i];
-      entries.add(
-        RankedLeaderboardEntry(
-          entry: entry,
-          rank: i + 1,
-          points: period == LeaderboardPeriod.monthly
-              ? entry.monthlyPoints
-              : entry.seasonPoints,
-        ),
-      );
-    }
-    final currentUser = entries.where((e) => e.entry.uid == uid).firstOrNull;
-    return LeaderboardSnapshot(
-      entries: entries,
-      currentUser: currentUser,
-      totalPlayers: entries.length,
-      seasons: const [],
-      activeSeasonId: null,
-    );
-  }
+    LeaderboardPeriod period, {
+    String? seasonId,
+  }) => apiRepo.fetchLeaderboardSnapshot(
+    period: switch (period) {
+      LeaderboardPeriod.currentMonth => 'monthly',
+      LeaderboardPeriod.previousMonth => 'previous-month',
+      LeaderboardPeriod.season => 'season',
+    },
+    seasonId: period == LeaderboardPeriod.season ? seasonId : null,
+  );
 
   Stream<List<AbuAchievementProgress>> watchAchievements(String uid) =>
       firestore

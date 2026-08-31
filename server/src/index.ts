@@ -24,7 +24,6 @@ import { adminContentRoutes } from './routes/adminContentRoutes.js';
 import { healthRoutes } from './routes/healthRoutes.js';
 import { videoRoutes } from './routes/videoRoutes.js';
 import { publicMediaRoutes, uploadRoutes } from './routes/uploadRoutes.js';
-import { rewardRoutes } from './routes/rewardRoutes.js';
 
 const fastify = Fastify({
   genReqId: () => crypto.randomUUID(),
@@ -157,7 +156,6 @@ async function main() {
     await v1.register(adminRoutes);
     await v1.register(adminContentRoutes);
     await v1.register(videoRoutes);
-    await v1.register(rewardRoutes);
     await v1.register(uploadRoutes);
   }, { prefix: '/api/v1' });
 

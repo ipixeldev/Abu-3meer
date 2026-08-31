@@ -98,13 +98,13 @@ service cloud.firestore {
 
     match /pointTransactions/{transactionId} {
       allow read: if signedIn();
-      allow create, update: if signedIn();
+      allow create, update: if false;
       allow delete: if false;
     }
 
     match /leaderboardEntries/{uid} {
       allow read: if true;
-      allow create, update: if own(uid) || admin();
+      allow create, update: if false;
       allow delete: if false;
     }
 
@@ -119,36 +119,27 @@ service cloud.firestore {
     }
 
     match /achievementDefinitions/{achievementId} {
-      allow read: if signedIn();
-      allow write: if contentManager();
+      allow read, write: if false;
     }
 
     match /levelDefinitions/{levelId} {
-      allow read: if signedIn();
-      allow write: if contentManager();
+      allow read, write: if false;
     }
 
     match /loyaltyRewards/{rewardId} {
-      allow read: if signedIn();
-      allow write: if contentManager();
+      allow read, write: if false;
     }
 
     match /loyaltyRedemptions/{redemptionId} {
-      allow read: if signedIn()
-        && (resource.data.userId == request.auth.uid || contentManager());
-      allow write: if false;
+      allow read, write: if false;
     }
 
     match /loyaltyTransactions/{transactionId} {
-      allow read: if signedIn()
-        && (resource.data.userId == request.auth.uid || admin());
-      allow write: if false;
+      allow read, write: if false;
     }
 
     match /loyaltyRewardClaims/{claimId} {
-      allow read: if signedIn()
-        && (resource.data.userId == request.auth.uid || admin());
-      allow write: if false;
+      allow read, write: if false;
     }
 
     match /leaderboardSeasons/{seasonId} {

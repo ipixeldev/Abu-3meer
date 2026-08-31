@@ -1410,7 +1410,7 @@ class LeaderboardEntry {
   }
 }
 
-enum LeaderboardPeriod { monthly, season, allTime }
+enum LeaderboardPeriod { currentMonth, previousMonth, season }
 
 class LeaderboardSeason {
   const LeaderboardSeason({
@@ -1437,6 +1437,22 @@ class LeaderboardSeason {
       startsAt: _optionalDate(data['startsAt']),
       endsAt: _optionalDate(data['endsAt']),
       active: data['active'] as bool? ?? false,
+    );
+  }
+
+  factory LeaderboardSeason.fromMap(Map<String, dynamic> data) {
+    DateTime? parseDate(dynamic value) {
+      if (value == null) return null;
+      return DateTime.tryParse(value.toString())?.toUtc();
+    }
+
+    final id = (data['id'] ?? data['seasonId'] ?? '').toString();
+    return LeaderboardSeason(
+      id: id,
+      displayName: (data['displayName'] ?? data['name'] ?? id).toString(),
+      startsAt: parseDate(data['startsAt'] ?? data['starts_at']),
+      endsAt: parseDate(data['endsAt'] ?? data['ends_at']),
+      active: data['active'] == true || data['isCurrent'] == true,
     );
   }
 }

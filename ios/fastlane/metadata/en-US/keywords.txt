@@ -1,1 +1,1 @@
-football,soccer,predictions,fan cards,video challenges,leaderboard,scores,rewards
+football,soccer,predictions,fan cards,video questions,leaderboard,scores,rankings

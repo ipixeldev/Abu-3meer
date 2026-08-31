@@ -5,10 +5,13 @@ Authentication and account controls:
 - Account deletion is available in Settings > Account & Security > Delete Account.
 - A user who originally signs in with email or Apple can link Google to the same Firebase account in Settings. This preserves the existing profile and points and is used only to verify YouTube channel membership.
 
-Predictions and competitions:
-- The app does not offer betting, wagering, paid entry, or currency exchangeable for money. App points have no cash value.
-- Ordinary XP and leaderboards are fan progression and do not automatically promise a real-world prize.
-- Any separate real-prize promotion requires a published Promotion Notice and free entry. Official rules are in Settings > Legal & Privacy > Competition Rules and at https://ipixeldev.github.io/Abu-3meer/competition-rules/.
+XP and rankings:
+- The app is completely free. It has no purchases, paid entry, betting, wagering, prizes, rewards, or leaderboard winners.
+- Users receive XP only for correct football predictions and correct video-question or player-guess answers.
+- Verified YouTube channel members receive 2× XP only on those eligible actions.
+- XP has no monetary value, cannot be bought, transferred, or redeemed, and unlocks nothing.
+- Current-month, previous-month, and season leaderboards show fan progress for recognition only. Monthly totals reset while the previous month is preserved, and completed seasons remain available as archived rankings.
+- XP and leaderboard rules are available in Settings > Legal & Privacy and at https://ipixeldev.github.io/Abu-3meer/competition-rules/.
 - Apple is not a sponsor of, involved in, or responsible for any competition.
 
 Data and content behavior:

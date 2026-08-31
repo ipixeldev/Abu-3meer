@@ -130,13 +130,15 @@ export const config = {
   },
 
   pointDefaults: {
-    signUpBonus: parseInt(process.env.SIGNUP_BONUS_POINTS || '50', 10),
+    // Accounts and daily attendance never award XP. XP is reserved for
+    // correct predictions and video-question answers.
+    signUpBonus: 0,
     exactScore: parseInt(process.env.EXACT_SCORE_POINTS || '30', 10),
     firstScorer: parseInt(process.env.FIRST_SCORER_POINTS || '20', 10),
     winnerOutcome: parseInt(process.env.WINNER_OUTCOME_POINTS || '10', 10),
     videoPhrase: parseInt(process.env.VIDEO_PHRASE_POINTS || '10', 10),
     playerCard: parseInt(process.env.PLAYER_CARD_POINTS || '10', 10),
-    dailyStreak: parseInt(process.env.DAILY_STREAK_POINTS || '5', 10),
+    dailyStreak: 0,
     memberMultiplier: parseFloat(process.env.MEMBER_MULTIPLIER || '2.0'),
   },
 };

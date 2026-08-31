@@ -12,14 +12,12 @@ class AbuAppPreferences extends ChangeNotifier {
   static const _languageKey = 'abu_language';
   static const _matchNotificationsKey = 'abu_notifications_matches';
   static const _challengeNotificationsKey = 'abu_notifications_challenges';
-  static const _rewardNotificationsKey = 'abu_notifications_rewards';
   static const _newsNotificationsKey = 'abu_notifications_news';
 
   ThemeMode themeMode = ThemeMode.dark;
   AbuLanguage language = AbuLanguage.english;
   bool matchNotifications = true;
   bool challengeNotifications = true;
-  bool rewardNotifications = true;
   bool newsNotifications = false;
   bool _loaded = false;
 
@@ -39,7 +37,6 @@ class AbuAppPreferences extends ChangeNotifier {
     matchNotifications = preferences.getBool(_matchNotificationsKey) ?? true;
     challengeNotifications =
         preferences.getBool(_challengeNotificationsKey) ?? true;
-    rewardNotifications = preferences.getBool(_rewardNotificationsKey) ?? true;
     newsNotifications = preferences.getBool(_newsNotificationsKey) ?? false;
     _loaded = true;
     notifyListeners();
@@ -77,12 +74,6 @@ class AbuAppPreferences extends ChangeNotifier {
         value: value,
         apply: () => challengeNotifications = value,
       );
-
-  Future<void> setRewardNotifications(bool value) => _setNotificationPreference(
-    key: _rewardNotificationsKey,
-    value: value,
-    apply: () => rewardNotifications = value,
-  );
 
   Future<void> setNewsNotifications(bool value) => _setNotificationPreference(
     key: _newsNotificationsKey,

@@ -43,7 +43,8 @@ void main() {
     expect(ui, contains("confirmation.text.trim().toUpperCase() == 'DELETE'"));
     expect(ui, contains('accountDeletionNeedsPassword'));
     expect(ui, contains('widget.repository.deleteAccount'));
-    expect(ui, contains('points, predictions, challenge answers, rewards'));
+    expect(ui, contains('profile, XP, predictions, challenge answers'));
+    expect(ui, isNot(contains('challenge answers, rewards')));
     expect(ui, contains('barrierDismissible: false'));
   });
 }

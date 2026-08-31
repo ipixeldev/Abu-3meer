@@ -275,6 +275,24 @@ async function audit(
 }
 
 export async function adminContentRoutes(fastify: FastifyInstance) {
+  fastify.addHook('onRequest', async (request, reply) => {
+    const path = request.url.split('?')[0];
+    if (
+      path.endsWith('/admin/rewards') ||
+      path.includes('/admin/rewards/') ||
+      path.endsWith('/admin/redemptions') ||
+      path.includes('/admin/redemptions/') ||
+      path.endsWith('/admin/achievements') ||
+      path.includes('/admin/achievements/') ||
+      path.endsWith('/admin/levels') ||
+      path.includes('/admin/levels/')
+    ) {
+      return reply.status(410).send({
+        error: 'ProgressionRewardsRemoved',
+        message: 'Rewards, redemptions, achievements, and levels are not part of Abu 3meer.',
+      });
+    }
+  });
   fastify.get(
     '/admin/challenges',
     { preHandler: [requirePermission('challenges.manage')] },

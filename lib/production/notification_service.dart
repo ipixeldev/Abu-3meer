@@ -462,7 +462,9 @@ class NotificationService {
         enabled: enabled,
         matchEnabled: local.matchNotifications,
         challengeEnabled: local.challengeNotifications,
-        rewardEnabled: local.rewardNotifications,
+        // Kept in the wire shape for backward-compatible servers only. Reward
+        // notifications are retired with the XP-only recognition model.
+        rewardEnabled: false,
         newsEnabled: local.newsNotifications,
       );
     } catch (error) {

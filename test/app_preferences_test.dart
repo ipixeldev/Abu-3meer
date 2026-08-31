@@ -16,7 +16,6 @@ void main() {
       await preferences.setLanguage(AbuLanguage.arabic);
       await preferences.setMatchNotifications(false);
       await preferences.setChallengeNotifications(false);
-      await preferences.setRewardNotifications(true);
       await preferences.setNewsNotifications(true);
 
       final stored = await SharedPreferences.getInstance();
@@ -25,7 +24,7 @@ void main() {
       expect(stored.getString('abu_language'), 'ar');
       expect(stored.getBool('abu_notifications_matches'), isFalse);
       expect(stored.getBool('abu_notifications_challenges'), isFalse);
-      expect(stored.getBool('abu_notifications_rewards'), isTrue);
+      expect(stored.containsKey('abu_notifications_rewards'), isFalse);
       expect(stored.getBool('abu_notifications_news'), isTrue);
       expect(preferences.locale, const Locale('ar'));
     },

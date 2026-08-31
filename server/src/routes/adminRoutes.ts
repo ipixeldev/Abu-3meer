@@ -2,7 +2,6 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { requirePermission, requireSuperAdmin } from '../middleware/auth.js';
 import { getClient, query } from '../db/pool.js';
-import { awardPoints } from '../services/pointsService.js';
 import {
   enqueueMatchSettlement,
   enqueueNotificationCampaign,
@@ -358,81 +357,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
   // 2. Manual Point Adjustments (Permission: points.adjust) - Requires Mandatory Reason & Audit Trail
   fastify.post('/admin/users/:id/points', { preHandler: [requirePermission('points.adjust')] }, async (request, reply) => {
-    const { id: identifier } = request.params as { id: string };
-    const schema = z.object({
-      amount: z.number().int().min(-5000).max(5000).refine(n => n !== 0, 'Amount cannot be zero'),
-      reason: z.string().trim().min(5).max(255),
-      idempotencyKey: z.string().trim().min(8).max(120).regex(/^[A-Za-z0-9:_-]+$/).optional(),
+    return reply.status(410).send({
+      error: 'XpAdjustmentsDisabled',
+      message: 'XP can only be earned from correct predictions and video-question answers.',
     });
-
-    const parsed = schema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
-    }
-
-    const { amount, reason } = parsed.data;
-    const adminUser = request.user!;
-    const id = await resolveUserId(identifier);
-    if (!id) {
-      return reply.status(404).send({ error: 'NotFound', message: 'User not found.' });
-    }
-    const idempotencyKey = parsed.data.idempotencyKey || `admin_adj:${id}:${Date.now()}`;
-
-    const awardRes = await awardPoints({
-      userId: id,
-      sourceType: 'admin_adjustment',
-      sourceId: `admin_${adminUser.id}`,
-      basePoints: amount,
-      multiplier: 1.0,
-      description: `Admin adjustment by ${adminUser.displayName}: ${reason}`,
-      idempotencyKey,
-    });
-
-    const balanceRes = await query(
-      `SELECT total_points, monthly_points, season_points
-       FROM user_profiles
-       WHERE user_id = $1`,
-      [id],
-    );
-    const balance = balanceRes.rows[0];
-    if (!balance) {
-      return reply.status(404).send({ error: 'NotFound', message: 'User profile not found.' });
-    }
-
-    // Retrying the same mobile request must not create a second ledger entry
-    // or a duplicate audit receipt.
-    if (!awardRes.alreadyAwarded) {
-      await query(
-        `INSERT INTO admin_audit_logs (admin_user_id, action, target_entity, target_id, after_state)
-         VALUES ($1, 'points.adjust', 'user', $2, $3)`,
-        [
-          adminUser.id,
-          id,
-          JSON.stringify({
-            amount,
-            reason,
-            pointsAwarded: awardRes.pointsAwarded,
-            idempotencyKey,
-            totalPoints: Number(balance.total_points || 0),
-            monthlyPoints: Number(balance.monthly_points || 0),
-            seasonPoints: Number(balance.season_points || 0),
-          }),
-        ],
-      );
-    }
-
-    return {
-      success: true,
-      adjustmentId: idempotencyKey,
-      targetUserId: identifier,
-      delta: amount,
-      pointsAwarded: awardRes.pointsAwarded,
-      totalPoints: Number(balance.total_points || 0),
-      monthlyPoints: Number(balance.monthly_points || 0),
-      seasonPoints: Number(balance.season_points || 0),
-      duplicate: awardRes.alreadyAwarded === true,
-      periodFloorApplied: false,
-    };
   });
 
   fastify.get(

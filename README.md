@@ -8,11 +8,12 @@ Abu 3meer is a production Flutter fan platform for web, iOS, and Android. The ac
 - Profile onboarding with a unique username, country, and supported club
 - Admin-created match events with server-enforced prediction windows
 - Saved exact-score and first-scorer predictions with history and result breakdowns
-- Server-owned point transactions and monthly, season, and all-time leaderboards
-- Multi-type challenges with schedules, attempt limits, member access, and private answer keys
-- Configurable achievements and levels with server-verified claims, plus Player Cards and loyalty rewards with redemption operations
+- Server-owned XP transactions and current-month, previous-month, and season leaderboards
+- Video questions and player guesses with schedules, attempt limits, member access, and private answer keys
 - Admin result publishing and editable launch point rules
 - Strict Firestore and Storage security rules
+
+The app is completely free. XP is granted only for correct football predictions and correct video-question or player-guess answers. Verified YouTube members receive 2× XP on those eligible actions. XP has no monetary value, cannot be bought, transferred, or redeemed, and unlocks nothing. Leaderboards are for recognition only and have no winners, prizes, or rewards.
 
 The Phase 2 schema and feature contract are documented in
 [`docs/PHASE_2_CORE_PRODUCT.md`](docs/PHASE_2_CORE_PRODUCT.md).

@@ -24,6 +24,11 @@ const memberMultiplierSources = new Set<PointSourceType>([
   'player_card',
 ]);
 
+/** The only actions that may create XP in the product. */
+export function isXpEarningSource(sourceType: PointSourceType): boolean {
+  return memberMultiplierSources.has(sourceType);
+}
+
 export function isMemberMultiplierEligible(sourceType: PointSourceType): boolean {
   return memberMultiplierSources.has(sourceType);
 }
@@ -77,6 +82,9 @@ export async function awardPointsInTransaction(
   client: PoolClient,
   params: AwardPointsParams,
 ): Promise<AwardPointsResult> {
+  if (!isXpEarningSource(params.sourceType)) {
+    return { success: true, pointsAwarded: 0 };
+  }
   const multiplier = enforceEligibleMultiplier(
     params.sourceType,
     params.multiplier ?? 1.0,
@@ -124,7 +132,6 @@ export async function awardPointsInTransaction(
      SET total_points = total_points + $1,
          monthly_points = monthly_points + $1,
          season_points = season_points + $1,
-         loyalty_points = loyalty_points + $1,
          updated_at = CURRENT_TIMESTAMP
      WHERE user_id = $2`,
     [finalPoints, params.userId],

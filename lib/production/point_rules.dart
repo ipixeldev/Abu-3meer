@@ -15,8 +15,8 @@ abstract final class PointRuleDefaults {
   static const winnerOutcome = 10;
   static const videoQuestion = 10;
   static const playerCard = 10;
-  static const dailyStreak = 5;
-  static const signUpBonus = 50;
+  static const dailyStreak = 0;
+  static const signUpBonus = 0;
   static const normalMultiplier = 1.0;
   static const memberMultiplier = 2.0;
 

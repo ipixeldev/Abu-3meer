@@ -12,8 +12,8 @@ class _ProductionChallenges extends StatelessWidget {
   Widget build(BuildContext context) => _PageFrame(
     kicker: abuText(
       context,
-      'Watch · answer · collect points',
-      'شاهد · أجب · اجمع النقاط',
+      'Watch · answer · collect XP',
+      'شاهد · أجب · اجمع XP',
     ),
     title: abuText(context, 'Challenges', 'التحديات'),
     child: Column(
@@ -322,7 +322,7 @@ class _ProductionChallengeCard extends StatelessWidget {
                 child: Icon(_icon, color: _productionPrimary(context)),
               ),
               const Spacer(),
-              _RewardChip(text: '+${challenge.rewardPoints} PTS'),
+              _RewardChip(text: '+${challenge.rewardPoints} XP'),
             ],
           ),
           const SizedBox(height: 18),
@@ -536,11 +536,11 @@ class _ChallengePlayDialogState extends State<_ChallengePlayDialog> {
           ? abuText(
               context,
               alreadyAwarded
-                  ? 'Already solved. Your $points points were awarded earlier.'
-                  : 'Perfect! +$points points added.',
+                  ? 'Already solved. You already received $points XP.'
+                  : 'Perfect! +$points XP added.',
               alreadyAwarded
-                  ? 'تم حل التحدي سابقاً. تمت إضافة $points نقطة من قبل.'
-                  : 'إجابة رائعة! تمت إضافة $points نقطة.',
+                  ? 'تم حل التحدي سابقاً. حصلت على $points XP من قبل.'
+                  : 'إجابة رائعة! تمت إضافة $points XP.',
             )
           : abuText(
               context,
@@ -647,7 +647,7 @@ class _ChallengePlayDialogState extends State<_ChallengePlayDialog> {
     title: Row(
       children: [
         Expanded(child: Text(widget.challenge.title)),
-        _RewardChip(text: '+${widget.challenge.rewardPoints} PTS'),
+        _RewardChip(text: '+${widget.challenge.rewardPoints} XP'),
       ],
     ),
     content: SizedBox(
@@ -4343,7 +4343,6 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
           )
         : _CardMonogram(initials: initials);
 
-    final levelNumber = (profile.totalPoints ~/ 100) + 1;
     final isMember = profile.isYouTubeMember;
     final tierTitle = isMember ? 'GOLD' : 'SILVER';
     final tierColor = isMember
@@ -4418,7 +4417,7 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    '$levelNumber',
+                                    'XP',
                                     style: TextStyle(
                                       color: tierColor,
                                       fontSize: 40,
@@ -4538,10 +4537,10 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                           Builder(
                             builder: (context) {
                               final effectiveRank =
-                                  widget.rank ?? _loadedRank ?? 1;
+                                  widget.rank ?? _loadedRank ?? 0;
                               final effectiveAccuracy =
                                   widget.accuracy ?? _loadedAccuracy ?? 100.0;
-                              final rankText = profile.totalPoints > 0
+                              final rankText = effectiveRank > 0
                                   ? '#$effectiveRank'
                                   : '—';
                               final accuracyText = profile.totalPoints > 0
@@ -4589,7 +4588,7 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                                     children: [
                                       _FanCardStat(
                                         value: '${profile.seasonPoints}',
-                                        label: 'LOYALTY',
+                                        label: 'SEASON XP',
                                       ),
                                       _FanCardStat(
                                         icon: const _StreakIconWidget(size: 13),
@@ -5332,7 +5331,7 @@ Future<void> _showAdminChallengePreview(
                     ),
                   ),
                   const Spacer(),
-                  _RewardChip(text: '+$rewardPoints PTS'),
+                  _RewardChip(text: '+$rewardPoints XP'),
                 ],
               ),
               const SizedBox(height: 18),
@@ -5605,62 +5604,6 @@ class _ProductionAdminTools extends StatelessWidget {
           onTap: () => editAnnouncement(context),
         ),
         _AdminQuickAction(
-          icon: Icons.emoji_events_rounded,
-          label: abuText(context, 'ACHIEVEMENTS', 'الإنجازات'),
-          detail: abuText(
-            context,
-            'Configure goals, progress rules and point rewards.',
-            'اضبط الأهداف وقواعد التقدم ومكافآت النقاط.',
-          ),
-          color: _gold,
-          onTap: () => manageAchievements(context),
-        ),
-        _AdminQuickAction(
-          icon: Icons.military_tech_rounded,
-          label: abuText(context, 'LEVELS', 'المستويات'),
-          detail: abuText(
-            context,
-            'Build the point ladder and unlockable perks.',
-            'أنشئ سلم النقاط والمزايا القابلة للفتح.',
-          ),
-          color: _productionPrimary(context),
-          onTap: () => manageLevels(context),
-        ),
-        _AdminQuickAction(
-          icon: Icons.redeem_rounded,
-          label: abuText(context, 'LOYALTY REWARDS', 'مكافآت الولاء'),
-          detail: abuText(
-            context,
-            'Manage catalogue stock, costs and availability.',
-            'أدر مخزون الكتالوج والتكلفة والتوفر.',
-          ),
-          color: _red,
-          onTap: () => manageRewards(context),
-        ),
-        _AdminQuickAction(
-          icon: Icons.receipt_long_rounded,
-          label: abuText(context, 'REDEMPTIONS', 'طلبات الاستبدال'),
-          detail: abuText(
-            context,
-            'Review fulfilment and keep fans informed of every request.',
-            'راجع التنفيذ وأبقِ الجماهير على اطلاع بحالة كل طلب.',
-          ),
-          color: _gold,
-          onTap: () => manageRedemptions(context),
-        ),
-        if (profile.isAdmin)
-          _AdminQuickAction(
-            icon: Icons.tune_rounded,
-            label: abuText(context, 'POINT ADJUSTMENTS', 'تعديل النقاط'),
-            detail: abuText(
-              context,
-              'Correct a fan balance with a permanent audit receipt.',
-              'صحح رصيد مشجع مع إيصال تدقيق دائم.',
-            ),
-            color: _productionPrimary(context),
-            onTap: () => showAdminPointAdjustments(context, repository),
-          ),
-        _AdminQuickAction(
           icon: Icons.person_search_rounded,
           label: abuText(context, 'NEW PLAYER GUESS', 'تخمين لاعب جديد'),
           detail: abuText(
@@ -5786,47 +5729,12 @@ class _ProductionAdminTools extends StatelessWidget {
                   color: _gold,
                   onTap: () => editAnnouncement(context),
                 ),
-                _AdminMobileAction(
-                  icon: Icons.emoji_events_rounded,
-                  label: abuText(context, 'ACHIEVEMENTS', 'الإنجازات'),
-                  color: _gold,
-                  onTap: () => manageAchievements(context),
-                ),
-                _AdminMobileAction(
-                  icon: Icons.military_tech_rounded,
-                  label: abuText(context, 'LEVELS', 'المستويات'),
-                  color: _productionPrimary(context),
-                  onTap: () => manageLevels(context),
-                ),
-                _AdminMobileAction(
-                  icon: Icons.redeem_rounded,
-                  label: abuText(context, 'REWARDS', 'المكافآت'),
-                  color: _red,
-                  onTap: () => manageRewards(context),
-                ),
-                _AdminMobileAction(
-                  icon: Icons.receipt_long_rounded,
-                  label: abuText(context, 'REDEMPTIONS', 'طلبات الاستبدال'),
-                  color: _gold,
-                  onTap: () => manageRedemptions(context),
-                ),
                 if (profile.isAdmin)
                   _AdminMobileAction(
                     icon: Icons.workspace_premium_rounded,
                     label: abuText(context, 'YOUTUBE MEMBERS', 'أعضاء يوتيوب'),
                     color: _gold,
                     onTap: () => _manageYouTubeMembers(context),
-                  ),
-                if (profile.isAdmin)
-                  _AdminMobileAction(
-                    icon: Icons.tune_rounded,
-                    label: abuText(
-                      context,
-                      'POINT ADJUSTMENTS',
-                      'تعديل النقاط',
-                    ),
-                    color: _productionPrimary(context),
-                    onTap: () => showAdminPointAdjustments(context, repository),
                   ),
                 _AdminMobileAction(
                   icon: Icons.person_search_rounded,
@@ -6100,8 +6008,8 @@ class _ProductionAdminTools extends StatelessWidget {
                     decoration: InputDecoration(
                       labelText: abuText(
                         context,
-                        'Reward points',
-                        'نقاط المكافأة',
+                        'XP for correct answer',
+                        'XP للإجابة الصحيحة',
                       ),
                     ),
                   ),
@@ -6424,8 +6332,8 @@ class _ProductionAdminTools extends StatelessWidget {
                 } else if (reward == null || reward <= 0) {
                   validationError = abuText(
                     context,
-                    'Reward points must be greater than zero.',
-                    'يجب أن تكون نقاط المكافأة أكبر من صفر.',
+                    'XP for a correct answer must be greater than zero.',
+                    'يجب أن تكون نقاط XP للإجابة الصحيحة أكبر من صفر.',
                   );
                 } else if (!endsAt.isAfter(startsAt)) {
                   validationError = abuText(
@@ -9254,7 +9162,13 @@ class _AdminEventManager extends StatelessWidget {
                       ),
                       Expanded(
                         flex: 2,
-                        child: Text(abuText(context, 'REWARD', 'المكافأة')),
+                        child: Text(
+                          abuText(
+                            context,
+                            'XP FOR CORRECT ANSWER',
+                            'XP للإجابة الصحيحة',
+                          ),
+                        ),
                       ),
                       Expanded(
                         flex: 2,
@@ -9300,8 +9214,8 @@ class _AdminEventManager extends StatelessWidget {
                               child: Text(
                                 abuText(
                                   context,
-                                  '${event.rewardPoints} points',
-                                  '${event.rewardPoints} نقطة',
+                                  '${event.rewardPoints} XP',
+                                  '${event.rewardPoints} XP',
                                 ),
                               ),
                             ),
@@ -9337,8 +9251,8 @@ class _AdminEventManager extends StatelessWidget {
                         subtitle: Text(
                           abuText(
                             context,
-                            '${event.rewardPoints} points · ${_productionDate(event.availableUntil)}',
-                            '${event.rewardPoints} نقطة · ${_productionDate(event.availableUntil)}',
+                            '${event.rewardPoints} XP · ${_productionDate(event.availableUntil)}',
+                            '${event.rewardPoints} XP · ${_productionDate(event.availableUntil)}',
                           ),
                         ),
                         trailing: SizedBox(

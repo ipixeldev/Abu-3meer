@@ -2023,9 +2023,9 @@ const int _homeShellPageIndex = 0;
 const int _predictShellPageIndex = 1;
 const int _challengesShellPageIndex = 2;
 const int _exclusiveShellPageIndex = 3;
-const int _rewardsShellPageIndex = 5;
-const int _profileShellPageIndex = 6;
-const int _settingsShellPageIndex = 7;
+const int _leaderboardShellPageIndex = 4;
+const int _profileShellPageIndex = 5;
+const int _settingsShellPageIndex = 6;
 const List<int> _mobileShellPageIndexes = <int>[
   _homeShellPageIndex,
   _predictShellPageIndex,
@@ -2069,34 +2069,9 @@ class _ProductionShellState extends State<_ProductionShell>
     if (!widget.profile.isGuest) {
       widget.repository
           .checkInDailyStreak(widget.profile.uid)
-          .then((pointsAwarded) {
-            if (pointsAwarded > 0 && mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  backgroundColor: const Color(0xFF1B2A1E),
-                  content: Row(
-                    children: [
-                      const Text('🔥', style: TextStyle(fontSize: 18)),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          abuText(
-                            context,
-                            'Daily login streak updated! +$pointsAwarded XP',
-                            'تم تحديث سلسلة تسجيل الدخول اليومي! +$pointsAwarded نقطة',
-                          ),
-                          style: TextStyle(
-                            color: _productionPrimary(context),
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-          })
+          // Check-in maintains the activity streak only. Daily login never
+          // awards XP, so a legacy backend response must not imply otherwise.
+          .then<void>((_) {})
           .catchError((Object error) {
             debugPrint(
               '[Streak] Startup check-in could not be completed: $error',
@@ -2261,7 +2236,6 @@ class _ProductionShellState extends State<_ProductionShell>
       _ProductionChallenges(repository: widget.repository, profile: profile),
       ExclusiveVideosView(repository: widget.repository, profile: profile),
       _ProductionLeaderboard(repository: widget.repository, profile: profile),
-      _ProductionRewards(repository: widget.repository, profile: profile),
       _ProductionProfile(repository: widget.repository, profile: profile),
       _ProductionSettings(repository: widget.repository, profile: profile),
       if (profile.canManageContent)
@@ -2277,7 +2251,6 @@ class _ProductionShellState extends State<_ProductionShell>
         abuText(context, 'Exclusive', 'فيديوهات حصرية'),
       ),
       (Icons.leaderboard_rounded, abuText(context, 'Leaders', 'الترتيب')),
-      (Icons.card_giftcard_rounded, abuText(context, 'Rewards', 'المكافآت')),
       (Icons.person_rounded, abuText(context, 'Profile', 'حسابي')),
       (Icons.settings_rounded, abuText(context, 'Settings', 'الإعدادات')),
       if (profile.canManageContent)
@@ -2350,8 +2323,7 @@ class _ProductionShellState extends State<_ProductionShell>
                           ? _productionPrimary(context)
                           : _lightPrimary,
                       compact: true,
-                      onTap: () =>
-                          setState(() => index = _rewardsShellPageIndex),
+                      onTap: () => _selectShellPage(_leaderboardShellPageIndex),
                     ),
                     SizedBox(width: narrowHeader ? 5 : 8),
                     PopupMenuButton<int>(
@@ -2651,12 +2623,12 @@ class _ProductionDesktopScaffold extends StatelessWidget {
                     itemIndex < items.length;
                     itemIndex++
                   ) ...[
-                    if (itemIndex == _rewardsShellPageIndex ||
+                    if (itemIndex == _leaderboardShellPageIndex ||
                         itemIndex == _settingsShellPageIndex)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(10, 18, 10, 8),
                         child: Text(
-                          itemIndex == _rewardsShellPageIndex
+                          itemIndex == _leaderboardShellPageIndex
                               ? abuText(context, 'ENGAGE', 'التفاعل')
                               : abuText(context, 'TOOLS', 'الأدوات'),
                           style: TextStyle(
@@ -2815,7 +2787,7 @@ class _ProductionDesktopScaffold extends StatelessWidget {
                       text: '${profile.totalPoints} XP',
                       color: _gold,
                       compact: true,
-                      onTap: () => onSelect(_rewardsShellPageIndex),
+                      onTap: () => onSelect(_leaderboardShellPageIndex),
                     ),
                     const SizedBox(width: 8),
                     IconButton(
@@ -6780,7 +6752,7 @@ class _PredictionSection extends StatelessWidget {
                 borderRadius: BorderRadius.circular(99),
               ),
               child: Text(
-                '+$points ${abuText(context, 'PTS', 'نقطة')}',
+                '+$points XP',
                 style: TextStyle(
                   color: _gold,
                   fontSize: 11,
@@ -6981,25 +6953,26 @@ class _ProductionLeaderboard extends StatefulWidget {
 }
 
 class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
-  LeaderboardPeriod period = LeaderboardPeriod.season;
+  LeaderboardPeriod period = LeaderboardPeriod.currentMonth;
   String? selectedSeasonId;
 
   Widget _periodControl(BuildContext context) =>
       SegmentedButton<LeaderboardPeriod>(
         segments: [
           ButtonSegment(
+            value: LeaderboardPeriod.currentMonth,
+            label: Text(abuText(context, 'THIS MONTH', 'هذا الشهر')),
+          ),
+          ButtonSegment(
+            value: LeaderboardPeriod.previousMonth,
+            label: Text(abuText(context, 'LAST MONTH', 'الشهر الماضي')),
+          ),
+          ButtonSegment(
             value: LeaderboardPeriod.season,
             label: Text(abuText(context, 'SEASON', 'الموسم')),
           ),
-          ButtonSegment(
-            value: LeaderboardPeriod.monthly,
-            label: Text(abuText(context, 'MONTHLY', 'شهري')),
-          ),
-          ButtonSegment(
-            value: LeaderboardPeriod.allTime,
-            label: Text(abuText(context, 'ALL TIME', 'كل الأوقات')),
-          ),
         ],
+        showSelectedIcon: false,
         selected: {period},
         onSelectionChanged: (value) => setState(() => period = value.first),
       );
@@ -7035,9 +7008,6 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
     LeaderboardSnapshot snapshot,
   ) {
     final entries = snapshot.entries;
-    final top3 = entries.take(3).toList();
-    final remaining = entries.skip(3).toList();
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -7048,16 +7018,7 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
           _seasonControl(context, snapshot),
         ],
         const SizedBox(height: 16),
-        if (top3.isNotEmpty) ...[
-          _LeaderboardPodium(
-            top3: top3,
-            currentUid: widget.profile.uid,
-            onTapUser: (uid) =>
-                _showOtherUserProfileDialog(context, uid, widget.repository),
-          ),
-          const SizedBox(height: 16),
-        ],
-        if (remaining.isEmpty && top3.isEmpty)
+        if (entries.isEmpty)
           _ProductionEmpty(
             icon: Icons.leaderboard_rounded,
             title: abuText(
@@ -7067,18 +7028,18 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
             ),
             body: abuText(
               context,
-              'Points earned in matches and challenges will appear here.',
-              'ستظهر هنا النقاط المكتسبة من المباريات والتحديات.',
+              'XP from correct predictions and video answers will appear here.',
+              'ستظهر هنا نقاط الخبرة من التوقعات وإجابات الفيديو الصحيحة.',
             ),
           )
         else
           ListView.separated(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: remaining.length,
+            itemCount: entries.length,
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, i) {
-              final ranked = remaining[i];
+              final ranked = entries[i];
               final entry = ranked.entry;
               final mine = entry.uid == widget.profile.uid;
               return _LeaderboardRowCard(
@@ -7111,9 +7072,6 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
     final currentUser = snapshot.currentUser;
     final leaderPoints = entries.isEmpty ? 0 : entries.first.points;
     final myPoints = currentUser?.points ?? 0;
-    final prizeCutoff = entries.isEmpty
-        ? 0
-        : entries[math.min(4, entries.length - 1)].points;
     final gapToLeader = math.max(0, leaderPoints - myPoints);
 
     return ConstrainedBox(
@@ -7139,25 +7097,17 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                   icon: Icons.groups_rounded,
                   label: abuText(context, 'Ranked fans', 'المشجعون المصنفون'),
                   value: '${snapshot.totalPlayers}',
-                  detail: abuText(
-                    context,
-                    'Verified competitors',
-                    'متنافسون موثقون',
-                  ),
+                  detail: abuText(context, 'Fans with XP', 'مشجعون لديهم XP'),
                   color: _blue,
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _ProductionDesktopKpi(
-                  icon: Icons.emoji_events_rounded,
-                  label: abuText(context, 'Prize cutoff', 'حد التأهل'),
-                  value: '$prizeCutoff',
-                  detail: abuText(
-                    context,
-                    'Top five points',
-                    'نقاط الخمسة الأوائل',
-                  ),
+                  icon: Icons.stars_rounded,
+                  label: abuText(context, 'Leader XP', 'XP المتصدر'),
+                  value: '$leaderPoints',
+                  detail: abuText(context, 'Recognition only', 'للترتيب فقط'),
                   color: _gold,
                 ),
               ),
@@ -7170,10 +7120,10 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                   detail: currentUser == null
                       ? abuText(
                           context,
-                          'Earn points to enter',
-                          'اكسب نقاطاً للدخول',
+                          'Earn XP to be ranked',
+                          'اكسب XP للظهور في الترتيب',
                         )
-                      : abuText(context, '$myPoints points', '$myPoints نقطة'),
+                      : abuText(context, '$myPoints XP', '$myPoints XP'),
                   color: _productionPrimary(context),
                 ),
               ),
@@ -7209,11 +7159,7 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              abuText(
-                                context,
-                                'YOUR RACE TO #1',
-                                'سباقك نحو المركز الأول',
-                              ),
+                              abuText(context, 'YOUR POSITION', 'مركزك'),
                               style: TextStyle(
                                 color: _muted,
                                 fontSize: 10,
@@ -7236,8 +7182,8 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                               currentUser == null
                                   ? abuText(
                                       context,
-                                      'Earn points to enter this ranking.',
-                                      'اكسب نقاطاً للدخول في هذا الترتيب.',
+                                      'Earn XP from correct answers to enter this ranking.',
+                                      'اكسب XP من الإجابات الصحيحة للدخول في هذا الترتيب.',
                                     )
                                   : gapToLeader == 0 && currentUser.rank == 1
                                   ? abuText(
@@ -7247,8 +7193,8 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                                     )
                                   : abuText(
                                       context,
-                                      '$gapToLeader points behind the leader',
-                                      'تبتعد $gapToLeader نقطة عن المتصدر',
+                                      '$gapToLeader XP behind the leader',
+                                      'تبتعد $gapToLeader XP عن المتصدر',
                                     ),
                               style: TextStyle(color: _muted, height: 1.4),
                             ),
@@ -7264,7 +7210,11 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Text(
-                              abuText(context, 'PRIZE ZONE', 'منطقة الجوائز'),
+                              abuText(
+                                context,
+                                'HOW RANKING WORKS',
+                                'كيف يعمل الترتيب',
+                              ),
                               style: TextStyle(
                                 color: _gold,
                                 fontWeight: FontWeight.w900,
@@ -7275,8 +7225,8 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                             Text(
                               abuText(
                                 context,
-                                'Positions 1–5 qualify. The cutoff updates live whenever verified points are awarded.',
-                                'المراكز من 1 إلى 5 تتأهل. يتحدث الحد فور احتساب النقاط.',
+                                'XP shows fan activity only. It cannot be bought, transferred, redeemed, or used to unlock anything. There are no prizes or rewards.',
+                                'تعرض نقاط XP نشاط المشجع فقط. لا يمكن شراؤها أو نقلها أو استبدالها ولا تفتح أي مزايا. لا توجد جوائز أو مكافآت.',
                               ),
                               style: TextStyle(color: _muted, height: 1.5),
                             ),
@@ -7298,8 +7248,8 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
   Widget build(BuildContext context) => _PageFrame(
     kicker: abuText(
       context,
-      'Top 5 qualify for prizes',
-      'أفضل ٥ يتأهلون للجوائز',
+      'XP ranking · no prizes or rewards',
+      'ترتيب XP · بلا جوائز أو مكافآت',
     ),
     title: abuText(context, 'Leaderboard', 'لوحة المتصدرين'),
     child: StreamBuilder<LeaderboardSnapshot>(
@@ -7370,10 +7320,14 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
   );
 }
 
+// Kept temporarily for compatibility with saved hot-reload states. It is not
+// used by the recognition-only ranking and is removed from release builds.
+// ignore: unused_element
 class _LeaderboardPodium extends StatelessWidget {
   const _LeaderboardPodium({
     required this.top3,
     required this.currentUid,
+    // ignore: unused_element_parameter
     this.onTapUser,
   });
 
@@ -7582,7 +7536,7 @@ class _PodiumColumn extends StatelessWidget {
                   style: _display(rank == 1 ? 22 : 17, color: medalColor),
                 ),
                 const Text(
-                  'PTS',
+                  'XP',
                   style: TextStyle(
                     color: _muted,
                     fontSize: 8,
@@ -7771,7 +7725,7 @@ class _LeaderboardRowCard extends StatelessWidget {
                     ),
                   ),
                   const Text(
-                    'pts',
+                    'XP',
                     style: TextStyle(
                       color: _muted,
                       fontSize: 9,
@@ -8035,8 +7989,8 @@ void _showOtherUserProfileDialog(
                       _ProfileStatSection(
                         title: abuText(
                           context,
-                          'STREAKS & ACHIEVEMENTS',
-                          'السلاسل والإنجازات',
+                          'ACTIVITY & XP',
+                          'النشاط ونقاط الخبرة',
                         ),
                         icon: Icons.local_fire_department_rounded,
                         items: [
@@ -8139,7 +8093,7 @@ class _ProductionLeaderboardTable extends StatelessWidget {
               SizedBox(
                 width: 105,
                 child: Text(
-                  abuText(context, 'POINTS', 'النقاط'),
+                  'XP',
                   textAlign: TextAlign.end,
                   style: _desktopTableHeaderStyle,
                 ),
@@ -8224,15 +8178,13 @@ class _ProductionLeaderboardDesktopRow extends StatelessWidget {
                     height: 34,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: ranked.rank <= 5
-                          ? _gold.withValues(alpha: .16)
-                          : _surface2,
+                      color: _surface2,
                       borderRadius: BorderRadius.circular(11),
                     ),
                     child: Text(
                       '${ranked.rank}',
                       style: TextStyle(
-                        color: ranked.rank <= 5 ? _gold : Colors.white,
+                        color: Colors.white,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
@@ -8302,10 +8254,7 @@ class _ProductionLeaderboardDesktopRow extends StatelessWidget {
                 child: Text(
                   '${ranked.points}',
                   textAlign: TextAlign.end,
-                  style: _display(
-                    21,
-                    color: ranked.rank <= 5 ? _gold : Colors.white,
-                  ),
+                  style: _display(21, color: Colors.white),
                 ),
               ),
             ],
@@ -8401,10 +8350,10 @@ class _ProfilePointsCard extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.military_tech_rounded, color: _gold, size: 16),
+                    Icon(Icons.leaderboard_rounded, color: _gold, size: 16),
                     const SizedBox(width: 4),
                     Text(
-                      'LVL ${(profile.totalPoints ~/ 100) + 1}',
+                      abuText(context, 'RANKING ONLY', 'للترتيب فقط'),
                       style: TextStyle(
                         color: _gold,
                         fontWeight: FontWeight.w900,
@@ -8425,8 +8374,8 @@ class _ProfilePointsCard extends StatelessWidget {
               Text(
                 abuText(
                   context,
-                  'Verified transactions & rewards breakdown',
-                  'العمليات الموثقة وتفاصيل المكافآت',
+                  'Verified prediction and video-answer XP',
+                  'نقاط XP الموثقة للتوقعات وإجابات الفيديو',
                 ),
                 style: TextStyle(color: subtextColor, fontSize: 12),
               ),
@@ -8509,11 +8458,7 @@ void _showFullPointsHistoryModal(
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      abuText(
-                        context,
-                        'Point Ledger & History',
-                        'سجل النقاط والعمليات',
-                      ),
+                      abuText(context, 'XP History', 'سجل XP'),
                       style: _display(
                         22,
                         color: isDark ? Colors.white : const Color(0xFF0F172A),
@@ -8549,8 +8494,8 @@ void _showFullPointsHistoryModal(
                             Text(
                               abuText(
                                 context,
-                                '50 XP Sign-up bonus active',
-                                'مكافأة التسجيل ٥٠ نقطة مضافة لحسابك',
+                                'No XP activity yet. Correct predictions and video answers earn XP.',
+                                'لا يوجد نشاط XP بعد. التوقعات وإجابات الفيديو الصحيحة تمنح XP.',
                               ),
                               style: TextStyle(fontWeight: FontWeight.w700),
                             ),
@@ -9971,14 +9916,9 @@ class _ProductionProfileSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final levelNumber = (profile.totalPoints ~/ 100) + 1;
-    final pointsInCurrentLevel = profile.totalPoints % 100;
-    final progressToNextLevel = pointsInCurrentLevel / 100.0;
-    final isMember = profile.isYouTubeMember;
-    final tierName = isMember ? 'GOLD' : 'SILVER';
-    final effectiveRank = rank ?? 1;
+    final effectiveRank = rank ?? 0;
     final effectiveAccuracy = accuracy ?? 100.0;
-    final rankText = profile.totalPoints > 0 ? '#$effectiveRank' : '—';
+    final rankText = effectiveRank > 0 ? '#$effectiveRank' : '—';
     final accuracyText = profile.totalPoints > 0
         ? '${effectiveAccuracy.toStringAsFixed(0)}%'
         : '—';
@@ -9993,7 +9933,7 @@ class _ProductionProfileSummary extends StatelessWidget {
           items: [
             _StatItem(
               value: '${profile.totalPoints} XP',
-              label: abuText(context, 'TOTAL POINTS', 'إجمالي النقاط'),
+              label: abuText(context, 'TOTAL XP', 'إجمالي XP'),
               color: _productionPrimary(context),
             ),
             _StatItem(
@@ -10015,111 +9955,7 @@ class _ProductionProfileSummary extends StatelessWidget {
         ),
         const SizedBox(height: 14),
 
-        // Category 2: Level Progression
-        Builder(
-          builder: (context) {
-            final isDark = Theme.of(context).brightness == Brightness.dark;
-            final cardBg = isDark ? _surface : Colors.white;
-            final borderColor = isDark ? _line : const Color(0xFFE2E8F0);
-            final progressTrack = isDark ? _surface2 : const Color(0xFFE2E8F0);
-            final progressColor = isDark
-                ? _productionPrimary(context)
-                : const Color(0xFF16A34A);
-
-            return Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: cardBg,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: borderColor),
-                boxShadow: isDark
-                    ? null
-                    : [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: .04),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.military_tech_rounded, color: _gold, size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        abuText(context, 'LEVEL PROGRESSION', 'تقدم المستوى'),
-                        style: TextStyle(
-                          color: _gold,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.1,
-                        ),
-                      ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: _gold.withValues(alpha: .18),
-                          borderRadius: BorderRadius.circular(99),
-                        ),
-                        child: Text(
-                          'LEVEL $levelNumber · $tierName',
-                          style: TextStyle(
-                            color: _gold,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: .8,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: progressToNextLevel,
-                      minHeight: 8,
-                      backgroundColor: progressTrack,
-                      color: progressColor,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Text(
-                        '$pointsInCurrentLevel / 100 XP',
-                        style: TextStyle(
-                          color: isDark ? _muted : const Color(0xFF64748B),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '${100 - pointsInCurrentLevel} XP to Level ${levelNumber + 1}',
-                        style: TextStyle(
-                          color: progressColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 14),
-
-        // Category 3: Streaks & challenge activity
+        // Streaks remain an activity counter and never award XP.
         _ProfileStatSection(
           title: abuText(context, 'STREAKS & CHALLENGES', 'السلاسل والتحديات'),
           icon: Icons.local_fire_department_rounded,
@@ -10142,7 +9978,7 @@ class _ProductionProfileSummary extends StatelessWidget {
             ),
             _StatItem(
               value: '${profile.challengesCompleted}',
-              label: abuText(context, 'CHALLENGES WON', 'التحديات المكتملة'),
+              label: abuText(context, 'VIDEO ANSWERS', 'إجابات الفيديو'),
               color: _productionPrimary(context),
             ),
           ],
@@ -10612,8 +10448,8 @@ class _ProductionSettings extends StatelessWidget {
                       Text(
                         abuText(
                           context,
-                          'Verified members receive 2× points on predictions and video challenges, including player guesses. Signup and daily streak points stay unchanged.',
-                          'يحصل الأعضاء الموثقون على نقاط ×٢ للتوقعات وتحديات الفيديو، بما فيها تخمين اللاعب. لا تتضاعف نقاط التسجيل أو السلسلة اليومية.',
+                          'Verified members receive 2× XP on correct predictions and video questions, including player guesses. Signup and daily login award no XP. XP cannot be bought, transferred, redeemed, or used to unlock anything.',
+                          'يحصل الأعضاء الموثقون على XP مضاعف للتوقعات وأسئلة الفيديو الصحيحة، بما فيها تخمين اللاعب. التسجيل والدخول اليومي لا يمنحان XP. لا يمكن شراء XP أو نقلها أو استبدالها ولا تفتح أي مزايا.',
                         ),
                         style: TextStyle(color: _muted, height: 1.45),
                       ),
@@ -10658,16 +10494,16 @@ class _ProductionSettings extends StatelessWidget {
                 ),
                 const Divider(height: 1),
                 _SettingsActionTile(
-                  icon: Icons.emoji_events_rounded,
+                  icon: Icons.leaderboard_rounded,
                   title: abuText(
                     context,
-                    'Competition Rules',
-                    'قواعد المنافسة',
+                    'XP & Ranking Rules',
+                    'قواعد XP والترتيب',
                   ),
                   subtitle: abuText(
                     context,
-                    'Eligibility, points, prizes, ties, and Apple non-sponsorship.',
-                    'الأهلية والنقاط والجوائز والتعادل وعدم رعاية Apple.',
+                    'Free XP scoring and recognition-only rankings.',
+                    'احتساب XP المجاني وترتيب للتقدير فقط.',
                   ),
                   onTap: () => _showLegalDocument(
                     context,
@@ -10680,8 +10516,8 @@ class _ProductionSettings extends StatelessWidget {
                   title: abuText(context, 'Terms of Use', 'شروط الاستخدام'),
                   subtitle: abuText(
                     context,
-                    'Fair play, account rules, content rules, and rewards.',
-                    'اللعب النظيف وقواعد الحساب والمحتوى والمكافآت.',
+                    'Fair play, account rules, content rules, and XP.',
+                    'اللعب النظيف وقواعد الحساب والمحتوى وXP.',
                   ),
                   onTap: () => _showLegalDocument(
                     context,
@@ -10836,8 +10672,8 @@ class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
                 Text(
                   abuText(
                     context,
-                    'This cannot be undone. Your profile, points, predictions, challenge answers, rewards, device registrations, and sign-in account will be permanently deleted.',
-                    'لا يمكن التراجع عن هذا الإجراء. سيُحذف ملفك ونقاطك وتوقعاتك وإجابات التحديات ومكافآتك وأجهزة الإشعارات وحساب تسجيل الدخول نهائياً.',
+                    'This cannot be undone. Your profile, XP, predictions, challenge answers, device registrations, and sign-in account will be permanently deleted.',
+                    'لا يمكن التراجع عن هذا الإجراء. سيُحذف ملفك وXP وتوقعاتك وإجابات التحديات وأجهزة الإشعارات وحساب تسجيل الدخول نهائياً.',
                   ),
                   style: const TextStyle(height: 1.45),
                 ),
@@ -11039,7 +10875,7 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
 
 _LegalDocument _competitionLegalDocument(BuildContext context) =>
     _LegalDocument(
-      title: abuText(context, 'Competition Rules', 'قواعد المنافسة'),
+      title: abuText(context, 'XP & Ranking Rules', 'قواعد XP والترتيب'),
       updated: abuText(
         context,
         'Updated 31 August 2026',
@@ -11048,43 +10884,47 @@ _LegalDocument _competitionLegalDocument(BuildContext context) =>
       webUrl: AbuBrand.competitionRulesUrl,
       sections: [
         (
-          abuText(context, 'Sponsor', 'المنظم'),
+          abuText(context, 'Completely Free', 'مجاني بالكامل'),
           abuText(
             context,
-            'Abu 3meer competitions are sponsored and operated by Abu 3meer. Apple is not a sponsor, is not involved in the competitions, and is not responsible for selecting winners, awarding prizes, or resolving competition issues.',
-            'منافسات أبو عمير منظمة ومدارة من أبو عمير. لا ترعى Apple المنافسات ولا تشارك فيها وليست مسؤولة عن اختيار الفائزين أو منح الجوائز أو حل مشكلات المنافسة.',
+            'Abu 3meer has no paid entry, XP purchase, stake, wager, or payment required to make a prediction or answer a video question. A wrong answer never causes a user to lose money or XP.',
+            'أبو عمير لا يفرض رسوماً للدخول ولا يبيع XP ولا يتطلب رهاناً أو دفعاً للتوقع أو الإجابة عن سؤال فيديو. الإجابة الخاطئة لا تسبب خسارة مال أو XP.',
           ),
         ),
         (
-          abuText(context, 'No Gambling', 'ليست مقامرة'),
+          abuText(context, 'How XP Is Earned', 'كيف تُكتسب XP'),
           abuText(
             context,
-            'Predictions and video answers are free to enter inside the app. Users do not pay, stake, wager, or lose money for wrong answers. App points have no cash value and cannot be exchanged for money.',
-            'التوقعات وإجابات الفيديو مجانية داخل التطبيق. لا يدفع المستخدمون ولا يراهنون ولا يخسرون مالاً عند الإجابة الخاطئة. نقاط التطبيق لا تملك قيمة نقدية ولا يمكن استبدالها بالمال.',
+            'XP is awarded only for correct football predictions and correct video-question answers, including player guesses. Signup, opening the app, and daily streak activity award no XP.',
+            'تُمنح XP فقط للتوقعات الكروية الصحيحة وإجابات أسئلة الفيديو الصحيحة، بما فيها تخمين اللاعب. التسجيل وفتح التطبيق ونشاط السلسلة اليومية لا يمنح XP.',
           ),
         ),
         (
-          abuText(context, 'Points and Multipliers', 'النقاط والمضاعفات'),
+          abuText(context, 'YouTube Member Multiplier', 'مضاعف أعضاء يوتيوب'),
           abuText(
             context,
-            'Ordinary XP, streaks, achievements, and leaderboards are fan-progression features and do not themselves promise a real-world prize. Points have no cash value. Verified YouTube members receive bonus XP on predictions and video challenges, but that paid-member multiplier is excluded from real-prize scoring unless an equal free scoring opportunity is offered.',
-            'نقاط الخبرة والسلاسل والإنجازات وقوائم الترتيب العادية مخصصة لتقدم المشجع ولا تعد بحد ذاتها بجائزة واقعية. لا قيمة نقدية للنقاط. يحصل أعضاء يوتيوب الموثقون على نقاط إضافية للتوقعات وتحديات الفيديو، لكن مضاعف العضوية المدفوعة يستبعد من نقاط الجوائز الواقعية ما لم تتوفر فرصة مجانية مكافئة.',
+            'Verified members of the Abu 3meer YouTube channel receive 2× XP on the same eligible correct predictions and video-question answers. The multiplier changes only a recognition score and never produces money, goods, access, prizes, or any redeemable benefit.',
+            'يحصل أعضاء قناة أبو عمير الموثقون على XP مضاعف لنفس التوقعات وإجابات الفيديو الصحيحة المؤهلة. يغيّر المضاعف درجة ترتيب تقديرية فقط ولا ينتج مالاً أو سلعاً أو وصولاً أو جوائز أو أي منفعة قابلة للاستبدال.',
           ),
         ),
         (
-          abuText(context, 'Prizes and Countries', 'الجوائز والدول'),
+          abuText(context, 'No Value or Rewards', 'لا قيمة ولا مكافآت'),
           abuText(
             context,
-            'A real-world prize exists only when Abu 3meer publishes a Promotion Notice stating its dates, free entry method, eligible countries and ages, prize, scoring, tie-breaks, and claim process. Promotions are void where prohibited. App availability does not guarantee prize eligibility.',
-            'لا توجد جائزة واقعية إلا عند نشر إشعار عرض يحدد التواريخ وطريقة الدخول المجانية والدول والأعمار المؤهلة والجائزة والنقاط وكسر التعادل والاستلام. تلغى العروض حيث يمنع القانون، وتوفر التطبيق لا يعني الأهلية للجائزة.',
+            'XP has no cash or real-world value. It cannot be bought, sold, transferred, exchanged, redeemed for codes or items, or used to unlock app features. Rankings do not name winners and provide no prize, reward, giveaway, payment, or claim.',
+            'لا تملك XP أي قيمة نقدية أو واقعية. لا يمكن شراؤها أو بيعها أو نقلها أو استبدالها بأكواد أو أغراض ولا تُستخدم لفتح ميزات التطبيق. الترتيب لا يحدد فائزين ولا يمنح جائزة أو مكافأة أو هدية أو دفعة أو مطالبة.',
           ),
         ),
         (
-          abuText(context, 'Fair Play', 'اللعب النظيف'),
           abuText(
             context,
-            'Abu 3meer may lock predictions, correct obvious data errors, void abusive entries, disqualify cheating, and require identity or eligibility confirmation before any prize claim.',
-            'يجوز لأبو عمير إغلاق التوقعات وتصحيح أخطاء البيانات الواضحة وإلغاء المشاركات المسيئة واستبعاد الغش وطلب تأكيد الهوية أو الأهلية قبل أي مطالبة بجائزة.',
+            'Ranking Periods and Fair Scoring',
+            'فترات الترتيب وعدالة الاحتساب',
+          ),
+          abuText(
+            context,
+            'The leaderboard shows current-month XP, previous-month XP, and season XP for recognition only. Monthly ranking starts again each calendar month. A football season starts with the first configured Real Madrid or Barcelona match. Abu 3meer may correct provider data and remove fraudulent activity so XP remains accurate.',
+            'تعرض لوحة الترتيب XP للشهر الحالي والشهر السابق والموسم للتقدير فقط. يبدأ ترتيب شهري جديد مع كل شهر ميلادي. يبدأ موسم كرة القدم مع أول مباراة مضبوطة لريال مدريد أو برشلونة. يجوز لأبو عمير تصحيح بيانات المزود وإزالة النشاط الاحتيالي للحفاظ على دقة XP.',
           ),
         ),
       ],
@@ -11119,16 +10959,16 @@ _LegalDocument _termsLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Service Changes', 'تغييرات الخدمة'),
       abuText(
         context,
-        'Football data, videos, challenges, points, and rewards may change, be corrected, or be removed when needed for accuracy, safety, legal compliance, or operations.',
-        'قد تتغير بيانات كرة القدم والفيديوهات والتحديات والنقاط والمكافآت أو تصحح أو تزال عند الحاجة للدقة أو السلامة أو الامتثال القانوني أو التشغيل.',
+        'Football data, videos, challenges, and XP records may change, be corrected, or be removed when needed for accuracy, safety, legal compliance, or operations. XP never unlocks features and has no monetary or redeemable value.',
+        'قد تتغير بيانات كرة القدم والفيديوهات والتحديات وسجلات XP أو تصحح أو تزال عند الحاجة للدقة أو السلامة أو الامتثال القانوني أو التشغيل. لا تفتح XP أي ميزات ولا تملك قيمة نقدية أو قابلة للاستبدال.',
       ),
     ),
     (
       abuText(context, 'Contact', 'التواصل'),
       abuText(
         context,
-        'For support, privacy, account deletion, or competition questions, contact ${AbuBrand.supportEmail}.',
-        'للدعم أو الخصوصية أو حذف الحساب أو أسئلة المنافسة، تواصل عبر ${AbuBrand.supportEmail}.',
+        'For support, privacy, account deletion, or ranking questions, contact ${AbuBrand.supportEmail}.',
+        'للدعم أو الخصوصية أو حذف الحساب أو أسئلة الترتيب، تواصل عبر ${AbuBrand.supportEmail}.',
       ),
     ),
   ],
@@ -12344,8 +12184,8 @@ class _ProductionAdmin extends StatelessWidget {
                   Text(
                     abuText(
                       context,
-                      'Publishing is final and starts secure reward processing for exact score, first scorer and winner.',
-                      'النشر نهائي ويبدأ احتساب مكافآت النتيجة الدقيقة وأول مسجل والفائز بأمان.',
+                      'Publishing is final and securely calculates XP for each correct prediction component.',
+                      'النشر نهائي ويبدأ احتساب XP بأمان لكل عنصر توقع صحيح.',
                     ),
                     style: TextStyle(color: _gold, fontSize: 11),
                   ),
@@ -12360,9 +12200,7 @@ class _ProductionAdmin extends StatelessWidget {
               FilledButton.icon(
                 onPressed: valid ? () => Navigator.pop(context, true) : null,
                 icon: Icon(Icons.verified_rounded),
-                label: Text(
-                  abuText(context, 'PROCESS REWARDS', 'احتساب المكافآت'),
-                ),
+                label: Text(abuText(context, 'CALCULATE XP', 'احتساب XP')),
               ),
             ],
           );
@@ -12386,8 +12224,8 @@ class _ProductionAdmin extends StatelessWidget {
             content: Text(
               abuText(
                 context,
-                'Result published and rewards processed.',
-                'تم نشر النتيجة واحتساب المكافآت.',
+                'Result published and correct-prediction XP calculated.',
+                'تم نشر النتيجة واحتساب XP للتوقعات الصحيحة.',
               ),
             ),
           ),

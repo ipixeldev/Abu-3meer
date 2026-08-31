@@ -1,4 +1,4 @@
-export const notificationCategories = ['match', 'challenge', 'reward', 'news', 'general'] as const;
+export const notificationCategories = ['match', 'challenge', 'news', 'general'] as const;
 export type NotificationCategory = (typeof notificationCategories)[number];
 
 const permanentTokenErrorCodes = new Set([
@@ -219,7 +219,6 @@ export function notificationPreferenceColumn(category: NotificationCategory): st
   return {
     match: 'match_enabled',
     challenge: 'challenge_enabled',
-    reward: 'reward_enabled',
     news: 'news_enabled',
     general: null,
   }[category];

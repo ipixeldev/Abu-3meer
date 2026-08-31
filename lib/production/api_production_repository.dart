@@ -369,10 +369,10 @@ class ApiProductionRepository {
             : (user.photoURL ?? '').trim(),
         role: role,
         membershipMultiplier: (u['isYouTubeMember'] == true) ? 2.0 : 1.0,
-        totalPoints: (p['total_points'] ?? 50).toInt(),
-        monthlyPoints: (p['monthly_points'] ?? 50).toInt(),
-        seasonPoints: (p['season_points'] ?? 50).toInt(),
-        loyaltyPoints: (p['loyalty_points'] ?? 50).toInt(),
+        totalPoints: (p['total_points'] ?? 0).toInt(),
+        monthlyPoints: (p['monthly_points'] ?? 0).toInt(),
+        seasonPoints: (p['season_points'] ?? 0).toInt(),
+        loyaltyPoints: (p['loyalty_points'] ?? 0).toInt(),
         currentStreak: (p['streak_count'] ?? 0).toInt(),
         longestStreak: (p['streak_best'] ?? 0).toInt(),
         level: (p['level'] ?? 1).toInt(),
@@ -982,29 +982,146 @@ class ApiProductionRepository {
     );
   }
 
-  Future<List<LeaderboardEntry>> fetchTopLeaderboard({
+  LeaderboardEntry _leaderboardEntry(dynamic value) {
+    final item = value is Map
+        ? Map<String, dynamic>.from(value)
+        : const <String, dynamic>{};
+    final points = parseApiInt(item['points']);
+    return LeaderboardEntry(
+      uid: (item['userId'] ?? item['firebaseUid'] ?? '').toString(),
+      username: (item['username'] ?? '').toString(),
+      displayName: (item['displayName'] ?? item['username'] ?? '').toString(),
+      avatarUrl: (item['avatarUrl'] ?? '').toString(),
+      supportedTeam: (item['supportedTeam'] ?? '').toString(),
+      monthlyPoints: points,
+      seasonPoints: points,
+      totalPoints: points,
+      isMember: item['isYouTubeMember'] == true,
+    );
+  }
+
+  RankedLeaderboardEntry _rankedLeaderboardEntry(dynamic value, int fallback) {
+    final item = value is Map
+        ? Map<String, dynamic>.from(value)
+        : const <String, dynamic>{};
+    final entry = _leaderboardEntry(item);
+    return RankedLeaderboardEntry(
+      entry: entry,
+      rank: parseApiInt(item['rank'], fallback),
+      points: parseApiInt(item['points']),
+    );
+  }
+
+  Future<LeaderboardSnapshot> fetchLeaderboardSnapshot({
     String period = 'monthly',
+    String? seasonId,
   }) async {
-    final res = await api.get('/leaderboards/$period');
+    final res = await api.get(
+      '/leaderboards/$period',
+      queryParams: seasonId == null || seasonId.isEmpty
+          ? null
+          : <String, String>{'seasonId': seasonId},
+    );
     if (res is Map && res['leaderboard'] is List) {
-      return (res['leaderboard'] as List)
-          .map(
-            (e) => LeaderboardEntry(
-              uid: e['userId'] ?? '',
-              username: e['username'] ?? '',
-              displayName: e['displayName'] ?? '',
-              avatarUrl: e['avatarUrl'] ?? '',
-              supportedTeam: e['supportedTeam'] ?? '',
-              monthlyPoints: (e['points'] ?? 0).toInt(),
-              seasonPoints: (e['points'] ?? 0).toInt(),
-              isMember: e['isYouTubeMember'] == true,
-            ),
-          )
-          .toList(growable: false);
+      final response = Map<String, dynamic>.from(res);
+      final rawEntries = response['leaderboard'] as List;
+      final entries = <RankedLeaderboardEntry>[
+        for (var index = 0; index < rawEntries.length; index++)
+          _rankedLeaderboardEntry(rawEntries[index], index + 1),
+      ];
+      final seasons = <LeaderboardSeason>[
+        for (final season in (response['seasons'] as List? ?? const []))
+          if (season is Map)
+            LeaderboardSeason.fromMap(Map<String, dynamic>.from(season)),
+      ];
+      RankedLeaderboardEntry? currentUser;
+      if (response['currentUser'] is Map) {
+        currentUser = _rankedLeaderboardEntry(response['currentUser'], 0);
+      } else {
+        final firebaseUser = FirebaseAuth.instance.currentUser;
+        final uid = firebaseUser?.uid ?? '';
+        currentUser = entries
+            .where((item) => item.entry.uid == uid)
+            .firstOrNull;
+        if (currentUser == null && firebaseUser != null) {
+          try {
+            final rankResponse = await api.get(
+              '/leaderboards/my-rank',
+              queryParams: seasonId == null || seasonId.isEmpty
+                  ? null
+                  : <String, String>{'seasonId': seasonId},
+              requireAuth: true,
+              bypassCache: true,
+            );
+            if (rankResponse is Map) {
+              final (rankKey, pointsKey) = switch (period) {
+                'previous-month' => (
+                  'previousMonthRank',
+                  'previousMonthPoints',
+                ),
+                'season' => ('seasonRank', 'seasonPoints'),
+                _ => ('monthlyRank', 'monthlyPoints'),
+              };
+              final rank = parseApiInt(rankResponse[rankKey]);
+              final points = parseApiInt(rankResponse[pointsKey]);
+              if (rank > 0) {
+                currentUser = RankedLeaderboardEntry(
+                  entry: LeaderboardEntry(
+                    uid: firebaseUser.uid,
+                    username: firebaseUser.displayName ?? 'Fan',
+                    displayName: firebaseUser.displayName ?? 'Fan',
+                    avatarUrl: firebaseUser.photoURL ?? '',
+                    supportedTeam: '',
+                    monthlyPoints: points,
+                    seasonPoints: points,
+                    totalPoints: points,
+                    isMember: false,
+                  ),
+                  rank: rank,
+                  points: points,
+                );
+              }
+            }
+          } catch (_) {
+            // The public table remains useful if the authenticated personal
+            // rank request is temporarily unavailable.
+          }
+        }
+      }
+      return LeaderboardSnapshot(
+        entries: entries,
+        currentUser: currentUser,
+        totalPlayers: parseApiInt(response['totalPlayers'], entries.length),
+        seasons: seasons,
+        activeSeasonId:
+            (response['activeSeasonId'] ?? response['activeSeason']?['id'])
+                ?.toString(),
+      );
     }
     throw AbuApiException(
       statusCode: 502,
       message: 'The server returned an invalid leaderboard.',
+      details: res,
+    );
+  }
+
+  Future<List<LeaderboardEntry>> fetchTopLeaderboard({
+    String period = 'monthly',
+  }) async =>
+      (await fetchLeaderboardSnapshot(period: period)).entries
+          .map((ranked) => ranked.entry)
+          .toList(growable: false);
+
+  Future<int> fetchMySeasonRank() async {
+    final res = await api.get(
+      '/leaderboards/my-rank',
+      requireAuth: true,
+      bypassCache: true,
+    );
+    if (res is Map) return parseApiInt(res['seasonRank']);
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server returned an invalid season rank.',
       details: res,
     );
   }

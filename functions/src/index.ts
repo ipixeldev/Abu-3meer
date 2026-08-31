@@ -477,6 +477,10 @@ export const completeOnboarding = onCall(phase3CallableOptions(region), async (r
 
 export const submitPrediction = onCall(phase3CallableOptions(region), async (request) => {
   const auth = requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "This legacy prediction endpoint is disabled. Use the Abu 3meer API.",
+  );
   const matchId = text(request.data?.matchId, "Match", 128);
   const homeScore = integer(request.data?.homeScore, "Home score");
   const awayScore = integer(request.data?.awayScore, "Away score");
@@ -1197,6 +1201,10 @@ export const claimPlayerCard = onCall(phase3CallableOptions(region), async (requ
 
 export const claimAchievement = onCall(phase3CallableOptions(region), async (request) => {
   const auth = requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "Achievements and achievement XP are not part of Abu 3meer.",
+  );
   const achievementId = documentId(
     request.data?.achievementId,
     "Achievement",
@@ -1442,6 +1450,10 @@ export const claimAchievement = onCall(phase3CallableOptions(region), async (req
 
 export const redeemLoyaltyReward = onCall(phase3CallableOptions(region), async (request) => {
   const auth = requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "Rewards and redemptions are not part of Abu 3meer.",
+  );
   const rewardId = identifier(request.data?.rewardId, "Reward", 128);
   const idempotencyKey = identifier(request.data?.idempotencyKey, "Idempotency key", 128);
   const redemptionId = redemptionLedgerId(auth.uid, rewardId, idempotencyKey);
@@ -1607,6 +1619,10 @@ export const redeemLoyaltyReward = onCall(phase3CallableOptions(region), async (
 
 export const updateRedemptionStatus = onCall(phase3CallableOptions(region), async (request) => {
   const auth = requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "Rewards and redemptions are not part of Abu 3meer.",
+  );
   await requireContentManager(auth.uid);
   const redemptionId = documentId(request.data?.redemptionId, "Redemption");
   const requestedStatus = text(request.data?.status, "Status", 20);

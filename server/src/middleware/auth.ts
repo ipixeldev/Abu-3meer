@@ -120,7 +120,7 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
     }
 
     if (res.rows.length === 0) {
-      // Provision identity, profile, sign-up ledger, and roles atomically. This
+      // Provision identity, a zero-XP profile, and roles atomically. This
       // also repairs accounts left half-created by an interrupted older build.
       const initialUsername = (email ? email.split('@')[0] : `fan_${firebaseUid.slice(0, 6)}`)
         .toLowerCase()
@@ -159,22 +159,12 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
           ],
         );
         const userId = newUserRes.rows[0].id;
-        const signupPoints = config.pointDefaults.signUpBonus;
         await client.query(
           `INSERT INTO user_profiles
              (user_id, total_points, monthly_points, season_points, loyalty_points)
-           VALUES ($1, $2, $2, $2, $2)
+           VALUES ($1, 0, 0, 0, 0)
            ON CONFLICT (user_id) DO NOTHING`,
-          [userId, signupPoints],
-        );
-        await client.query(
-          `INSERT INTO point_transactions
-             (user_id, source_type, source_id, base_points, multiplier,
-              final_points, description, idempotency_key)
-           VALUES ($1, 'signup_bonus', 'signup', $2, 1.0, $2,
-                   'Signup bonus', $3)
-           ON CONFLICT (idempotency_key) DO NOTHING`,
-          [userId, signupPoints, `signup_bonus_${userId}`],
+          [userId],
         );
         for (const roleId of assignedRoles) {
           await client.query(
