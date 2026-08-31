@@ -16,6 +16,13 @@ def abu3meer_metadata(locale, filename)
   ).strip
 end
 
+def abu3meer_review_notes
+  File.read(
+    File.expand_path("review_notes.txt", __dir__),
+    encoding: "UTF-8"
+  ).strip
+end
+
 platform :ios do
   desc "Upload localized App Store metadata without changing the binary or submitting for review"
   lane :upload_metadata do
@@ -35,6 +42,12 @@ platform :ios do
     )
 
     app = Spaceship::ConnectAPI::App.find("com.abu3meer.app")
+    version = app.get_app_store_versions.find { |candidate| candidate.version_string == "1.1.0" }
+    UI.user_error!("App Store version 1.1.0 was not found") unless version
+    version.fetch_app_store_review_detail.update(
+      attributes: { notes: abu3meer_review_notes }
+    )
+
     app_info = app.fetch_edit_app_info
     app_info.get_app_info_localizations.each do |localization|
       localization.update(

@@ -1,0 +1,19 @@
+Abu 3meer supports Arabic and English.
+
+Authentication and account controls:
+- Sign in with Apple is available on iOS as an equivalent option alongside Google and email.
+- Account deletion is available in Settings > Account & Security > Delete Account.
+- A user who originally signs in with email or Apple can link Google to the same Firebase account in Settings. This preserves the existing profile and points and is used only to verify YouTube channel membership.
+
+Predictions and competitions:
+- The app does not offer betting, wagering, paid entry, or currency exchangeable for money. App points have no cash value.
+- Ordinary XP and leaderboards are fan progression and do not automatically promise a real-world prize.
+- Any separate real-prize promotion requires a published Promotion Notice and free entry. Official rules are in Settings > Legal & Privacy > Competition Rules and at https://ipixeldev.github.io/Abu-3meer/competition-rules/.
+- Apple is not a sponsor of, involved in, or responsible for any competition.
+
+Data and content behavior:
+- Location permission is optional and is used once to suggest a country; users can select a country manually.
+- Match facts, lineups, tables, and results appear only when the official football data provider publishes them.
+- Notification permission is optional.
+
+Legal and support pages are available in Settings and at https://ipixeldev.github.io/Abu-3meer/.
