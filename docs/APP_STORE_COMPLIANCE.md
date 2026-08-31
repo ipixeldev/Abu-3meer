@@ -19,6 +19,22 @@ Updated: 31 August 2026
 - Privacy Policy, Terms of Use, Competition Rules, and Support are available in Settings and on the public website.
 - Official competition rules state that Apple is not a sponsor or involved in competitions.
 - YouTube members receive 2x points only for predictions and video challenges, including player guesses. Signup and daily streak points are not multiplied.
+- The iOS target contains `Runner/PrivacyInfo.xcprivacy`; it declares no tracking and is packaged at the app-bundle root.
+
+## App Privacy Declaration
+
+App Store Connect's privacy declaration must cover both first-party collection and embedded SDKs. The conservative declaration for the current build is:
+
+- Data collected: yes.
+- Tracking: no.
+- No third-party advertising or developer advertising/marketing use.
+- Contact information, YouTube membership status, location used for country suggestion, selected media, gameplay/user/search content, user/device identifiers, product interaction, usage data, diagnostics, and other profile/security data are disclosed for app functionality and the applicable analytics or personalization purposes.
+
+Do not publish a narrower declaration without re-auditing the app, server logs, Google Sign-In, and Firebase privacy manifests.
+
+## Content Rights
+
+The current app accesses third-party football data, club marks, YouTube content, and thumbnails. App Store Connect's Content Rights declaration must not be certified until the developer has written authorization for the submitted content or the build is changed to use owned/licensed assets and permitted factual data only. A football API subscription by itself is not evidence of club-logo, league-mark, or publication rights; retain the provider and rightsholder licenses with the release records.
 
 ## App Store Age Rating Guidance
 
