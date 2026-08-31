@@ -10434,6 +10434,54 @@ class _ProductionSettings extends StatelessWidget {
                       : null,
                 ),
                 if (!profile.isGuest) ...[
+                  if (repository.canLinkGoogleAccount) ...[
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: const _GoogleGMark(size: 22),
+                      title: Text(
+                        abuText(
+                          context,
+                          'Link Google account',
+                          'ربط حساب Google',
+                        ),
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      subtitle: Text(
+                        abuText(
+                          context,
+                          'Keep this account and use Google for sign-in and membership verification.',
+                          'احتفظ بهذا الحساب واستخدم Google لتسجيل الدخول والتحقق من العضوية.',
+                        ),
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () async {
+                        try {
+                          await repository.linkGoogleAccount();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  abuText(
+                                    context,
+                                    'Google account linked. Your existing account was kept.',
+                                    'تم ربط حساب Google. تم الاحتفاظ بحسابك الحالي.',
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+                        } catch (error) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(productionErrorMessage(error)),
+                              ),
+                            );
+                          }
+                        }
+                      },
+                    ),
+                  ],
                   const Divider(height: 1),
                   ListTile(
                     leading: const Icon(

@@ -1038,6 +1038,51 @@ class ProductionRepository {
     await auth.signInWithCredential(credential);
   }
 
+  /// Links Google to the currently authenticated Firebase account instead of
+  /// signing into (and potentially creating) a second account. This keeps the
+  /// existing profile, points, predictions, and membership state intact.
+  bool get canLinkGoogleAccount {
+    final user = auth.currentUser;
+    return user != null &&
+        !user.providerData.any(
+          (provider) => provider.providerId == GoogleAuthProvider.PROVIDER_ID,
+        );
+  }
+
+  Future<void> linkGoogleAccount() async {
+    final user = auth.currentUser;
+    if (user == null) {
+      throw FirebaseAuthException(
+        code: 'unauthenticated',
+        message: 'Sign in before linking Google.',
+      );
+    }
+    if (!canLinkGoogleAccount) return;
+
+    final provider = GoogleAuthProvider();
+    if (kIsWeb) {
+      await user.linkWithPopup(provider);
+    } else {
+      if (!_googleInitialized) {
+        await GoogleSignIn.instance.initialize();
+        _googleInitialized = true;
+      }
+      final account = await GoogleSignIn.instance.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null) {
+        throw FirebaseAuthException(
+          code: 'missing-google-token',
+          message: 'Google did not return a valid identity token.',
+        );
+      }
+      await user.linkWithCredential(
+        GoogleAuthProvider.credential(idToken: idToken),
+      );
+    }
+    await user.reload();
+    await refreshProfile(user.uid, force: true);
+  }
+
   Future<void> signInWithApple() async {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
       throw UnsupportedError('Sign in with Apple is available on iOS only.');
@@ -2856,6 +2901,8 @@ String productionErrorMessage(Object error) {
       'user-disabled' => 'This account has been suspended. Contact support.',
       'popup-closed-by-user' || 'canceled' => 'Sign-in was cancelled.',
       'account-exists-with-different-credential' => 'An account already uses this email. Sign in with the method you used before.',
+      'credential-already-in-use' => 'That Google account is linked to another Abu 3meer account. Sign out of that account first, then link Google here.',
+      'provider-already-linked' => 'Google is already linked to this account.',
       'operation-not-allowed' =>
         'This sign-in method is not enabled yet. Contact support.',
       'account-deletion-password-required' =>
