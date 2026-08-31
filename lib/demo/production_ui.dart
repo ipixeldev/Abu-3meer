@@ -10639,6 +10639,67 @@ class _ProductionSettings extends StatelessWidget {
                 ),
               ],
             );
+            final legal = _SettingsPanel(
+              icon: Icons.verified_user_rounded,
+              title: abuText(context, 'LEGAL & PRIVACY', 'القانونية والخصوصية'),
+              children: [
+                _SettingsActionTile(
+                  icon: Icons.privacy_tip_rounded,
+                  title: abuText(context, 'Privacy Policy', 'سياسة الخصوصية'),
+                  subtitle: abuText(
+                    context,
+                    'What Abu 3meer collects, why it is used, and how to delete it.',
+                    'ما يجمعه أبو عمير، ولماذا يستخدم، وكيف يمكن حذفه.',
+                  ),
+                  onTap: () => _showLegalDocument(
+                    context,
+                    document: _privacyLegalDocument(context),
+                  ),
+                ),
+                const Divider(height: 1),
+                _SettingsActionTile(
+                  icon: Icons.emoji_events_rounded,
+                  title: abuText(
+                    context,
+                    'Competition Rules',
+                    'قواعد المنافسة',
+                  ),
+                  subtitle: abuText(
+                    context,
+                    'Eligibility, points, prizes, ties, and Apple non-sponsorship.',
+                    'الأهلية والنقاط والجوائز والتعادل وعدم رعاية Apple.',
+                  ),
+                  onTap: () => _showLegalDocument(
+                    context,
+                    document: _competitionLegalDocument(context),
+                  ),
+                ),
+                const Divider(height: 1),
+                _SettingsActionTile(
+                  icon: Icons.description_rounded,
+                  title: abuText(context, 'Terms of Use', 'شروط الاستخدام'),
+                  subtitle: abuText(
+                    context,
+                    'Fair play, account rules, content rules, and rewards.',
+                    'اللعب النظيف وقواعد الحساب والمحتوى والمكافآت.',
+                  ),
+                  onTap: () => _showLegalDocument(
+                    context,
+                    document: _termsLegalDocument(context),
+                  ),
+                ),
+                const Divider(height: 1),
+                _SettingsActionTile(
+                  icon: Icons.support_agent_rounded,
+                  title: abuText(context, 'Support', 'الدعم'),
+                  subtitle: AbuBrand.supportEmail,
+                  onTap: () => launchUrl(
+                    Uri.parse(AbuBrand.supportUrl),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                ),
+              ],
+            );
 
             return ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1240),
@@ -10657,6 +10718,8 @@ class _ProductionSettings extends StatelessWidget {
                         ),
                         const SizedBox(height: 18),
                         membership,
+                        const SizedBox(height: 18),
+                        legal,
                       ],
                     )
                   : Column(
@@ -10668,6 +10731,8 @@ class _ProductionSettings extends StatelessWidget {
                         notifications,
                         const SizedBox(height: 14),
                         membership,
+                        const SizedBox(height: 14),
+                        legal,
                       ],
                     ),
             );
@@ -10852,6 +10917,249 @@ class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
       ),
     );
   }
+}
+
+class _SettingsActionTile extends StatelessWidget {
+  const _SettingsActionTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = _productionPrimary(context);
+    return ListTile(
+      leading: Icon(icon, color: primary),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right_rounded),
+      onTap: onTap,
+    );
+  }
+}
+
+class _LegalDocument {
+  const _LegalDocument({
+    required this.title,
+    required this.updated,
+    required this.webUrl,
+    required this.sections,
+  });
+
+  final String title;
+  final String updated;
+  final String webUrl;
+  final List<(String, String)> sections;
+}
+
+_LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
+  title: abuText(context, 'Privacy Policy', 'سياسة الخصوصية'),
+  updated: abuText(
+    context,
+    'Updated 31 August 2026',
+    'آخر تحديث 31 أغسطس 2026',
+  ),
+  webUrl: AbuBrand.privacyUrl,
+  sections: [
+    (
+      abuText(context, 'Data We Collect', 'البيانات التي نجمعها'),
+      abuText(
+        context,
+        'Abu 3meer collects account details such as name, email address, sign-in provider, selected team and country, profile image, prediction entries, challenge answers, points, streaks, notification tokens, and basic device or diagnostics data needed to run the service.',
+        'يجمع أبو عمير بيانات الحساب مثل الاسم والبريد الإلكتروني وطريقة تسجيل الدخول والفريق والدولة وصورة الحساب والتوقعات وإجابات التحديات والنقاط والسلاسل ورموز الإشعارات وبيانات الجهاز أو التشخيص اللازمة لتشغيل الخدمة.',
+      ),
+    ),
+    (
+      abuText(context, 'How We Use It', 'كيف نستخدمها'),
+      abuText(
+        context,
+        'We use this data to sign you in, save predictions, award points, verify YouTube membership benefits, show leaderboards, send requested notifications, protect the app from abuse, and respond to support requests.',
+        'نستخدم هذه البيانات لتسجيل الدخول وحفظ التوقعات ومنح النقاط والتحقق من مزايا عضوية يوتيوب وعرض الترتيب وإرسال الإشعارات المطلوبة وحماية التطبيق من إساءة الاستخدام والرد على طلبات الدعم.',
+      ),
+    ),
+    (
+      abuText(context, 'Sharing', 'المشاركة'),
+      abuText(
+        context,
+        'We use service providers such as Firebase, Google sign-in, Apple sign-in, push-notification delivery, hosting, and football data providers. We do not sell personal data.',
+        'نستخدم مزودي خدمات مثل Firebase وتسجيل الدخول عبر Google وApple وتسليم الإشعارات والاستضافة ومزودي بيانات كرة القدم. لا نبيع البيانات الشخصية.',
+      ),
+    ),
+    (
+      abuText(context, 'Your Controls', 'خياراتك'),
+      abuText(
+        context,
+        'You can change notification preferences in Settings, link Google for membership verification, and delete your account from Settings. Account deletion removes the profile and personal account data handled by Abu 3meer, subject to fraud prevention and legal retention requirements.',
+        'يمكنك تغيير تفضيلات الإشعارات في الإعدادات وربط Google للتحقق من العضوية وحذف حسابك من الإعدادات. حذف الحساب يزيل الملف والبيانات الشخصية التي يديرها أبو عمير مع مراعاة متطلبات منع الاحتيال والاحتفاظ القانوني.',
+      ),
+    ),
+  ],
+);
+
+_LegalDocument _competitionLegalDocument(BuildContext context) =>
+    _LegalDocument(
+      title: abuText(context, 'Competition Rules', 'قواعد المنافسة'),
+      updated: abuText(
+        context,
+        'Updated 31 August 2026',
+        'آخر تحديث 31 أغسطس 2026',
+      ),
+      webUrl: AbuBrand.competitionRulesUrl,
+      sections: [
+        (
+          abuText(context, 'Sponsor', 'المنظم'),
+          abuText(
+            context,
+            'Abu 3meer competitions are sponsored and operated by Abu 3meer. Apple is not a sponsor, is not involved in the competitions, and is not responsible for selecting winners, awarding prizes, or resolving competition issues.',
+            'منافسات أبو عمير منظمة ومدارة من أبو عمير. لا ترعى Apple المنافسات ولا تشارك فيها وليست مسؤولة عن اختيار الفائزين أو منح الجوائز أو حل مشكلات المنافسة.',
+          ),
+        ),
+        (
+          abuText(context, 'No Gambling', 'ليست مقامرة'),
+          abuText(
+            context,
+            'Predictions and video answers are free to enter inside the app. Users do not pay, stake, wager, or lose money for wrong answers. App points have no cash value and cannot be exchanged for money.',
+            'التوقعات وإجابات الفيديو مجانية داخل التطبيق. لا يدفع المستخدمون ولا يراهنون ولا يخسرون مالاً عند الإجابة الخاطئة. نقاط التطبيق لا تملك قيمة نقدية ولا يمكن استبدالها بالمال.',
+          ),
+        ),
+        (
+          abuText(context, 'Points and Multipliers', 'النقاط والمضاعفات'),
+          abuText(
+            context,
+            'Points are awarded for correct predictions, video questions, and player-guess challenges. Verified YouTube channel members receive 2x points on predictions and video challenges only. Signup and daily streak points are not multiplied.',
+            'تمنح النقاط للتوقعات الصحيحة وأسئلة الفيديو وتحديات تخمين اللاعب. يحصل أعضاء قناة يوتيوب الموثقون على نقاط مضاعفة للتوقعات وتحديات الفيديو فقط. لا تتضاعف نقاط التسجيل أو السلسلة اليومية.',
+          ),
+        ),
+        (
+          abuText(context, 'Prizes and Countries', 'الجوائز والدول'),
+          abuText(
+            context,
+            'Real-world prizes may be offered only where lawful. Users located in Morocco, Afghanistan, or any country where prize competitions are restricted may use Abu 3meer for predictions, XP, streaks, badges, and leaderboards, but are not eligible to claim real-world prizes unless Abu 3meer publishes lawful local rules for that territory.',
+            'قد تقدم الجوائز الواقعية فقط حيث يسمح القانون. يمكن للمستخدمين الموجودين في المغرب أو أفغانستان أو أي دولة تقيد مسابقات الجوائز استخدام أبو عمير للتوقعات والنقاط والسلاسل والشارات والترتيب، لكنهم غير مؤهلين للمطالبة بجوائز واقعية ما لم ينشر أبو عمير قواعد محلية قانونية لذلك البلد.',
+          ),
+        ),
+        (
+          abuText(context, 'Fair Play', 'اللعب النظيف'),
+          abuText(
+            context,
+            'Abu 3meer may lock predictions, correct obvious data errors, void abusive entries, disqualify cheating, and require identity or eligibility confirmation before any prize claim.',
+            'يجوز لأبو عمير إغلاق التوقعات وتصحيح أخطاء البيانات الواضحة وإلغاء المشاركات المسيئة واستبعاد الغش وطلب تأكيد الهوية أو الأهلية قبل أي مطالبة بجائزة.',
+          ),
+        ),
+      ],
+    );
+
+_LegalDocument _termsLegalDocument(BuildContext context) => _LegalDocument(
+  title: abuText(context, 'Terms of Use', 'شروط الاستخدام'),
+  updated: abuText(
+    context,
+    'Updated 31 August 2026',
+    'آخر تحديث 31 أغسطس 2026',
+  ),
+  webUrl: AbuBrand.termsUrl,
+  sections: [
+    (
+      abuText(context, 'Accounts', 'الحسابات'),
+      abuText(
+        context,
+        'Use accurate account information and keep your sign-in secure. You may sign in with email, Google, or Apple where available. Email or Apple users can link Google to the same account for YouTube membership verification.',
+        'استخدم معلومات حساب صحيحة وحافظ على أمان تسجيل الدخول. يمكنك تسجيل الدخول بالبريد الإلكتروني أو Google أو Apple حيثما توفر ذلك. يمكن لمستخدمي البريد أو Apple ربط Google بالحساب نفسه للتحقق من عضوية يوتيوب.',
+      ),
+    ),
+    (
+      abuText(context, 'Content and Conduct', 'المحتوى والسلوك'),
+      abuText(
+        context,
+        'Do not abuse the app, automate entries, exploit bugs, impersonate others, or interfere with fair scoring. Abu 3meer may suspend accounts that break these rules.',
+        'لا تسئ استخدام التطبيق أو تؤتمت المشاركات أو تستغل الأخطاء أو تنتحل شخصية الآخرين أو تتدخل في عدالة احتساب النقاط. قد يوقف أبو عمير الحسابات المخالفة لهذه القواعد.',
+      ),
+    ),
+    (
+      abuText(context, 'Service Changes', 'تغييرات الخدمة'),
+      abuText(
+        context,
+        'Football data, videos, challenges, points, and rewards may change, be corrected, or be removed when needed for accuracy, safety, legal compliance, or operations.',
+        'قد تتغير بيانات كرة القدم والفيديوهات والتحديات والنقاط والمكافآت أو تصحح أو تزال عند الحاجة للدقة أو السلامة أو الامتثال القانوني أو التشغيل.',
+      ),
+    ),
+    (
+      abuText(context, 'Contact', 'التواصل'),
+      abuText(
+        context,
+        'For support, privacy, account deletion, or competition questions, contact ${AbuBrand.supportEmail}.',
+        'للدعم أو الخصوصية أو حذف الحساب أو أسئلة المنافسة، تواصل عبر ${AbuBrand.supportEmail}.',
+      ),
+    ),
+  ],
+);
+
+Future<void> _showLegalDocument(
+  BuildContext context, {
+  required _LegalDocument document,
+}) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    useSafeArea: true,
+    isScrollControlled: true,
+    backgroundColor: _surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (sheetContext) => DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: .82,
+      minChildSize: .45,
+      maxChildSize: .94,
+      builder: (context, controller) => ListView(
+        controller: controller,
+        padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
+        children: [
+          Center(
+            child: Container(
+              width: 42,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _line,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text(document.title, style: _display(28)),
+          const SizedBox(height: 6),
+          Text(document.updated, style: const TextStyle(color: _muted)),
+          const SizedBox(height: 18),
+          for (final section in document.sections) ...[
+            Text(
+              section.$1,
+              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16),
+            ),
+            const SizedBox(height: 8),
+            SelectableText(
+              section.$2,
+              style: const TextStyle(color: _muted, height: 1.45),
+            ),
+            const SizedBox(height: 18),
+          ],
+          OutlinedButton.icon(
+            onPressed: () => launchUrl(
+              Uri.parse(document.webUrl),
+              mode: LaunchMode.externalApplication,
+            ),
+            icon: const Icon(Icons.open_in_new_rounded),
+            label: Text(abuText(context, 'OPEN WEB VERSION', 'فتح نسخة الويب')),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _SettingsPanel extends StatelessWidget {

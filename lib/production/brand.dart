@@ -10,6 +10,11 @@ abstract final class AbuBrand {
   static const supportEmail = 'support@abu3meer.com';
   static const youtubeUrl = 'https://www.youtube.com/@abu3meer';
   static const instagramUrl = 'https://www.instagram.com/abu3meer';
+  static const websiteUrl = 'https://ipixeldev.github.io/Abu-3meer/';
+  static const privacyUrl = '${websiteUrl}privacy/';
+  static const termsUrl = '${websiteUrl}terms/';
+  static const competitionRulesUrl = '${websiteUrl}competition-rules/';
+  static const supportUrl = '${websiteUrl}support/';
 
   static const logoAsset = 'assets/images/latest_abu3meer.jpg';
   static const channelImageAsset = 'assets/images/latest_abu3meer.jpg';
