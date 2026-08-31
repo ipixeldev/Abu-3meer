@@ -35,8 +35,15 @@ platform :ios do
     )
 
     app = Spaceship::ConnectAPI::App.find("com.abu3meer.app")
-    app.fetch_edit_app_info
-      .fetch_age_rating_declaration
+    app_info = app.fetch_edit_app_info
+    app_info.get_app_info_localizations.each do |localization|
+      localization.update(
+        attributes: {
+          privacy_choices_url: "https://ipixeldev.github.io/Abu-3meer/delete-account/"
+        }
+      )
+    end
+    app_info.fetch_age_rating_declaration
       .update(
         attributes: {
           developer_age_rating_info_url: "https://ipixeldev.github.io/Abu-3meer/age-suitability/"

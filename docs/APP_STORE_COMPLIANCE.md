@@ -6,6 +6,7 @@ Updated: 31 August 2026
 
 - Marketing URL: https://ipixeldev.github.io/Abu-3meer/
 - Privacy Policy URL: https://ipixeldev.github.io/Abu-3meer/privacy/
+- Privacy Choices URL: https://ipixeldev.github.io/Abu-3meer/delete-account/
 - Support URL: https://ipixeldev.github.io/Abu-3meer/support/
 - Competition Rules URL: https://ipixeldev.github.io/Abu-3meer/competition-rules/
 - Account Deletion URL: https://ipixeldev.github.io/Abu-3meer/delete-account/
