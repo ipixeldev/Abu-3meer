@@ -64,6 +64,25 @@ platform :ios do
       )
   end
 
+  desc "Upload localized App Store screenshots without changing metadata, the binary, or review state"
+  lane :upload_screenshots do
+    deliver(
+      api_key: abu3meer_api_key,
+      app_identifier: "com.abu3meer.app",
+      app_version: "1.1.0",
+      platform: "ios",
+      screenshots_path: File.expand_path("screenshots", __dir__),
+      skip_binary_upload: true,
+      skip_metadata: true,
+      skip_screenshots: false,
+      skip_app_version_update: true,
+      overwrite_screenshots: false,
+      submit_for_review: false,
+      run_precheck_before_submit: false,
+      force: true
+    )
+  end
+
   lane :check_testflight do
     abu3meer_api_key
 
