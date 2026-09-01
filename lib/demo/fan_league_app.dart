@@ -24,6 +24,7 @@ import '../production/external_content_service.dart';
 import '../production/ehzerha_embed.dart';
 import '../production/models.dart';
 import '../production/production_repository.dart';
+import '../production/shell_navigation.dart';
 import '../production/location_service.dart';
 import '../production/notification_service.dart';
 import '../production/youtube_membership_snapshot.dart';

@@ -2026,13 +2026,6 @@ const int _exclusiveShellPageIndex = 3;
 const int _leaderboardShellPageIndex = 4;
 const int _profileShellPageIndex = 5;
 const int _settingsShellPageIndex = 6;
-const List<int> _mobileShellPageIndexes = <int>[
-  _homeShellPageIndex,
-  _predictShellPageIndex,
-  _challengesShellPageIndex,
-  _exclusiveShellPageIndex,
-  _profileShellPageIndex,
-];
 
 class _ProductionShell extends StatefulWidget {
   const _ProductionShell({required this.repository, required this.profile});
@@ -2191,6 +2184,12 @@ class _ProductionShellState extends State<_ProductionShell>
     _refreshShellPage(value);
   }
 
+  void _selectMobileRootTab(int rootTabIndex) {
+    final destination = ProductionShellNavigation.pageForRootTab(rootTabIndex);
+    ProductionShellNavigation.popToRoot(Navigator.of(context));
+    _selectShellPage(destination);
+  }
+
   void _refreshShellPage(int value) {
     if (value == _challengesShellPageIndex) {
       _runProductionBackgroundTask(
@@ -2295,9 +2294,12 @@ class _ProductionShellState extends State<_ProductionShell>
     final desktop = viewportWidth >= 1100;
     final narrowHeader = !desktop && viewportWidth < 400;
     final avatarMenuIndexes = List<int>.generate(items.length, (value) => value)
-        .where((value) => !_mobileShellPageIndexes.contains(value))
+        .where(
+          (value) =>
+              !ProductionShellNavigation.mobileRootPageIndexes.contains(value),
+        )
         .toList(growable: false);
-    final mobileSelected = _mobileShellPageIndexes.indexOf(index);
+    final mobileSelected = ProductionShellNavigation.rootTabForPage(index);
     final initials = profile.displayName.isNotEmpty
         ? profile.displayName.trim()[0].toUpperCase()
         : 'A';
@@ -2458,15 +2460,19 @@ class _ProductionShellState extends State<_ProductionShell>
               ),
         bottomNavigationBar: desktop
             ? null
-            : _LiquidGlassNavBar(
-                selectedIndex: mobileSelected < 0
-                    ? _homeShellPageIndex
-                    : mobileSelected,
-                onSelect: (value) =>
-                    _selectShellPage(_mobileShellPageIndexes[value]),
-                items: _mobileShellPageIndexes
-                    .map((itemIndex) => items[itemIndex])
-                    .toList(),
+            : ProductionRootTabTapForwarder(
+                selectedRootTab: mobileSelected,
+                rootTabCount:
+                    ProductionShellNavigation.mobileRootPageIndexes.length,
+                textDirection: Directionality.of(context),
+                onSelect: _selectMobileRootTab,
+                child: _LiquidGlassNavBar(
+                  selectedIndex: mobileSelected,
+                  onSelect: _selectMobileRootTab,
+                  items: ProductionShellNavigation.mobileRootPageIndexes
+                      .map((itemIndex) => items[itemIndex])
+                      .toList(),
+                ),
               ),
       ),
     );
@@ -2494,17 +2500,25 @@ class _LiquidGlassNavBar extends StatelessWidget {
     // reversing the indicator calculation, which made the glow appear under a
     // different tab. Feed it an explicitly visual list/index instead.
     final visualItems = rtl ? items.reversed.toList() : items;
-    final safeSelectedIndex = selectedIndex.clamp(0, items.length - 1);
+    final hasSelection = selectedIndex >= 0 && selectedIndex < items.length;
+    // The package requires a valid current index. For a non-root shell page,
+    // use a placeholder only for layout and neutralize its selected styling.
+    // A separate tap layer below keeps every root actionable, including Home,
+    // which the package otherwise suppresses as an already-selected item.
+    final safeSelectedIndex = hasSelection ? selectedIndex : 0;
     final visualSelectedIndex = rtl
         ? items.length - 1 - safeSelectedIndex
         : safeSelectedIndex;
+    final unselectedColor = dark ? const Color(0xFF9AA5B4) : _lightMuted;
     final theme = dark
         ? glass_nav.LiquidGlassTheme.dark(
             glassColor: const Color(0xB8141A22),
             glassBorderColor: Colors.white.withValues(alpha: .22),
-            selectedColor: primary,
-            unselectedColor: const Color(0xFF9AA5B4),
-            indicatorColor: primary.withValues(alpha: .16),
+            selectedColor: hasSelection ? primary : unselectedColor,
+            unselectedColor: unselectedColor,
+            indicatorColor: hasSelection
+                ? primary.withValues(alpha: .16)
+                : Colors.transparent,
             indicatorBlur: 10,
             glassBlur: 24,
             borderRadius: 25,
@@ -2523,9 +2537,11 @@ class _LiquidGlassNavBar extends StatelessWidget {
         : glass_nav.LiquidGlassTheme.light(
             glassColor: Colors.white.withValues(alpha: .82),
             glassBorderColor: _lightPrimary.withValues(alpha: .22),
-            selectedColor: _lightPrimary,
-            unselectedColor: _lightMuted,
-            indicatorColor: _lightPrimary.withValues(alpha: .13),
+            selectedColor: hasSelection ? _lightPrimary : unselectedColor,
+            unselectedColor: unselectedColor,
+            indicatorColor: hasSelection
+                ? _lightPrimary.withValues(alpha: .13)
+                : Colors.transparent,
             indicatorBlur: 10,
             glassBlur: 28,
             borderRadius: 25,
