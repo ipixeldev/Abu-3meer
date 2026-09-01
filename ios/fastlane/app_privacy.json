@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "dataUsages": [
+    {
+      "category": "NAME",
+      "purposes": ["APP_FUNCTIONALITY"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "EMAIL_ADDRESS",
+      "purposes": ["APP_FUNCTIONALITY"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "PHONE_NUMBER",
+      "purposes": ["APP_FUNCTIONALITY"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "PRECISE_LOCATION",
+      "purposes": ["APP_FUNCTIONALITY"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "COARSE_LOCATION",
+      "purposes": ["APP_FUNCTIONALITY", "PRODUCT_PERSONALIZATION"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "PHOTOS_OR_VIDEOS",
+      "purposes": ["APP_FUNCTIONALITY"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "GAMEPLAY_CONTENT",
+      "purposes": ["APP_FUNCTIONALITY"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "OTHER_USER_CONTENT",
+      "purposes": ["APP_FUNCTIONALITY"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "SEARCH_HISTORY",
+      "purposes": ["APP_FUNCTIONALITY"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "USER_ID",
+      "purposes": ["APP_FUNCTIONALITY", "ANALYTICS"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "DEVICE_ID",
+      "purposes": ["APP_FUNCTIONALITY", "ANALYTICS"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "PURCHASE_HISTORY",
+      "purposes": ["APP_FUNCTIONALITY", "PRODUCT_PERSONALIZATION"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "PRODUCT_INTERACTION",
+      "purposes": ["APP_FUNCTIONALITY", "PRODUCT_PERSONALIZATION"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "OTHER_USAGE_DATA",
+      "purposes": ["APP_FUNCTIONALITY", "ANALYTICS"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "OTHER_DIAGNOSTIC_DATA",
+      "purposes": ["APP_FUNCTIONALITY", "ANALYTICS"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "OTHER_DATA",
+      "purposes": [
+        "APP_FUNCTIONALITY",
+        "ANALYTICS",
+        "PRODUCT_PERSONALIZATION"
+      ],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    }
+  ]
+}
