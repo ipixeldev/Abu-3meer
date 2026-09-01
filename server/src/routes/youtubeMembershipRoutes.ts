@@ -5,7 +5,6 @@ import {
   requirePermission,
 } from '../middleware/auth.js';
 import {
-  getCreatorYouTubeConnectionStatus,
   getYouTubeOAuthFlowStatus,
   handleYouTubeOAuthCallback,
   refreshLinkedYouTubeMembership,
@@ -139,13 +138,10 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
   fastify.get(
     '/admin/youtube/creator/status',
     { preHandler: [requirePermission('settings.manage')] },
-    async (_request, reply) => {
-      try {
-        return await getCreatorYouTubeConnectionStatus();
-      } catch (error) {
-        return sendYouTubeError(reply, error);
-      }
-    },
+    async () => ({
+      status: 'disabled',
+      message: 'Membership is verified only from the latest imported CSV snapshot.',
+    }),
   );
 
   fastify.post(
@@ -154,16 +150,10 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
       preHandler: [requirePermission('settings.manage')],
       config: { rateLimit: { max: 3, timeWindow: '1 hour' } },
     },
-    async (request, reply) => {
-      try {
-        return await startYouTubeOAuthFlow({
-          requestedByUserId: request.user!.id,
-          purpose: 'creator_connect',
-        });
-      } catch (error) {
-        return sendYouTubeError(reply, error);
-      }
-    },
+    async (_request, reply) => reply.status(410).send({
+      error: 'CreatorMembershipOAuthDisabled',
+      message: 'Import the latest members CSV snapshot instead.',
+    }),
   );
 
   fastify.get(
@@ -233,26 +223,10 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
       preHandler: [requirePermission('settings.manage')],
       config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
     },
-    async (request, reply) => {
-      const parsed = flowIdSchema.safeParse(
-        (request.params as { flowId?: string }).flowId,
-      );
-      if (!parsed.success) {
-        return reply.status(400).send({
-          error: 'InvalidFlowId',
-          message: 'The YouTube connection identifier is invalid.',
-        });
-      }
-      try {
-        return await getYouTubeOAuthFlowStatus({
-          flowId: parsed.data,
-          requestedByUserId: request.user!.id,
-          purpose: 'creator_connect',
-        });
-      } catch (error) {
-        return sendYouTubeError(reply, error);
-      }
-    },
+    async (_request, reply) => reply.status(410).send({
+      status: 'error',
+      error: 'CreatorMembershipOAuthDisabled',
+    }),
   );
 
   // Google redirects here in the system browser. The app polls its opaque

@@ -12,8 +12,6 @@ const googleAuthorizationEndpoint =
 const googleTokenEndpoint = 'https://oauth2.googleapis.com/token';
 const youtubeChannelsEndpoint =
   'https://www.googleapis.com/youtube/v3/channels';
-const youtubeMembersEndpoint =
-  'https://www.googleapis.com/youtube/v3/members';
 const tokenEnvelopeAad = 'abu3meer:youtube:creator-refresh-token';
 
 export type YouTubeOAuthPurpose = 'member_link' | 'creator_connect';
@@ -301,9 +299,9 @@ export function generateYouTubeOAuthFlow(
     .update(codeVerifier, 'ascii')
     .digest('base64url');
   const oidcNonce = crypto.randomBytes(32).toString('base64url');
-  const scopes = purpose === 'creator_connect'
-    ? [googleOpenIdScope, youtubeReadonlyScope, youtubeCreatorMembershipScope]
-    : [googleOpenIdScope, youtubeReadonlyScope];
+  // Private creator-membership access is intentionally unsupported. OAuth is
+  // only used to prove which public YouTube channel the app user owns.
+  const scopes = [googleOpenIdScope, youtubeReadonlyScope];
   const url = new URL(googleAuthorizationEndpoint);
   url.searchParams.set('client_id', config.clientId);
   url.searchParams.set('redirect_uri', config.redirectUri);
@@ -314,12 +312,7 @@ export function generateYouTubeOAuthFlow(
   url.searchParams.set('code_challenge', codeChallenge);
   url.searchParams.set('code_challenge_method', 'S256');
   url.searchParams.set('include_granted_scopes', 'true');
-  url.searchParams.set('prompt', purpose === 'creator_connect'
-    ? 'consent select_account'
-    : 'select_account');
-  if (purpose === 'creator_connect') {
-    url.searchParams.set('access_type', 'offline');
-  }
+  url.searchParams.set('prompt', 'select_account');
 
   return {
     flowId,
@@ -583,108 +576,3 @@ export type YouTubeMembershipLookup = {
   membershipLevelId: string | null;
   memberSince: Date | null;
 };
-
-export async function fetchYouTubeMembershipBatch(
-  accessToken: string,
-  candidateChannelIds: string[],
-  creatorChannelId: string,
-  fetchImpl: FetchLike = fetch,
-): Promise<Map<string, YouTubeMembershipLookup>> {
-  const candidates = [...new Set(candidateChannelIds)]
-    .filter((channelId) => youtubeChannelIdPattern.test(channelId));
-  if (candidates.length === 0) {
-    throw new YouTubeIntegrationError('youtube_channel_missing', 409);
-  }
-  if (candidates.length > 100) {
-    throw new YouTubeIntegrationError('youtube_member_batch_too_large', 500);
-  }
-  const url = new URL(youtubeMembersEndpoint);
-  url.searchParams.set('part', 'snippet');
-  url.searchParams.set('mode', 'all_current');
-  url.searchParams.set('maxResults', String(candidates.length));
-  url.searchParams.set('filterByMemberChannelId', candidates.join(','));
-  const body = await authorizedGoogleJson(url, accessToken, fetchImpl);
-  const members = Array.isArray(body.items) ? body.items.map(objectValue) : [];
-  const results = new Map<string, YouTubeMembershipLookup>(
-    candidates.map((channelId) => [channelId, {
-      isMember: false,
-      channelId: null,
-      membershipLevelId: null,
-      memberSince: null,
-    }]),
-  );
-  for (const member of members) {
-    const snippet = objectValue(member.snippet);
-    const details = objectValue(snippet.memberDetails);
-    const memberships = objectValue(snippet.membershipsDetails);
-    const channelId = typeof details.channelId === 'string'
-      ? details.channelId
-      : '';
-    if (
-      snippet.creatorChannelId !== creatorChannelId ||
-      !candidates.includes(channelId)
-    ) {
-      continue;
-    }
-    const duration = objectValue(memberships.membershipsDuration);
-    const memberSinceValue = typeof duration.memberSince === 'string'
-      ? new Date(duration.memberSince)
-      : null;
-    results.set(channelId, {
-      isMember: true,
-      channelId,
-      membershipLevelId:
-        typeof memberships.highestAccessibleLevel === 'string'
-          ? memberships.highestAccessibleLevel
-          : null,
-      memberSince:
-        memberSinceValue && Number.isFinite(memberSinceValue.getTime())
-          ? memberSinceValue
-          : null,
-    });
-  }
-  return results;
-}
-
-export async function fetchYouTubeMembershipForChannels(
-  accessToken: string,
-  candidateChannelIds: string[],
-  creatorChannelId: string,
-  fetchImpl: FetchLike = fetch,
-): Promise<YouTubeMembershipLookup> {
-  const candidates = [...new Set(candidateChannelIds)]
-    .filter((channelId) => youtubeChannelIdPattern.test(channelId));
-  const results = await fetchYouTubeMembershipBatch(
-    accessToken,
-    candidates,
-    creatorChannelId,
-    fetchImpl,
-  );
-  for (const channelId of candidates) {
-    const result = results.get(channelId);
-    if (result?.isMember) return result;
-  }
-  return {
-    isMember: false,
-    channelId: null,
-    membershipLevelId: null,
-    memberSince: null,
-  };
-}
-
-export async function validateCreatorMembershipAccess(
-  accessToken: string,
-  creatorChannelId: string,
-  fetchImpl: FetchLike = fetch,
-): Promise<void> {
-  const url = new URL(youtubeMembersEndpoint);
-  url.searchParams.set('part', 'snippet');
-  url.searchParams.set('mode', 'all_current');
-  url.searchParams.set('maxResults', '1');
-  const body = await authorizedGoogleJson(url, accessToken, fetchImpl);
-  const first = Array.isArray(body.items) ? objectValue(body.items[0]) : {};
-  const creator = objectValue(first.snippet).creatorChannelId;
-  if (typeof creator === 'string' && creator !== creatorChannelId) {
-    throw new YouTubeIntegrationError('creator_channel_mismatch', 403);
-  }
-}

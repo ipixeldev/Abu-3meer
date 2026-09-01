@@ -21,10 +21,8 @@ import {
   YouTubeIntegrationError,
   YouTubeOAuthPurpose,
   YouTubeRuntimeConfig,
-  encryptCreatorRefreshToken,
   generateYouTubeOAuthFlow,
   googleOpenIdScope,
-  youtubeCreatorMembershipScope,
   youtubeReadonlyScope,
 } from '../services/youtubeOAuthService.js';
 import {
@@ -205,6 +203,21 @@ class FakeSnapshotStore implements YouTubeMembershipSnapshotStore {
   }
 }
 
+function activeSnapshotStore(
+  members: ParsedYouTubeMembershipSnapshotRow[] = [],
+  activatedAt = now,
+) {
+  return new FakeSnapshotStore({
+    importId: '94f5ff5f-e5c7-4540-a557-609641631008',
+    sourceFilename: 'members.csv',
+    sourceFormat: 'csv',
+    sourceSha256: 'a'.repeat(64),
+    memberCount: members.length,
+    matchedUserCount: 0,
+    activatedAt,
+  }, members);
+}
+
 function storedFlow(
   purpose: YouTubeOAuthPurpose,
   expectedGoogleSubject: string | null,
@@ -351,18 +364,10 @@ describe('YouTube account-link OAuth orchestration', () => {
     assert.equal(store.completions[0].errorCode, 'google_account_mismatch');
   });
 
-  it('verifies membership using the bound channel without storing user tokens', async () => {
+  it('fails closed when no CSV snapshot exists and never calls members.list', async () => {
     const store = new FakeStore();
     const flow = storedFlow('member_link', 'linked-google-subject');
     store.consumed = flow.stored;
-    store.credential = {
-      creatorChannelId,
-      refreshTokenCiphertext: encryptCreatorRefreshToken(
-        'encrypted-at-rest-creator-refresh',
-        config(),
-      ),
-      authorizedAt: now,
-    };
     const nonce = new URL(flow.generated.authorizationUrl).searchParams.get('nonce')!;
     const fetchImpl: FetchLike = async (input, init) => {
       const url = new URL(input.toString());
@@ -375,23 +380,12 @@ describe('YouTube account-link OAuth orchestration', () => {
             scope: `${googleOpenIdScope} ${youtubeReadonlyScope}`,
           });
         }
-        return jsonResponse({ access_token: 'short-lived-creator-token' });
+        throw new Error('creator token must not be requested');
       }
       if (url.pathname.endsWith('/channels')) {
         return jsonResponse({ items: [{ id: memberChannelId }] });
       }
-      return jsonResponse({
-        items: [{
-          snippet: {
-            creatorChannelId,
-            memberDetails: { channelId: memberChannelId },
-            membershipsDetails: {
-              highestAccessibleLevel: 'gold',
-              membershipsDuration: { memberSince: '2026-01-01T00:00:00Z' },
-            },
-          },
-        }],
-      });
+      throw new Error('members.list must not be called');
     };
 
     const result = await handleYouTubeOAuthCallback(
@@ -405,11 +399,9 @@ describe('YouTube account-link OAuth orchestration', () => {
       },
     );
 
-    assert.deepEqual(result, { status: 'verified' });
-    assert.equal(store.applied.length, 1);
-    assert.equal(store.applied[0].youtubeChannelId, memberChannelId);
-    assert.equal(store.applied[0].lookup.isMember, true);
-    assert.equal(store.completions[0].status, 'verified');
+    assert.deepEqual(result, { status: 'error' });
+    assert.equal(store.applied.length, 0);
+    assert.equal(store.completions[0].errorCode, 'youtube_snapshot_not_imported');
     assert.doesNotMatch(
       JSON.stringify({ applied: store.applied, completions: store.completions }),
       /short-lived-user-token|signed-id-token|one-time-code/,
@@ -481,7 +473,7 @@ describe('YouTube account-link OAuth orchestration', () => {
     );
   });
 
-  it('requires the creator OAuth account to own the configured channel', async () => {
+  it('disables the private creator-membership OAuth flow', async () => {
     const store = new FakeStore();
     const flow = storedFlow('creator_connect', null);
     store.consumed = flow.stored;
@@ -492,7 +484,7 @@ describe('YouTube account-link OAuth orchestration', () => {
           access_token: 'short-lived-creator-token',
           refresh_token: 'creator-refresh-token',
           id_token: 'creator-id-token',
-          scope: `${googleOpenIdScope} ${youtubeReadonlyScope} ${youtubeCreatorMembershipScope}`,
+          scope: `${googleOpenIdScope} ${youtubeReadonlyScope}`,
         });
       }
       return jsonResponse({ items: [{ id: otherChannelId }] });
@@ -505,7 +497,7 @@ describe('YouTube account-link OAuth orchestration', () => {
 
     assert.deepEqual(result, { status: 'error' });
     assert.equal(store.savedCredentials.length, 0);
-    assert.equal(store.completions[0].errorCode, 'creator_channel_mismatch');
+    assert.equal(store.completions[0].errorCode, 'creator_membership_oauth_disabled');
   });
 
   it('polls a flow only through its authenticated owner', async () => {
@@ -561,26 +553,12 @@ describe('membership freshness enforcement', () => {
       memberSince: new Date('2026-01-01T00:00:00Z'),
       lastVerifiedAt: new Date(now.getTime() - 24 * 60 * 60 * 1000),
     };
-    store.credential = {
-      creatorChannelId,
-      refreshTokenCiphertext: encryptCreatorRefreshToken(
-        'creator-refresh-token',
-        config(),
-      ),
-      authorizedAt: now,
-    };
-    const fetchImpl: FetchLike = async (input) => {
-      const url = new URL(input.toString());
-      return url.hostname === 'oauth2.googleapis.com'
-        ? jsonResponse({ access_token: 'short-lived-creator-token' })
-        : jsonResponse({ items: [] });
-    };
-
     const result = await refreshStaleLinkedYouTubeMembership('user-1', {
       store,
+      snapshotStore: activeSnapshotStore(),
       config: config(),
       now,
-      fetchImpl,
+      fetchImpl: async () => { throw new Error('network must not be used'); },
     });
 
     assert.deepEqual(result, {
@@ -593,7 +571,7 @@ describe('membership freshness enforcement', () => {
     assert.equal(store.link?.isMember, false);
   });
 
-  it('records a failed attempt without replacing the last successful result', async () => {
+  it('records an expired snapshot without replacing the last successful result', async () => {
     const store = new FakeStore();
     store.link = {
       youtubeChannelId: memberChannelId,
@@ -602,24 +580,19 @@ describe('membership freshness enforcement', () => {
       memberSince: new Date('2026-01-01T00:00:00Z'),
       lastVerifiedAt: new Date(now.getTime() - 24 * 60 * 60 * 1000),
     };
-    store.credential = {
-      creatorChannelId,
-      refreshTokenCiphertext: encryptCreatorRefreshToken(
-        'creator-refresh-token',
-        config(),
-      ),
-      authorizedAt: now,
-    };
-
     await assert.rejects(
       refreshStaleLinkedYouTubeMembership('user-1', {
         store,
+        snapshotStore: activeSnapshotStore(
+          [],
+          new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
+        ),
+        snapshotEnvironment: { YOUTUBE_MEMBERSHIP_SNAPSHOT_MAX_AGE_HOURS: '24' },
         config: config(),
         now,
-        fetchImpl: async () => jsonResponse({ error: 'invalid_grant' }, 400),
       }),
       (error: unknown) => error instanceof YouTubeIntegrationError &&
-        error.code === 'creator_reauthorization_required',
+        error.code === 'youtube_snapshot_expired',
     );
     assert.equal(store.verificationFailures.length, 1);
     assert.equal(store.link?.isMember, true);
@@ -657,44 +630,24 @@ describe('membership freshness enforcement', () => {
     assert.equal(store.applied.length, 0);
   });
 
-  it('batch-refreshes 205 users with one token exchange and three members.list calls', async () => {
+  it('batch-refreshes 205 users from one CSV snapshot without network calls', async () => {
     const store = new FakeStore();
     store.staleLinks = Array.from({ length: 205 }, (_, index) =>
       staleBatchLink(index));
-    store.credential = {
-      creatorChannelId,
-      refreshTokenCiphertext: encryptCreatorRefreshToken(
-        'creator-refresh-token',
-        config(),
-      ),
-      authorizedAt: now,
-    };
-    let tokenRequests = 0;
-    const membershipBatchSizes: number[] = [];
-    const fetchImpl: FetchLike = async (input) => {
-      const url = new URL(input.toString());
-      if (url.hostname === 'oauth2.googleapis.com') {
-        tokenRequests += 1;
-        return jsonResponse({ access_token: 'one-short-lived-creator-token' });
-      }
-      const channels = (url.searchParams.get('filterByMemberChannelId') ?? '')
-        .split(',')
-        .filter(Boolean);
-      membershipBatchSizes.push(channels.length);
-      return jsonResponse({
-        items: channels
-          .filter((_, index) => index % 2 === 0)
-          .map((channelId) => ({
-            snippet: {
-              creatorChannelId,
-              memberDetails: { channelId },
-              membershipsDetails: {
-                highestAccessibleLevel: 'current-level',
-                membershipsDuration: { memberSince: '2026-02-01T00:00:00Z' },
-              },
-            },
-          })),
-      });
+    const snapshotMembers = store.staleLinks
+      .filter((_, index) => index % 2 === 0)
+      .map((link) => ({
+        youtubeChannelId: link.youtubeChannelId,
+        membershipLevel: 'current-level',
+        totalTimeOnLevelMonths: 1,
+        totalTimeAsMemberMonths: 2,
+        sourceLastUpdate: null,
+        sourceLastUpdateAt: null,
+      }));
+    let networkCalls = 0;
+    const fetchImpl: FetchLike = async () => {
+      networkCalls += 1;
+      throw new Error('membership refresh must be snapshot-only');
     };
 
     const result = await refreshStaleYouTubeMembershipsForUsers(
@@ -702,14 +655,19 @@ describe('membership freshness enforcement', () => {
         ...store.staleLinks.map((link) => link.userId),
         store.staleLinks[0].userId,
       ],
-      { store, config: config(), now, fetchImpl },
+      {
+        store,
+        snapshotStore: activeSnapshotStore(snapshotMembers),
+        config: config(),
+        now,
+        fetchImpl,
+      },
     );
 
-    assert.equal(tokenRequests, 1);
-    assert.deepEqual(membershipBatchSizes, [100, 100, 5]);
+    assert.equal(networkCalls, 0);
     assert.equal(result.requestedUsers, 205);
     assert.equal(result.staleLinkedUsers, 205);
-    assert.equal(result.membershipApiRequests, 3);
+    assert.equal(result.membershipApiRequests, 0);
     assert.equal(result.verified + result.notMember, 205);
     assert.equal(result.unavailable, 0);
     assert.equal(store.applied.length, 205);
@@ -718,28 +676,12 @@ describe('membership freshness enforcement', () => {
         store.staleLinks[0].lastVerifiedAt.getTime()), true);
   });
 
-  it('records one unavailable batch and continues with later batches', async () => {
+  it('fails every stale link closed when the snapshot is missing', async () => {
     const store = new FakeStore();
     store.staleLinks = Array.from({ length: 105 }, (_, index) =>
       staleBatchLink(index));
-    store.credential = {
-      creatorChannelId,
-      refreshTokenCiphertext: encryptCreatorRefreshToken(
-        'creator-refresh-token',
-        config(),
-      ),
-      authorizedAt: now,
-    };
-    let membershipRequests = 0;
-    const fetchImpl: FetchLike = async (input) => {
-      const url = new URL(input.toString());
-      if (url.hostname === 'oauth2.googleapis.com') {
-        return jsonResponse({ access_token: 'short-lived-creator-token' });
-      }
-      membershipRequests += 1;
-      return membershipRequests === 1
-        ? jsonResponse({ error: { errors: [{ reason: 'backendError' }] } }, 503)
-        : jsonResponse({ items: [] });
+    const fetchImpl: FetchLike = async () => {
+      throw new Error('membership refresh must not use Google');
     };
 
     const result = await refreshStaleYouTubeMembershipsForUsers(
@@ -747,31 +689,28 @@ describe('membership freshness enforcement', () => {
       { store, config: config(), now, fetchImpl },
     );
 
-    assert.equal(result.membershipApiRequests, 2);
-    assert.equal(result.unavailable, 100);
-    assert.equal(result.notMember, 5);
-    assert.equal(store.verificationFailures.length, 100);
-    assert.equal(store.applied.length, 5);
+    assert.equal(result.membershipApiRequests, 0);
+    assert.equal(result.unavailable, 105);
+    assert.equal(result.notMember, 0);
+    assert.equal(store.verificationFailures.length, 105);
+    assert.equal(store.applied.length, 0);
     assert.equal(store.verificationFailures.every((update) =>
       update.expectedLastVerifiedAt?.getTime() ===
         store.staleLinks[0].lastVerifiedAt.getTime()), true);
   });
 
-  it('marks all stale snapshots unavailable when the creator token cannot refresh', async () => {
+  it('marks all stale links unavailable when the CSV snapshot has expired', async () => {
     const store = new FakeStore();
     store.staleLinks = [staleBatchLink(1), staleBatchLink(2)];
-    store.credential = {
-      creatorChannelId,
-      refreshTokenCiphertext: encryptCreatorRefreshToken(
-        'creator-refresh-token',
-        config(),
-      ),
-      authorizedAt: now,
-    };
     const result = await refreshStaleYouTubeMembershipsForUsers(
       store.staleLinks.map((link) => link.userId),
       {
         store,
+        snapshotStore: activeSnapshotStore(
+          [],
+          new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
+        ),
+        snapshotEnvironment: { YOUTUBE_MEMBERSHIP_SNAPSHOT_MAX_AGE_HOURS: '24' },
         config: config(),
         now,
         fetchImpl: async () => jsonResponse({ error: 'invalid_grant' }, 400),
@@ -798,6 +737,7 @@ describe('membership freshness enforcement', () => {
     assert.match(routes, /'\/admin\/youtube\/creator\/connect\/start'/);
     assert.match(routes, /'\/admin\/youtube\/creator\/connect\/:flowId\/status'/);
     assert.match(routes, /'\/admin\/youtube\/membership\/snapshot'/);
+    assert.match(routes, /CreatorMembershipOAuthDisabled/);
     assert.match(routes, /requirePermission\('settings\.manage'\)/);
     assert.match(routes, /'\/youtube\/oauth\/callback'/);
     assert.match(predictions, /yl\.last_verified_at >=/);
@@ -807,6 +747,28 @@ describe('membership freshness enforcement', () => {
       predictions,
       /memberMultiplierForSource\(\s*component\.sourceType,\s*pred\.is_youtube_member,/,
     );
+  });
+
+  it('has no active private members API or creator-membership scope path', async () => {
+    const membership = await readFile(
+      path.resolve(process.cwd(), 'src/services/youtubeMembershipService.ts'),
+      'utf8',
+    );
+    assert.doesNotMatch(membership, /fetchYouTubeMembershipForChannels/);
+    assert.doesNotMatch(membership, /fetchYouTubeMembershipBatch/);
+    assert.doesNotMatch(membership, /creatorAccessToken/);
+    const oauthSource = await readFile(
+      path.resolve(process.cwd(), 'src/services/youtubeOAuthService.ts'),
+      'utf8',
+    );
+    assert.doesNotMatch(oauthSource, /youtube\/v3\/members/);
+    assert.doesNotMatch(oauthSource, /filterByMemberChannelId/);
+    for (const purpose of ['member_link', 'creator_connect'] as const) {
+      const flow = generateYouTubeOAuthFlow(purpose, config());
+      const scope = new URL(flow.authorizationUrl).searchParams.get('scope') ?? '';
+      assert.match(scope, /youtube\.readonly/);
+      assert.doesNotMatch(scope, /youtube\.channel-memberships\.creator/);
+    }
   });
 
   it('keeps membership authority in OAuth links instead of manual admin flags', async () => {

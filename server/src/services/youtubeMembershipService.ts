@@ -5,22 +5,14 @@ import {
   YouTubeMembershipLookup,
   YouTubeOAuthPurpose,
   YouTubeRuntimeConfig,
-  decryptCreatorRefreshToken,
   decryptOAuthCodeVerifier,
-  encryptCreatorRefreshToken,
   exchangeGoogleAuthorizationCode,
   fetchOwnedYouTubeChannelIds,
-  fetchYouTubeMembershipBatch,
-  fetchYouTubeMembershipForChannels,
   generateYouTubeOAuthFlow,
   googleOpenIdScope,
   loadYouTubeRuntimeConfig,
-  refreshGoogleAccessToken,
   sha256Hex,
-  validateCreatorMembershipAccess,
   verifyGoogleAccountBinding,
-  youtubeChannelIdPattern,
-  youtubeCreatorMembershipScope,
   youtubeMembershipRefreshIntervalSeconds,
   youtubeReadonlyScope,
 } from './youtubeOAuthService.js';
@@ -29,6 +21,7 @@ import {
   YouTubeMembershipSnapshotError,
   YouTubeMembershipSnapshotStore,
   getActiveYouTubeMembershipSnapshot,
+  getYouTubeMembershipSnapshotStatus,
   membershipLookupFromSnapshot,
 } from './youtubeMembershipSnapshotService.js';
 
@@ -667,53 +660,49 @@ function requireGrantedScopes(
   }
 }
 
-async function creatorAccessToken(
-  store: YouTubeMembershipStore,
-  config: YouTubeRuntimeConfig,
-  fetchImpl: FetchLike,
-): Promise<string> {
-  const credential = await store.getCreatorCredential();
-  if (!credential || credential.creatorChannelId !== config.creatorChannelId) {
-    throw new YouTubeIntegrationError('creator_not_connected', 503);
-  }
-  const refreshToken = decryptCreatorRefreshToken(
-    credential.refreshTokenCiphertext,
-    config,
-  );
-  return refreshGoogleAccessToken(refreshToken, config, fetchImpl);
-}
-
-async function lookupMembership(
+async function lookupMembershipFromRequiredSnapshot(
   candidateChannelIds: string[],
   runtime: ReturnType<typeof dependencies>,
-): Promise<YouTubeMembershipLookup> {
-  const accessToken = await creatorAccessToken(
-    runtime.store,
-    runtime.config,
-    runtime.fetchImpl,
-  );
-  return fetchYouTubeMembershipForChannels(
-    accessToken,
+): Promise<ResolvedMembershipLookup> {
+  if (!runtime.snapshotStore) {
+    throw new YouTubeIntegrationError(
+      'youtube_snapshot_not_imported',
+      503,
+      'Membership verification is unavailable until an administrator imports the latest YouTube members CSV.',
+    );
+  }
+  const status = await getYouTubeMembershipSnapshotStatus({
+    store: runtime.snapshotStore,
+    now: runtime.now,
+    environment: runtime.snapshotEnvironment,
+  });
+  if (status.status !== 'active') {
+    throw new YouTubeIntegrationError(
+      status.status === 'expired'
+        ? 'youtube_snapshot_expired'
+        : 'youtube_snapshot_not_imported',
+      503,
+      status.status === 'expired'
+        ? 'The YouTube membership CSV has expired. An administrator must import a fresh export before verification can continue.'
+        : 'An administrator must import a YouTube membership CSV before verification can continue.',
+    );
+  }
+  const snapshot = await getActiveYouTubeMembershipSnapshot(
     candidateChannelIds,
-    runtime.config.creatorChannelId,
-    runtime.fetchImpl,
+    {
+      store: runtime.snapshotStore,
+      now: runtime.now,
+      environment: runtime.snapshotEnvironment,
+    },
   );
-}
-
-export function shouldUseYouTubeMembershipSnapshotFallback(
-  code: string,
-): boolean {
-  return [
-    'creator_not_connected',
-    'creator_reauthorization_required',
-    'creator_token_rejected',
-    'creator_token_unavailable',
-    'creator_token_incomplete',
-    'creator_memberships_disabled',
-    'creator_members_api_unavailable',
-    'youtube_api_unavailable',
-    'youtube_api_rejected',
-  ].includes(code);
+  if (!snapshot) {
+    throw new YouTubeIntegrationError('youtube_snapshot_unavailable', 503);
+  }
+  return {
+    lookup: membershipLookupFromSnapshot(candidateChannelIds, snapshot),
+    verificationSource: 'admin_snapshot',
+    snapshotImportId: snapshot.importId,
+  };
 }
 
 type ResolvedMembershipLookup = {
@@ -721,59 +710,6 @@ type ResolvedMembershipLookup = {
   verificationSource: YouTubeMembershipVerificationSource;
   snapshotImportId: string | null;
 };
-
-async function lookupMembershipWithSnapshotFallback(
-  candidateChannelIds: string[],
-  runtime: ReturnType<typeof dependencies>,
-): Promise<ResolvedMembershipLookup> {
-  try {
-    return {
-      lookup: await lookupMembership(candidateChannelIds, runtime),
-      verificationSource: 'youtube_api',
-      snapshotImportId: null,
-    };
-  } catch (error) {
-    const integrationError = error instanceof YouTubeIntegrationError
-      ? error
-      : new YouTubeIntegrationError('youtube_verification_failed', 502);
-    if (!shouldUseYouTubeMembershipSnapshotFallback(integrationError.code)) {
-      throw error;
-    }
-    if (!runtime.snapshotStore) throw integrationError;
-    let snapshot;
-    try {
-      snapshot = await getActiveYouTubeMembershipSnapshot(
-        candidateChannelIds,
-        {
-          store: runtime.snapshotStore,
-          now: runtime.now,
-          environment: runtime.snapshotEnvironment,
-        },
-      );
-    } catch (_) {
-      // Snapshot fallback must never replace the original, actionable Google
-      // failure with a secondary importer/storage failure.
-      throw integrationError;
-    }
-    if (!snapshot) throw integrationError;
-    try {
-      return {
-        lookup: membershipLookupFromSnapshot(candidateChannelIds, snapshot),
-        verificationSource: 'admin_snapshot',
-        snapshotImportId: snapshot.importId,
-      };
-    } catch (snapshotError) {
-      if (snapshotError instanceof YouTubeMembershipSnapshotError) {
-        throw new YouTubeIntegrationError(
-          snapshotError.code,
-          snapshotError.httpStatus,
-          snapshotError.message,
-        );
-      }
-      throw snapshotError;
-    }
-  }
-}
 
 export async function handleYouTubeOAuthCallback(
   input: { state: string; code?: string; error?: string },
@@ -792,6 +728,13 @@ export async function handleYouTubeOAuthCallback(
     if (input.error) {
       throw new YouTubeIntegrationError('oauth_authorization_denied', 403);
     }
+    if (flow.purpose === 'creator_connect') {
+      throw new YouTubeIntegrationError(
+        'creator_membership_oauth_disabled',
+        410,
+        'Creator membership OAuth is disabled. Import the members CSV in Admin Studio.',
+      );
+    }
     const codeVerifier = decryptOAuthCodeVerifier(
       flow.id,
       flow.pkceVerifierCiphertext,
@@ -803,45 +746,6 @@ export async function handleYouTubeOAuthCallback(
       runtime.config,
       runtime.fetchImpl,
     );
-    if (flow.purpose === 'creator_connect') {
-      requireGrantedScopes(tokens.grantedScopes, [
-        youtubeReadonlyScope,
-        youtubeCreatorMembershipScope,
-      ]);
-      const channels = await fetchOwnedYouTubeChannelIds(
-        tokens.accessToken,
-        runtime.fetchImpl,
-      );
-      if (channels.length === 0) {
-        throw new YouTubeIntegrationError('youtube_channel_missing', 409);
-      }
-      if (!channels.includes(runtime.config.creatorChannelId)) {
-        throw new YouTubeIntegrationError('creator_channel_mismatch', 403);
-      }
-      if (!tokens.refreshToken) {
-        throw new YouTubeIntegrationError(
-          'creator_refresh_token_missing',
-          409,
-          'Revoke the previous grant and connect the creator account again.',
-        );
-      }
-      await validateCreatorMembershipAccess(
-        tokens.accessToken,
-        runtime.config.creatorChannelId,
-        runtime.fetchImpl,
-      );
-      await runtime.store.saveCreatorCredential({
-        creatorChannelId: runtime.config.creatorChannelId,
-        refreshTokenCiphertext: encryptCreatorRefreshToken(
-          tokens.refreshToken,
-          runtime.config,
-        ),
-        authorizedByUserId: flow.requestedByUserId,
-        completedOAuthFlowId: flow.id,
-      });
-      return { status: 'connected' };
-    }
-
     requireGrantedScopes(tokens.grantedScopes, [
       googleOpenIdScope,
       youtubeReadonlyScope,
@@ -866,7 +770,7 @@ export async function handleYouTubeOAuthCallback(
     if (channels.length === 0) {
       throw new YouTubeIntegrationError('youtube_channel_missing', 409);
     }
-    const resolvedMembership = await lookupMembershipWithSnapshotFallback(
+    const resolvedMembership = await lookupMembershipFromRequiredSnapshot(
       channels,
       runtime,
     );
@@ -893,7 +797,7 @@ export async function handleYouTubeOAuthCallback(
       : new YouTubeIntegrationError('youtube_verification_failed', 502);
     if (
       flow.purpose === 'member_link' &&
-      shouldUseYouTubeMembershipSnapshotFallback(integrationError.code)
+      integrationError.code.startsWith('youtube_snapshot_')
     ) {
       await runtime.store.recordMembershipVerificationFailure(
         flow.requestedByUserId,
@@ -1012,7 +916,7 @@ export async function refreshLinkedYouTubeMembership(
   }
 
   try {
-    const resolvedMembership = await lookupMembershipWithSnapshotFallback(
+    const resolvedMembership = await lookupMembershipFromRequiredSnapshot(
       [link.youtubeChannelId],
       runtime,
     );
@@ -1193,16 +1097,7 @@ async function applySnapshotRefreshForLinks(
   return true;
 }
 
-/**
- * Refreshes stale membership snapshots for a background operation without an
- * N-per-user YouTube request pattern. The creator access token is refreshed
- * once and member channel IDs are sent to members.list in groups of at most
- * 100, which is the official endpoint limit.
- *
- * Each user update remains its own database transaction. The selected
- * lastVerifiedAt value is supplied as a compare-and-set guard, so a failed
- * older batch cannot revoke a newer successful interactive refresh.
- */
+/** Refreshes stale links exclusively from the current administrator CSV. */
 export async function refreshStaleYouTubeMembershipsForUsers(
   userIds: string[],
   options: YouTubeServiceDependencies = {},
@@ -1233,155 +1128,51 @@ export async function refreshStaleYouTubeMembershipsForUsers(
   result.staleLinkedUsers = staleLinks.length;
   if (staleLinks.length === 0) return result;
 
-  let runtime: ReturnType<typeof dependencies>;
-  try {
-    runtime = dependencies({ ...options, store, now });
-  } catch (error) {
-    const integrationError = error instanceof YouTubeIntegrationError
-      ? error
-      : new YouTubeIntegrationError('youtube_verification_failed', 502);
-    if (
-      shouldUseYouTubeMembershipSnapshotFallback(integrationError.code) &&
-      snapshotStore != null &&
-      await applySnapshotRefreshForLinks(
-        store,
-        snapshotStore,
-        staleLinks,
-        now,
-        freshnessSeconds,
-        result,
-        options.snapshotEnvironment,
-      )
-    ) {
-      return result;
-    }
+  if (!snapshotStore) {
     await recordFailedVerificationAttempts(
-      store,
-      staleLinks,
-      integrationError.code,
-      now,
+      store, staleLinks, 'youtube_snapshot_not_imported', now,
     );
     result.unavailable = staleLinks.length;
     return result;
   }
-
-  let accessToken: string;
   try {
-    accessToken = await creatorAccessToken(
-      store,
-      runtime.config,
-      runtime.fetchImpl,
-    );
-  } catch (error) {
-    const integrationError = error instanceof YouTubeIntegrationError
-      ? error
-      : new YouTubeIntegrationError('youtube_verification_failed', 502);
-    if (
-      shouldUseYouTubeMembershipSnapshotFallback(integrationError.code) &&
-      snapshotStore != null &&
-      await applySnapshotRefreshForLinks(
-        store,
-        snapshotStore,
-        staleLinks,
-        now,
-        freshnessSeconds,
-        result,
-        options.snapshotEnvironment,
-      )
-    ) {
+    const status = await getYouTubeMembershipSnapshotStatus({
+      store: snapshotStore,
+      now,
+      environment: options.snapshotEnvironment,
+    });
+    if (status.status !== 'active') {
+      const code = status.status === 'expired'
+        ? 'youtube_snapshot_expired'
+        : 'youtube_snapshot_not_imported';
+      await recordFailedVerificationAttempts(store, staleLinks, code, now);
+      result.unavailable = staleLinks.length;
       return result;
     }
-    await recordFailedVerificationAttempts(
+    const applied = await applySnapshotRefreshForLinks(
       store,
+      snapshotStore,
       staleLinks,
-      integrationError.code,
       now,
+      freshnessSeconds,
+      result,
+      options.snapshotEnvironment,
     );
-    result.unavailable = staleLinks.length;
-    return result;
-  }
-
-  const invalidLinks = staleLinks.filter(
-    (link) => !youtubeChannelIdPattern.test(link.youtubeChannelId),
-  );
-  if (invalidLinks.length > 0) {
-    await recordFailedVerificationAttempts(
-      store,
-      invalidLinks,
-      'youtube_channel_invalid',
-      now,
-    );
-    result.unavailable += invalidLinks.length;
-  }
-  const validLinks = staleLinks.filter(
-    (link) => youtubeChannelIdPattern.test(link.youtubeChannelId),
-  );
-
-  for (let offset = 0; offset < validLinks.length; offset += 100) {
-    const batch = validLinks.slice(offset, offset + 100);
-    let lookups: Map<string, YouTubeMembershipLookup>;
-    try {
-      result.membershipApiRequests += 1;
-      lookups = await fetchYouTubeMembershipBatch(
-        accessToken,
-        batch.map((link) => link.youtubeChannelId),
-        runtime.config.creatorChannelId,
-        runtime.fetchImpl,
-      );
-    } catch (error) {
-      const integrationError = error instanceof YouTubeIntegrationError
-        ? error
-        : new YouTubeIntegrationError('youtube_verification_failed', 502);
-      if (
-        shouldUseYouTubeMembershipSnapshotFallback(integrationError.code) &&
-        snapshotStore != null &&
-        await applySnapshotRefreshForLinks(
-          store,
-          snapshotStore,
-          batch,
-          now,
-          freshnessSeconds,
-          result,
-          options.snapshotEnvironment,
-        )
-      ) {
-        continue;
-      }
+    if (!applied) {
       await recordFailedVerificationAttempts(
-        store,
-        batch,
-        integrationError.code,
-        now,
+        store, staleLinks, 'youtube_snapshot_unavailable', now,
       );
-      result.unavailable += batch.length;
-      continue;
+      result.unavailable = staleLinks.length;
     }
-
-    let firstDatabaseError: unknown;
-    for (const link of batch) {
-      const lookup = lookups.get(link.youtubeChannelId) ?? {
-        isMember: false,
-        channelId: null,
-        membershipLevelId: null,
-        memberSince: null,
-      };
-      try {
-        await store.applyMembershipVerification({
-          userId: link.userId,
-          youtubeChannelId: link.youtubeChannelId,
-          lookup,
-          verifiedAt: now,
-          freshnessSeconds,
-          expectedLastVerifiedAt: link.lastVerifiedAt,
-        });
-        if (lookup.isMember) result.verified += 1;
-        else result.notMember += 1;
-      } catch (error) {
-        firstDatabaseError ??= error;
-      }
-    }
-    if (firstDatabaseError) throw firstDatabaseError;
+    return result;
+  } catch (error) {
+    const code = error instanceof YouTubeMembershipSnapshotError
+      ? error.code
+      : 'youtube_snapshot_unavailable';
+    await recordFailedVerificationAttempts(
+      store, staleLinks, code, now,
+    );
+    result.unavailable = staleLinks.length;
+    return result;
   }
-
-  return result;
 }

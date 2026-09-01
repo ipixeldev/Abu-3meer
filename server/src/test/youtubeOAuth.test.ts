@@ -8,7 +8,6 @@ import {
   decryptYouTubeSecret,
   encryptYouTubeSecret,
   fetchOwnedYouTubeChannelIds,
-  fetchYouTubeMembershipForChannels,
   generateYouTubeOAuthFlow,
   googleProviderSubjectFromFirebaseIdentities,
   loadYouTubeRuntimeConfig,
@@ -130,9 +129,13 @@ describe('YouTube OAuth security primitives', () => {
     const creatorUrl = new URL(creatorFlow.authorizationUrl);
     assert.match(
       creatorUrl.searchParams.get('scope') ?? '',
+      new RegExp(youtubeReadonlyScope),
+    );
+    assert.doesNotMatch(
+      creatorUrl.searchParams.get('scope') ?? '',
       new RegExp(youtubeCreatorMembershipScope),
     );
-    assert.equal(creatorUrl.searchParams.get('access_type'), 'offline');
+    assert.equal(creatorUrl.searchParams.has('access_type'), false);
   });
 
   it('authenticates encrypted values and rejects tampering or wrong context', () => {
@@ -215,40 +218,4 @@ describe('official YouTube Data API requests', () => {
     assert.equal(authorization, 'Bearer private-user-access-token');
   });
 
-  it('filters members by channel ID and derives current membership fields', async () => {
-    let requestedUrl: URL | null = null;
-    const fetchImpl: FetchLike = async (input) => {
-      requestedUrl = new URL(input.toString());
-      return jsonResponse({
-        items: [{
-          snippet: {
-            creatorChannelId,
-            memberDetails: { channelId: memberChannelId },
-            membershipsDetails: {
-              highestAccessibleLevel: 'level-2',
-              membershipsDuration: { memberSince: '2026-01-02T03:04:05Z' },
-            },
-          },
-        }],
-      });
-    };
-    const result = await fetchYouTubeMembershipForChannels(
-      'private-creator-access-token',
-      [memberChannelId],
-      creatorChannelId,
-      fetchImpl,
-    );
-
-    assert.equal(
-      requestedUrl!.searchParams.get('filterByMemberChannelId'),
-      memberChannelId,
-    );
-    assert.equal(requestedUrl!.searchParams.get('mode'), 'all_current');
-    assert.deepEqual(result, {
-      isMember: true,
-      channelId: memberChannelId,
-      membershipLevelId: 'level-2',
-      memberSince: new Date('2026-01-02T03:04:05Z'),
-    });
-  });
 });
