@@ -660,33 +660,29 @@ function requireGrantedScopes(
   }
 }
 
-async function lookupMembershipFromRequiredSnapshot(
+async function lookupMembershipFromLatestSnapshot(
   candidateChannelIds: string[],
   runtime: ReturnType<typeof dependencies>,
 ): Promise<ResolvedMembershipLookup> {
+  const nonMember: ResolvedMembershipLookup = {
+    lookup: {
+      isMember: false,
+      channelId: null,
+      membershipLevelId: null,
+      memberSince: null,
+    },
+    verificationSource: 'admin_snapshot',
+    snapshotImportId: null,
+  };
   if (!runtime.snapshotStore) {
-    throw new YouTubeIntegrationError(
-      'youtube_snapshot_not_imported',
-      503,
-      'Membership verification is unavailable until an administrator imports the latest YouTube members CSV.',
-    );
+    return nonMember;
   }
   const status = await getYouTubeMembershipSnapshotStatus({
     store: runtime.snapshotStore,
     now: runtime.now,
     environment: runtime.snapshotEnvironment,
   });
-  if (status.status !== 'active') {
-    throw new YouTubeIntegrationError(
-      status.status === 'expired'
-        ? 'youtube_snapshot_expired'
-        : 'youtube_snapshot_not_imported',
-      503,
-      status.status === 'expired'
-        ? 'The YouTube membership CSV has expired. An administrator must import a fresh export before verification can continue.'
-        : 'An administrator must import a YouTube membership CSV before verification can continue.',
-    );
-  }
+  if (status.status === 'not_imported') return nonMember;
   const snapshot = await getActiveYouTubeMembershipSnapshot(
     candidateChannelIds,
     {
@@ -695,9 +691,7 @@ async function lookupMembershipFromRequiredSnapshot(
       environment: runtime.snapshotEnvironment,
     },
   );
-  if (!snapshot) {
-    throw new YouTubeIntegrationError('youtube_snapshot_unavailable', 503);
-  }
+  if (!snapshot) return nonMember;
   return {
     lookup: membershipLookupFromSnapshot(candidateChannelIds, snapshot),
     verificationSource: 'admin_snapshot',
@@ -770,7 +764,7 @@ export async function handleYouTubeOAuthCallback(
     if (channels.length === 0) {
       throw new YouTubeIntegrationError('youtube_channel_missing', 409);
     }
-    const resolvedMembership = await lookupMembershipFromRequiredSnapshot(
+    const resolvedMembership = await lookupMembershipFromLatestSnapshot(
       channels,
       runtime,
     );
@@ -916,7 +910,7 @@ export async function refreshLinkedYouTubeMembership(
   }
 
   try {
-    const resolvedMembership = await lookupMembershipFromRequiredSnapshot(
+    const resolvedMembership = await lookupMembershipFromLatestSnapshot(
       [link.youtubeChannelId],
       runtime,
     );
@@ -982,9 +976,9 @@ async function withPostgresMembershipRefreshLock<T>(
  * from spending quota on the same user concurrently. A caller that loses the
  * lock safely treats the stale membership as inactive for that request.
  *
- * Configuration, token, and YouTube API failures record an attempt/error but
- * never advance last_verified_at or replace the last successful observation.
- * Callers therefore treat stale membership as inactive and may safely retry.
+ * The latest complete CSV remains authoritative until replaced, even after
+ * the dashboard freshness warning. With no imported CSV, a linked channel is
+ * safely treated as a non-member so ordinary base-XP activity is never blocked.
  */
 export async function refreshStaleLinkedYouTubeMembership(
   userId: string,
@@ -1097,6 +1091,39 @@ async function applySnapshotRefreshForLinks(
   return true;
 }
 
+async function applyNoSnapshotForLinks(
+  store: YouTubeMembershipStore,
+  links: StoredStaleYouTubeAccountLink[],
+  now: Date,
+  freshnessSeconds: number,
+  result: YouTubeBatchRefreshResult,
+): Promise<void> {
+  let firstDatabaseError: unknown;
+  for (const link of links) {
+    try {
+      await store.applyMembershipVerification({
+        userId: link.userId,
+        youtubeChannelId: link.youtubeChannelId,
+        lookup: {
+          isMember: false,
+          channelId: null,
+          membershipLevelId: null,
+          memberSince: null,
+        },
+        verifiedAt: now,
+        freshnessSeconds,
+        verificationSource: 'admin_snapshot',
+        snapshotImportId: null,
+        expectedLastVerifiedAt: link.lastVerifiedAt,
+      });
+      result.notMember += 1;
+    } catch (error) {
+      firstDatabaseError ??= error;
+    }
+  }
+  if (firstDatabaseError) throw firstDatabaseError;
+}
+
 /** Refreshes stale links exclusively from the current administrator CSV. */
 export async function refreshStaleYouTubeMembershipsForUsers(
   userIds: string[],
@@ -1129,10 +1156,9 @@ export async function refreshStaleYouTubeMembershipsForUsers(
   if (staleLinks.length === 0) return result;
 
   if (!snapshotStore) {
-    await recordFailedVerificationAttempts(
-      store, staleLinks, 'youtube_snapshot_not_imported', now,
+    await applyNoSnapshotForLinks(
+      store, staleLinks, now, freshnessSeconds, result,
     );
-    result.unavailable = staleLinks.length;
     return result;
   }
   try {
@@ -1141,12 +1167,10 @@ export async function refreshStaleYouTubeMembershipsForUsers(
       now,
       environment: options.snapshotEnvironment,
     });
-    if (status.status !== 'active') {
-      const code = status.status === 'expired'
-        ? 'youtube_snapshot_expired'
-        : 'youtube_snapshot_not_imported';
-      await recordFailedVerificationAttempts(store, staleLinks, code, now);
-      result.unavailable = staleLinks.length;
+    if (status.status === 'not_imported') {
+      await applyNoSnapshotForLinks(
+        store, staleLinks, now, freshnessSeconds, result,
+      );
       return result;
     }
     const applied = await applySnapshotRefreshForLinks(

@@ -364,7 +364,7 @@ describe('YouTube account-link OAuth orchestration', () => {
     assert.equal(store.completions[0].errorCode, 'google_account_mismatch');
   });
 
-  it('fails closed when no CSV snapshot exists and never calls members.list', async () => {
+  it('links as a fan when no CSV snapshot exists and never calls members.list', async () => {
     const store = new FakeStore();
     const flow = storedFlow('member_link', 'linked-google-subject');
     store.consumed = flow.stored;
@@ -399,9 +399,10 @@ describe('YouTube account-link OAuth orchestration', () => {
       },
     );
 
-    assert.deepEqual(result, { status: 'error' });
-    assert.equal(store.applied.length, 0);
-    assert.equal(store.completions[0].errorCode, 'youtube_snapshot_not_imported');
+    assert.deepEqual(result, { status: 'not_member' });
+    assert.equal(store.applied.length, 1);
+    assert.equal(store.applied[0].lookup.isMember, false);
+    assert.equal(store.completions[0].status, 'not_member');
     assert.doesNotMatch(
       JSON.stringify({ applied: store.applied, completions: store.completions }),
       /short-lived-user-token|signed-id-token|one-time-code/,
@@ -571,7 +572,7 @@ describe('membership freshness enforcement', () => {
     assert.equal(store.link?.isMember, false);
   });
 
-  it('records an expired snapshot without replacing the last successful result', async () => {
+  it('uses the latest snapshot after its weekly freshness warning', async () => {
     const store = new FakeStore();
     store.link = {
       youtubeChannelId: memberChannelId,
@@ -580,30 +581,20 @@ describe('membership freshness enforcement', () => {
       memberSince: new Date('2026-01-01T00:00:00Z'),
       lastVerifiedAt: new Date(now.getTime() - 24 * 60 * 60 * 1000),
     };
-    await assert.rejects(
-      refreshStaleLinkedYouTubeMembership('user-1', {
-        store,
-        snapshotStore: activeSnapshotStore(
-          [],
-          new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
-        ),
-        snapshotEnvironment: { YOUTUBE_MEMBERSHIP_SNAPSHOT_MAX_AGE_HOURS: '24' },
-        config: config(),
-        now,
-      }),
-      (error: unknown) => error instanceof YouTubeIntegrationError &&
-        error.code === 'youtube_snapshot_expired',
-    );
-    assert.equal(store.verificationFailures.length, 1);
-    assert.equal(store.link?.isMember, true);
-    assert.equal(
-      store.link?.lastVerifiedAt.toISOString(),
-      new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
-    );
-    assert.equal(
-      store.verificationFailures[0].expectedLastVerifiedAt?.toISOString(),
-      store.link?.lastVerifiedAt.toISOString(),
-    );
+    const result = await refreshStaleLinkedYouTubeMembership('user-1', {
+      store,
+      snapshotStore: activeSnapshotStore(
+        [],
+        new Date(now.getTime() - 8 * 24 * 60 * 60 * 1000),
+      ),
+      snapshotEnvironment: { YOUTUBE_MEMBERSHIP_SNAPSHOT_MAX_AGE_HOURS: '24' },
+      config: config(),
+      now,
+    });
+    assert.equal(result?.isYouTubeMember, false);
+    assert.equal(store.verificationFailures.length, 0);
+    assert.equal(store.applied.length, 1);
+    assert.equal(store.link?.isMember, false);
   });
 
   it('does not grant stale membership when another process owns the refresh lock', async () => {
@@ -676,7 +667,7 @@ describe('membership freshness enforcement', () => {
         store.staleLinks[0].lastVerifiedAt.getTime()), true);
   });
 
-  it('fails every stale link closed when the snapshot is missing', async () => {
+  it('falls back to base XP when the snapshot is missing', async () => {
     const store = new FakeStore();
     store.staleLinks = Array.from({ length: 105 }, (_, index) =>
       staleBatchLink(index));
@@ -690,16 +681,17 @@ describe('membership freshness enforcement', () => {
     );
 
     assert.equal(result.membershipApiRequests, 0);
-    assert.equal(result.unavailable, 105);
-    assert.equal(result.notMember, 0);
-    assert.equal(store.verificationFailures.length, 105);
-    assert.equal(store.applied.length, 0);
-    assert.equal(store.verificationFailures.every((update) =>
+    assert.equal(result.unavailable, 0);
+    assert.equal(result.notMember, 105);
+    assert.equal(store.verificationFailures.length, 0);
+    assert.equal(store.applied.length, 105);
+    assert.equal(store.applied.every((update) =>
+      update.lookup.isMember === false &&
       update.expectedLastVerifiedAt?.getTime() ===
         store.staleLinks[0].lastVerifiedAt.getTime()), true);
   });
 
-  it('marks all stale links unavailable when the CSV snapshot has expired', async () => {
+  it('continues using all rows when the latest CSV has expired', async () => {
     const store = new FakeStore();
     store.staleLinks = [staleBatchLink(1), staleBatchLink(2)];
     const result = await refreshStaleYouTubeMembershipsForUsers(
@@ -716,10 +708,11 @@ describe('membership freshness enforcement', () => {
         fetchImpl: async () => jsonResponse({ error: 'invalid_grant' }, 400),
       },
     );
-    assert.equal(result.unavailable, 2);
+    assert.equal(result.unavailable, 0);
+    assert.equal(result.notMember, 2);
     assert.equal(result.membershipApiRequests, 0);
-    assert.equal(store.verificationFailures.length, 2);
-    assert.equal(store.applied.length, 0);
+    assert.equal(store.verificationFailures.length, 0);
+    assert.equal(store.applied.length, 2);
   });
 
   it('keeps route paths/status contracts and prediction settlement freshness-aware', async () => {

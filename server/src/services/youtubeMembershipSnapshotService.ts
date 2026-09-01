@@ -38,6 +38,8 @@ export type ParsedYouTubeMembershipSnapshotRow = {
   totalTimeAsMemberMonths: number | null;
   sourceLastUpdate: string | null;
   sourceLastUpdateAt: Date | null;
+  /** Current membership period start derived from a Joined/Re-joined event. */
+  membershipPeriodStartedAt?: Date | null;
 };
 
 export type ParsedYouTubeMembershipSnapshot = {
@@ -383,6 +385,18 @@ function snapshotExpiry(activatedAt: Date, maxAgeHours: number): Date {
   return new Date(activatedAt.getTime() + maxAgeHours * 60 * 60 * 1000);
 }
 
+function membershipPeriodStartedAt(
+  row: ParsedYouTubeMembershipSnapshotRow,
+): Date | null {
+  const event = row.sourceLastUpdate
+    ?.trim()
+    .toLocaleLowerCase('en-US')
+    .replace(/[\s_-]+/g, '');
+  return (event === 'joined' || event === 'rejoined')
+    ? row.sourceLastUpdateAt
+    : null;
+}
+
 export class PostgresYouTubeMembershipSnapshotStore
 implements YouTubeMembershipSnapshotStore {
   async replaceSnapshot(input: {
@@ -433,27 +447,54 @@ implements YouTubeMembershipSnapshotStore {
         );
       }
 
-      // This table deliberately contains only the active minimized snapshot.
-      // Old imports keep their immutable aggregate audit row, not member data.
-      await client.query(`DELETE FROM youtube_membership_snapshot_members`);
+      // A full export is authoritative. Present channel IDs become active and
+      // missing active IDs lapse at the import time. Only minimized channel
+      // lifecycle data is retained; the uploaded file and display names are not.
       if (input.parsed.rows.length > 0) {
         await client.query(
           `INSERT INTO youtube_membership_snapshot_members
              (youtube_channel_id, import_id, membership_level,
               total_time_on_level_months, total_time_as_member_months,
-              source_last_update, source_last_update_at)
+              source_last_update, source_last_update_at, status, joined_at,
+              last_seen_at, left_at, updated_at)
            SELECT row.youtube_channel_id, $1, row.membership_level,
                   row.total_time_on_level_months,
                   row.total_time_as_member_months,
-                  row.source_last_update, row.source_last_update_at
+                  row.source_last_update, row.source_last_update_at,
+                  'active', row.membership_period_started_at,
+                  $3, NULL, CURRENT_TIMESTAMP
            FROM jsonb_to_recordset($2::jsonb) AS row(
              youtube_channel_id VARCHAR(24),
              membership_level VARCHAR(200),
              total_time_on_level_months NUMERIC,
              total_time_as_member_months NUMERIC,
              source_last_update VARCHAR(500),
-             source_last_update_at TIMESTAMPTZ
-           )`,
+             source_last_update_at TIMESTAMPTZ,
+             membership_period_started_at TIMESTAMPTZ
+           )
+           ON CONFLICT (youtube_channel_id) DO UPDATE SET
+             import_id = EXCLUDED.import_id,
+             membership_level = EXCLUDED.membership_level,
+             total_time_on_level_months = EXCLUDED.total_time_on_level_months,
+             total_time_as_member_months = EXCLUDED.total_time_as_member_months,
+             source_last_update = EXCLUDED.source_last_update,
+             source_last_update_at = EXCLUDED.source_last_update_at,
+             status = 'active',
+             joined_at = CASE
+               WHEN youtube_membership_snapshot_members.status = 'lapsed'
+                 THEN EXCLUDED.joined_at
+               WHEN EXCLUDED.joined_at IS NOT NULL
+                    AND (
+                      youtube_membership_snapshot_members.joined_at IS NULL
+                      OR EXCLUDED.joined_at >
+                         youtube_membership_snapshot_members.joined_at
+                    )
+                 THEN EXCLUDED.joined_at
+               ELSE youtube_membership_snapshot_members.joined_at
+             END,
+             last_seen_at = EXCLUDED.last_seen_at,
+             left_at = NULL,
+             updated_at = CURRENT_TIMESTAMP`,
           [
             importId,
             JSON.stringify(input.parsed.rows.map((row) => ({
@@ -463,10 +504,24 @@ implements YouTubeMembershipSnapshotStore {
               total_time_as_member_months: row.totalTimeAsMemberMonths,
               source_last_update: row.sourceLastUpdate,
               source_last_update_at: row.sourceLastUpdateAt?.toISOString() ?? null,
+              membership_period_started_at:
+                membershipPeriodStartedAt(row)?.toISOString() ?? null,
             }))),
+            input.activatedAt,
           ],
         );
       }
+      await client.query(
+        `UPDATE youtube_membership_snapshot_members
+         SET status = 'lapsed',
+             -- The export has no cancellation timestamp. Import time is the
+             -- first moment we can prove that this channel is no longer active.
+             left_at = $2,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE status = 'active'
+           AND import_id <> $1`,
+        [importId, input.activatedAt],
+      );
       await client.query(
         `INSERT INTO youtube_membership_snapshot_state
            (singleton, active_import_id, updated_at)
@@ -487,6 +542,7 @@ implements YouTubeMembershipSnapshotStore {
            LEFT JOIN youtube_membership_snapshot_members m
              ON m.youtube_channel_id = l.youtube_channel_id
             AND m.import_id = $1
+            AND m.status = 'active'
          )
          INSERT INTO membership_history
            (user_id, status, verified_at, expires_at, metadata)
@@ -509,24 +565,19 @@ implements YouTubeMembershipSnapshotStore {
            SELECT l.user_id,
                   (m.youtube_channel_id IS NOT NULL) AS is_member,
                   m.membership_level,
-                  m.total_time_as_member_months
+                  m.joined_at
            FROM youtube_account_links l
            LEFT JOIN youtube_membership_snapshot_members m
              ON m.youtube_channel_id = l.youtube_channel_id
             AND m.import_id = $1
+            AND m.status = 'active'
          )
          UPDATE youtube_account_links l
          SET is_member = observed.is_member,
              membership_level_id = observed.membership_level,
              member_since = CASE
                WHEN NOT observed.is_member THEN NULL
-               ELSE COALESCE(
-                 l.member_since,
-                 $2 - (
-                   COALESCE(observed.total_time_as_member_months, 0)::double precision
-                   * INTERVAL '30.4375 days'
-                 )
-               )
+               ELSE observed.joined_at
              END,
              last_verified_at = $2,
              last_attempted_at = $2,
@@ -569,7 +620,8 @@ implements YouTubeMembershipSnapshotStore {
          FROM youtube_account_links l
          JOIN youtube_membership_snapshot_members m
            ON m.youtube_channel_id = l.youtube_channel_id
-          AND m.import_id = $1`,
+          AND m.import_id = $1
+          AND m.status = 'active'`,
         [importId],
       );
       const matchedUserCount = Number(matched.rows[0]?.matched ?? 0);
@@ -652,9 +704,10 @@ implements YouTubeMembershipSnapshotStore {
     const result = await query(
       `SELECT youtube_channel_id, membership_level,
               total_time_on_level_months, total_time_as_member_months,
-              source_last_update, source_last_update_at
+              source_last_update, source_last_update_at, joined_at
        FROM youtube_membership_snapshot_members
        WHERE import_id = $1
+         AND status = 'active'
          AND youtube_channel_id = ANY($2::varchar[])`,
       [importId, uniqueChannelIds],
     );
@@ -670,6 +723,9 @@ implements YouTubeMembershipSnapshotStore {
       sourceLastUpdate: row.source_last_update ?? null,
       sourceLastUpdateAt: row.source_last_update_at
         ? new Date(row.source_last_update_at)
+        : null,
+      membershipPeriodStartedAt: row.joined_at
+        ? new Date(row.joined_at)
         : null,
     }));
   }
@@ -729,7 +785,10 @@ export async function getActiveYouTubeMembershipSnapshot(
   if (!metadata) return null;
   const maxAgeHours = youtubeMembershipSnapshotMaxAgeHours(options.environment);
   const expiresAt = snapshotExpiry(metadata.activatedAt, maxAgeHours);
-  if (expiresAt.getTime() <= now.getTime()) return null;
+  // Age is surfaced as an expired/stale warning by the status endpoint, but
+  // the latest complete export remains the membership authority until it is
+  // replaced. Otherwise a missed weekly upload would block ordinary XP or
+  // silently revoke members despite no newer evidence from YouTube.
   const rows = await store.getMembers(metadata.importId, channelIds);
   return {
     importId: metadata.importId,
@@ -762,17 +821,15 @@ export function membershipLookupFromSnapshot(
       memberSince: null,
     };
   }
-  const months = match.totalTimeAsMemberMonths;
   return {
     isMember: true,
     channelId: match.youtubeChannelId,
     membershipLevelId: match.membershipLevel,
-    memberSince: months == null
-      ? null
-      : new Date(
-          snapshot.activatedAt.getTime() -
-          months * 30.4375 * 24 * 60 * 60 * 1000,
-        ),
+    // YouTube's total-time field is cumulative across churn and therefore is
+    // not a current-period join date. Prefer the stored lifecycle value, then
+    // a Joined/Re-joined event timestamp, and otherwise leave it unknown.
+    memberSince: match.membershipPeriodStartedAt ??
+      membershipPeriodStartedAt(match),
   };
 }
 

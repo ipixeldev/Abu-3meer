@@ -168,6 +168,34 @@ describe('YouTube membership snapshot lifecycle', () => {
       migration,
       /member_display_name|profile_url|uploaded_(?:file|bytes|content)/i,
     );
+
+    const lifecycleMigration = await readFile(
+      path.resolve(
+        process.cwd(),
+        'migrations/034_youtube_membership_lifecycle.sql',
+      ),
+      'utf8',
+    );
+    assert.match(lifecycleMigration, /status IN \('active', 'lapsed'\)/);
+    assert.match(lifecycleMigration, /joined_at TIMESTAMPTZ/);
+    assert.match(lifecycleMigration, /last_seen_at TIMESTAMPTZ/);
+    assert.match(lifecycleMigration, /left_at TIMESTAMPTZ/);
+    assert.doesNotMatch(lifecycleMigration, /display_name|profile_url/i);
+  });
+
+  it('upserts present IDs and lapses missing IDs at the import timestamp', async () => {
+    const service = await readFile(
+      path.resolve(
+        process.cwd(),
+        'src/services/youtubeMembershipSnapshotService.ts',
+      ),
+      'utf8',
+    );
+    assert.match(service, /ON CONFLICT \(youtube_channel_id\) DO UPDATE SET/);
+    assert.match(service, /status = 'active'/);
+    assert.match(service, /SET status = 'lapsed',[\s\S]*left_at = \$2/);
+    assert.match(service, /AND import_id <> \$1/);
+    assert.doesNotMatch(service, /DELETE FROM youtube_membership_snapshot_members/);
   });
 
   it('imports a privacy-minimized snapshot with a sanitized filename and TTL', async () => {
@@ -195,7 +223,7 @@ describe('YouTube membership snapshot lifecycle', () => {
     assert.doesNotMatch(JSON.stringify(store.replaced), /Private display name/);
   });
 
-  it('treats an expired snapshot as unavailable and reports that status', async () => {
+  it('keeps the latest snapshot authoritative while reporting it as expired', async () => {
     const store = new FakeSnapshotStore();
     store.metadata = {
       importId: '5b3608bb-5bd6-4708-b1ab-ab30d52f3eed',
@@ -215,13 +243,17 @@ describe('YouTube membership snapshot lifecycle', () => {
       sourceLastUpdateAt: null,
     }];
     const environment = { YOUTUBE_MEMBERSHIP_SNAPSHOT_MAX_AGE_HOURS: '24' };
+    const snapshot = await getActiveYouTubeMembershipSnapshot([channelA], {
+      store,
+      now,
+      environment,
+    });
+    assert.ok(snapshot);
+    assert.equal(snapshot.members.has(channelA), true);
     assert.equal(
-      await getActiveYouTubeMembershipSnapshot([channelA], {
-        store,
-        now,
-        environment,
-      }),
-      null,
+      membershipLookupFromSnapshot([channelA], snapshot).isMember,
+      true,
+      'staleness is a warning; the latest complete export remains authoritative',
     );
     const status = await getYouTubeMembershipSnapshotStatus({
       store,
@@ -260,9 +292,35 @@ describe('YouTube membership snapshot lifecycle', () => {
       true,
     );
     assert.equal(
+      membershipLookupFromSnapshot([channelA], snapshot).memberSince,
+      null,
+      'cumulative lifetime months must not be treated as a current join date',
+    );
+    assert.equal(
       membershipLookupFromSnapshot([channelB], snapshot).isMember,
       false,
     );
+  });
+
+  it('uses the Joined/Re-joined event timestamp for the current member period', async () => {
+    const joinedAt = new Date('2026-08-17T09:15:04.998Z');
+    const snapshot = {
+      importId: '5b3608bb-5bd6-4708-b1ab-ab30d52f3eed',
+      activatedAt: now,
+      expiresAt: new Date('2026-09-08T12:00:00Z'),
+      members: new Map([[channelA, {
+        youtubeChannelId: channelA,
+        membershipLevel: 'Gold',
+        totalTimeOnLevelMonths: 1,
+        totalTimeAsMemberMonths: 14,
+        sourceLastUpdate: 'Re-joined',
+        sourceLastUpdateAt: joinedAt,
+      }]]),
+    };
+
+    const lookup = membershipLookupFromSnapshot([channelA], snapshot);
+    assert.equal(lookup.isMember, true);
+    assert.equal(lookup.memberSince?.toISOString(), joinedAt.toISOString());
   });
 
   it('validates the configurable snapshot age bound', () => {
