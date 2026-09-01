@@ -11051,8 +11051,8 @@ String _localizedYouTubeOAuthError(
   ),
   YouTubeOAuthErrorCode.youtubeSnapshotExpired => abuText(
     context,
-    'The membership snapshot has expired. Ask an administrator to import a fresh complete CSV/TSV export.',
-    'انتهت صلاحية لقطة العضويات. اطلب من المسؤول استيراد ملف CSV/TSV جديد وكامل.',
+    'The membership snapshot is stale but remains the current authority. Ask staff to import a fresh complete CSV/TSV export.',
+    'لقطة العضويات قديمة لكنها ما زالت المصدر الحالي. اطلب من أحد الموظفين استيراد ملف CSV/TSV جديد وكامل.',
   ),
   YouTubeOAuthErrorCode.youtubeSnapshotUnavailable => abuText(
     context,

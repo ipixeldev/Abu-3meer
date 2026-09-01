@@ -837,6 +837,7 @@ export async function importYouTubeMembershipSnapshot(input: {
   bytes: Buffer;
   fileName: string;
   importedByUserId: string;
+  allowLargeDecrease?: boolean;
   ipAddress?: string | null;
   userAgent?: string | null;
 }, options: {
@@ -851,6 +852,21 @@ export async function importYouTubeMembershipSnapshot(input: {
     bytes: input.bytes,
     fileName: input.fileName,
   });
+  const previous = await store.getActiveMetadata();
+  const previousCount = previous?.memberCount ?? 0;
+  const nextCount = parsed.rows.length;
+  const wouldRemoveManyMembers = nextCount === 0 || (
+    previousCount > 0 && nextCount < Math.ceil(previousCount * 0.8)
+  );
+  if (wouldRemoveManyMembers && input.allowLargeDecrease !== true) {
+    throw new YouTubeMembershipSnapshotError(
+      'youtube_snapshot_large_decrease_confirmation_required',
+      409,
+      previousCount > 0
+        ? `The new export has ${nextCount} members while the current snapshot has ${previousCount}. Confirm that this is a complete export before replacing it.`
+        : 'The export contains no members. Confirm that this complete empty export is intentional before replacing the snapshot.',
+    );
+  }
   const expiresAt = snapshotExpiry(now, maxAgeHours);
   const imported = await store.replaceSnapshot({
     importedByUserId: input.importedByUserId,

@@ -29,7 +29,7 @@
         <li><strong>Account:</strong> display name, username, email address, authentication provider identifiers, and optional profile photo.</li>
         <li><strong>Fan profile:</strong> selected country, supported club, language, and notification preferences.</li>
         <li><strong>Activity:</strong> predictions, video-question answers, player guesses, XP, streaks, achievements, and leaderboard records.</li>
-        <li><strong>Membership:</strong> the YouTube channel ID you deliberately connect, the derived active-membership status, membership-level identifier, member-since date, and verification timestamps. Google authorization is used to prove control of that channel. User Google access tokens are used only to complete verification and are not retained; the channel owner's authorization is stored encrypted on the backend.</li>
+        <li><strong>Membership:</strong> the YouTube channel ID you deliberately connect, the derived active-or-lapsed membership status, membership-level identifier, membership timing, and verification timestamps. A short-lived read-only Google authorization is used to prove control of that channel and is not retained. Membership is matched against a complete CSV/TSV current-member export uploaded by authorized staff. The raw file and YouTube display names are not retained, and no channel-owner credential or private Members API is used.</li>
         <li><strong>Device and security:</strong> push-notification token, installation identifier, app/platform information, IP address and security/server logs needed for delivery, fraud prevention, and reliability.</li>
         <li><strong>Optional media:</strong> profile images or other images you deliberately select or upload.</li>
       </ul></section>
@@ -52,7 +52,7 @@
         <li><strong>الحساب:</strong> الاسم الظاهر واسم المستخدم والبريد الإلكتروني ومعرفات مزودي تسجيل الدخول وصورة الحساب الاختيارية.</li>
         <li><strong>ملف المشجع:</strong> الدولة والفريق واللغة وتفضيلات الإشعارات.</li>
         <li><strong>النشاط:</strong> التوقعات، وإجابات أسئلة الفيديو، وتخمين اللاعبين، ونقاط الخبرة، والسلاسل، والإنجازات، وسجلات الترتيب.</li>
-        <li><strong>العضوية:</strong> معرّف قناة يوتيوب التي تربطها بإرادتك وحالة العضوية النشطة المستنتجة ومعرّف مستوى العضوية وتاريخ بدء العضوية وتوقيتات التحقق. يُستخدم تفويض Google لإثبات التحكم في القناة. تُستخدم رموز وصول المستخدم إلى Google لإتمام التحقق فقط ولا نحتفظ بها، بينما يُحفظ تفويض مالك القناة مشفراً في الخادم.</li>
+        <li><strong>العضوية:</strong> معرّف قناة يوتيوب التي تربطها بإرادتك وحالة العضوية النشطة أو المنتهية المستنتجة ومعرّف المستوى وتوقيتات العضوية والتحقق. يُستخدم تفويض Google قصير الأجل وبصلاحية القراءة فقط لإثبات التحكم بالقناة ولا نحتفظ به. تُطابق العضوية مع ملف CSV/TSV كامل للأعضاء الحاليين يرفعه الموظفون المخولون. لا نحتفظ بالملف الأصلي أو أسماء العرض في يوتيوب، ولا نستخدم تفويض مالك القناة أو واجهة Members الخاصة.</li>
         <li><strong>الجهاز والأمان:</strong> رمز الإشعارات ومعرف التثبيت وبيانات التطبيق والمنصة وعنوان IP وسجلات الأمان والخادم اللازمة للتسليم ومنع الاحتيال والموثوقية.</li>
         <li><strong>الوسائط الاختيارية:</strong> الصور التي تختارها أو ترفعها عمداً.</li>
       </ul></section>

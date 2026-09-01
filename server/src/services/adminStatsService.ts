@@ -44,14 +44,30 @@ export async function getAdminDashboardStats(
          COUNT(*) FILTER (WHERE account_status = 'banned') AS banned_users
        FROM users
      ),
+     role_flags AS (
+       SELECT
+         u.id AS user_id,
+         COALESCE(bool_or(ur.role_id = 'member'), FALSE) AS is_member,
+         COALESCE(bool_or(ur.role_id = 'moderator'), FALSE) AS is_moderator,
+         COALESCE(bool_or(ur.role_id = 'admin'), FALSE) AS is_admin,
+         COALESCE(bool_or(ur.role_id = 'super_admin'), FALSE) AS is_super_admin
+       FROM users u
+       LEFT JOIN user_roles ur ON ur.user_id = u.id
+       GROUP BY u.id
+     ),
      role_counts AS (
        SELECT
-         COUNT(DISTINCT user_id) FILTER (WHERE role_id = 'fan') AS fans,
-         COUNT(DISTINCT user_id) FILTER (WHERE role_id = 'member') AS members,
-         COUNT(DISTINCT user_id) FILTER (WHERE role_id = 'moderator') AS moderators,
-         COUNT(DISTINCT user_id) FILTER (WHERE role_id = 'admin') AS admins,
-         COUNT(DISTINCT user_id) FILTER (WHERE role_id = 'super_admin') AS super_admins
-       FROM user_roles
+         COUNT(*) FILTER (
+           WHERE NOT is_member
+             AND NOT is_moderator
+             AND NOT is_admin
+             AND NOT is_super_admin
+         ) AS fans,
+         COUNT(*) FILTER (WHERE is_member) AS members,
+         COUNT(*) FILTER (WHERE is_moderator) AS moderators,
+         COUNT(*) FILTER (WHERE is_admin) AS admins,
+         COUNT(*) FILTER (WHERE is_super_admin) AS super_admins
+       FROM role_flags
      ),
      membership_counts AS (
        SELECT

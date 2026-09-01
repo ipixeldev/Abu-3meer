@@ -75,6 +75,7 @@ describe('admin dashboard statistics', () => {
     });
 
     assert.match(sql, /last_active_at >= CURRENT_TIMESTAMP - INTERVAL '30 days'/);
+    assert.match(sql, /role_flags[\s\S]*NOT is_member[\s\S]*AS fans/);
     assert.match(sql, /youtube_membership_snapshot_members[\s\S]*status = 'active'/);
     assert.equal(stats.activeUserDefinition.primaryWindowDays, 30);
     assert.equal(stats.users.total, 120);

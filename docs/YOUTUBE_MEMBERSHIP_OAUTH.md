@@ -1,33 +1,35 @@
-# YouTube membership OAuth deployment
+# YouTube membership CSV deployment
 
-This integration verifies a user's active Abu 3meer channel membership by
-YouTube channel ID. Both the channel owner's refresh token and all Google OAuth
-credentials remain on the backend; none belong in Flutter, an APK, or an IPA.
+Abu 3meer does not call YouTube's restricted `members.list` endpoint and does
+not store a channel-owner OAuth credential. A complete current-members export
+from YouTube Studio is the only membership authority.
 
-Access to YouTube's channel-membership endpoints is separately controlled by
-Google/YouTube. A valid OAuth client does not by itself guarantee that
-`members.list` is enabled for the creator channel.
+The stable YouTube channel ID from the export's `Link to profile` column is the
+matching key. Display names are not retained or trusted because creators can
+change them.
 
 ## 1. Google Cloud configuration
 
-Use the Google Cloud project where **YouTube Data API v3** is enabled. The OAuth
-client type must be **Web application**.
+Use a **Web application** OAuth client in the Google Cloud project where the
+YouTube Data API v3 is enabled.
 
 - Authorized JavaScript origins: leave empty.
 - Authorized redirect URI (exact, with no trailing slash):
   `https://api.abu3meer.com/api/v1/youtube/oauth/callback`
-- Creator scope:
-  `https://www.googleapis.com/auth/youtube.channel-memberships.creator`
-- User-link scope: the minimum read-only YouTube scope requested by the backend.
+- User scopes requested by the backend:
+  - `openid`
+  - `https://www.googleapis.com/auth/youtube.readonly`
+- Do not request
+  `https://www.googleapis.com/auth/youtube.channel-memberships.creator`.
 
-The shared callback distinguishes creator and user authorization with
-server-generated, short-lived OAuth state. Never add a second callback path or
-put a Firebase token, Google code, OAuth state, or refresh token in a log.
+The read-only user authorization is used once to call
+`channels.list(part=id,snippet&mine=true)`. This proves which channel ID is
+owned by the Google identity already linked to the app account. The short-lived
+Google access token is not stored.
 
 ## 2. Server-only environment
 
-Set these in `/opt/abu3meer/server/.env`, which must remain mode `600` and
-ignored by Git:
+Keep these values in `/opt/abu3meer/server/.env`, mode `600`, and out of Git:
 
 ```dotenv
 YOUTUBE_OAUTH_CLIENT_ID=replace_with_google_web_oauth_client_id
@@ -38,21 +40,58 @@ YOUTUBE_TOKEN_ENCRYPTION_KEY=replace_with_32_byte_base64_key
 YOUTUBE_MEMBERSHIP_REFRESH_INTERVAL_SECONDS=21600
 ```
 
-Generate the encryption key once and save it in the server's secret manager or
-password manager as well as `.env`:
+`YOUTUBE_TOKEN_ENCRYPTION_KEY` protects short-lived OAuth flow state/PKCE data;
+it is not a creator-membership token. Generate it once with
+`openssl rand -base64 32` and keep a recoverable secret backup.
 
-```bash
-umask 077
-openssl rand -base64 32
+## 3. Import a complete membership export
+
+YouTube Studio exports these expected columns:
+
+```text
+Member
+Link to profile
+Current level
+Total time on level (months)
+Total time as member (months)
+Last update
+Last update timestamp
 ```
 
-Do not rotate this key casually: stored creator tokens must be re-encrypted as
-part of a planned rotation. The refresh interval accepts 900 through 86400
-seconds; six hours is the default.
+Export as UTF-8 CSV or TSV. Excel files are intentionally rejected. In the
+app, a moderator, admin, or super admin can choose **Profile → Membership CSV**
+and import the file. The app sends it as an authenticated multipart HTTPS
+request to the API. The server parses it transactionally into PostgreSQL and
+does not retain the raw file or YouTube display names.
 
-## 3. Validate and deploy without printing secrets
+Each import is a complete replacement:
 
-`config --quiet` validates interpolation without rendering secret values:
+- IDs present in the file are active and have their level, cumulative months,
+  event timestamp, and last-seen time updated.
+- New IDs become active.
+- A previously lapsed ID that reappears becomes active again.
+- Active IDs absent from the new file become lapsed. `left_at` is the import
+  time because YouTube does not provide the exact cancellation time.
+
+Never upload a partial list. A partial file would correctly be interpreted as
+every omitted member having lapsed.
+
+If a replacement contains no members or is more than 20% smaller than the
+current snapshot, the server rejects the first attempt. The app then shows a
+second destructive-change warning and requires staff to explicitly confirm
+that the file is the complete current export.
+
+## 4. User verification
+
+The app user links Google, completes the read-only YouTube authorization, and
+the backend resolves the owned channel ID. The backend then matches that ID to
+the current CSV-derived member table. Active matches receive the configured 2×
+XP multiplier; lapsed or absent IDs receive normal 1× XP.
+
+Membership is only as current as the latest manual export. Upload a complete
+fresh export at least weekly and show the last import time in the staff UI.
+
+## 5. Deploy and validate
 
 ```bash
 cd /opt/abu3meer/server
@@ -64,97 +103,10 @@ docker compose --profile production ps
 curl --fail --show-error https://api.abu3meer.com/ready
 ```
 
-Inspect only the safe configuration status (variable names and reasons, never
-values):
-
-```bash
-docker compose exec -T api node --input-type=module -e \
-  "const {config}=await import('./dist/config.js'); console.log(JSON.stringify(config.youtubeOAuth.status)); process.exit(config.youtubeOAuth.configured?0:1)"
-```
-
-Expected after configuration:
-
-```json
-{"state":"configured","issues":[]}
-```
-
-Confirm the public callback exists without initiating OAuth. A `400` response
-for missing state/code is expected; `404` is not:
+The OAuth callback should return HTTP 400 when opened without a state/code;
+that confirms the route exists without starting an OAuth flow:
 
 ```bash
 curl --silent --output /dev/null --write-out '%{http_code}\n' \
   https://api.abu3meer.com/api/v1/youtube/oauth/callback
 ```
-
-## 4. Authorize the Abu 3meer creator account
-
-Every start/status endpoint requires a current Firebase bearer token with the
-required admin role. Keep the token in a temporary shell variable and unset it
-when finished; never paste it into chat or a committed script.
-
-```bash
-read -r -s -p 'Temporary admin Firebase ID token: ' ADMIN_ID_TOKEN
-echo
-CREATOR_START="$(curl --fail --silent --show-error \
-  --request POST \
-  --header "Authorization: Bearer $ADMIN_ID_TOKEN" \
-  https://api.abu3meer.com/api/v1/admin/youtube/creator/connect/start)"
-CREATOR_FLOW_ID="$(printf '%s' "$CREATOR_START" | jq -r '.flowId')"
-printf '%s' "$CREATOR_START" | jq -r '.authorizationUrl'
-```
-
-Open the printed URL only in the trusted browser where the Abu 3meer channel
-owner is signed in. Approve the requested membership scope, then poll the
-one-time flow status without replaying the callback:
-
-```bash
-curl --fail --silent --show-error \
-  --header "Authorization: Bearer $ADMIN_ID_TOKEN" \
-  "https://api.abu3meer.com/api/v1/admin/youtube/creator/connect/$CREATOR_FLOW_ID/status" \
-  | jq .
-
-curl --fail --silent --show-error \
-  --header "Authorization: Bearer $ADMIN_ID_TOKEN" \
-  https://api.abu3meer.com/api/v1/admin/youtube/creator/status \
-  | jq .
-
-unset CREATOR_START CREATOR_FLOW_ID ADMIN_ID_TOKEN
-```
-
-The status response may report connection state, channel identity, and refresh
-time. It must never return Google access tokens, refresh tokens, the client
-secret, or the local encryption key.
-
-## 5. Smoke-test one user's channel link
-
-Use a short-lived Firebase ID token for a dedicated test account. Authorize the
-Google account that owns that user's intended YouTube channel (including the
-correct Brand Account identity, if applicable):
-
-```bash
-read -r -s -p 'Temporary test-user Firebase ID token: ' USER_ID_TOKEN
-echo
-USER_START="$(curl --fail --silent --show-error \
-  --request POST \
-  --header "Authorization: Bearer $USER_ID_TOKEN" \
-  https://api.abu3meer.com/api/v1/profile/youtube/connect/start)"
-USER_FLOW_ID="$(printf '%s' "$USER_START" | jq -r '.flowId')"
-printf '%s' "$USER_START" | jq -r '.authorizationUrl'
-```
-
-Complete Google authorization in a trusted browser, then poll:
-
-```bash
-curl --fail --silent --show-error \
-  --header "Authorization: Bearer $USER_ID_TOKEN" \
-  "https://api.abu3meer.com/api/v1/profile/youtube/connect/$USER_FLOW_ID/status" \
-  | jq .
-
-unset USER_START USER_FLOW_ID USER_ID_TOKEN
-```
-
-Test both an active channel member and a non-member. Verify the backend stores
-only the linked YouTube channel identity and derived membership state for the
-app user. Membership refresh failures must preserve the last verified state
-only according to the backend's expiry policy; they must never grant membership
-merely because Google is temporarily unavailable.

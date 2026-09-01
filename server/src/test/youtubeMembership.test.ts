@@ -715,7 +715,7 @@ describe('membership freshness enforcement', () => {
     assert.equal(store.applied.length, 2);
   });
 
-  it('keeps route paths/status contracts and prediction settlement freshness-aware', async () => {
+  it('keeps route paths/status contracts and prediction settlement snapshot-aware', async () => {
     const routes = await readFile(
       path.resolve(process.cwd(), 'src/routes/youtubeMembershipRoutes.ts'),
       'utf8',
@@ -733,7 +733,8 @@ describe('membership freshness enforcement', () => {
     assert.match(routes, /CreatorMembershipOAuthDisabled/);
     assert.match(routes, /requirePermission\('settings\.manage'\)/);
     assert.match(routes, /'\/youtube\/oauth\/callback'/);
-    assert.match(predictions, /yl\.last_verified_at >=/);
+    assert.doesNotMatch(predictions, /yl\.last_verified_at >=/);
+    assert.match(predictions, /yl\.is_member = TRUE/);
     assert.match(predictions, /refreshStaleYouTubeMembershipsForUsers\(/);
     assert.match(predictions, /membershipRefresh\.unavailable > 0/);
     assert.match(
@@ -787,7 +788,8 @@ describe('membership freshness enforcement', () => {
     assert.match(adminRoutes, /youtubeMembershipLastAttemptedAt/);
     assert.match(adminRoutes, /youtubeMembershipErrorCode/);
     assert.doesNotMatch(auth, /refreshStaleLinkedYouTubeMembership/);
-    assert.match(auth, /yl\.last_verified_at >=/);
+    assert.doesNotMatch(auth, /yl\.last_verified_at >=/);
+    assert.match(auth, /yl\.is_member = TRUE/);
   });
 
   it('uses a PostgreSQL advisory lock in the production store path', async () => {

@@ -4,7 +4,6 @@ import {
   getPointRules,
   memberMultiplierForSource,
 } from './pointsService.js';
-import { youtubeMembershipRefreshIntervalSeconds } from './youtubeOAuthService.js';
 import { refreshStaleYouTubeMembershipsForUsers } from './youtubeMembershipService.js';
 import { normalizeChallengeAnswer } from './challengeService.js';
 import { config } from '../config.js';
@@ -254,14 +253,11 @@ async function settleMatchPredictionsUnlocked(
   const predictionsRes = await query(
     `SELECT p.id, p.user_id, p.home_score, p.away_score, p.first_scorer,
             p.rewarded,
-            (yl.is_member = TRUE
-              AND yl.last_verified_at >=
-                  CURRENT_TIMESTAMP - ($2::integer * INTERVAL '1 second'))
-              AS is_youtube_member
+            (yl.is_member = TRUE) AS is_youtube_member
      FROM predictions p
      LEFT JOIN youtube_account_links yl ON yl.user_id = p.user_id
      WHERE p.match_id = $1 AND NOT p.rewarded`,
-    [matchId, youtubeMembershipRefreshIntervalSeconds()]
+    [matchId]
   );
 
   const rules = await getPointRules();

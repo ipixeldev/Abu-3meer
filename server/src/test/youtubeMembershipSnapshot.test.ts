@@ -223,6 +223,43 @@ describe('YouTube membership snapshot lifecycle', () => {
     assert.doesNotMatch(JSON.stringify(store.replaced), /Private display name/);
   });
 
+  it('requires an explicit confirmation before a replacement lapses many members', async () => {
+    const store = new FakeSnapshotStore();
+    store.metadata = {
+      importId: '5b3608bb-5bd6-4708-b1ab-ab30d52f3eed',
+      sourceFilename: 'members.csv',
+      sourceFormat: 'csv',
+      sourceSha256: 'a'.repeat(64),
+      memberCount: 10,
+      matchedUserCount: 4,
+      activatedAt: now,
+    };
+    const replacement = {
+      bytes: csv([
+        `One,https://youtube.com/channel/${channelA},Gold,1,1,Joined,2026-09-01T12:00:00Z`,
+      ]),
+      fileName: 'members.csv',
+      importedByUserId: 'moderator-1',
+    };
+
+    await assert.rejects(
+      () => importYouTubeMembershipSnapshot(replacement, { store, now }),
+      (error: unknown) =>
+        error instanceof YouTubeMembershipSnapshotError &&
+        error.code ===
+          'youtube_snapshot_large_decrease_confirmation_required' &&
+        error.httpStatus === 409,
+    );
+    assert.equal(store.replaced.length, 0);
+
+    const result = await importYouTubeMembershipSnapshot(
+      { ...replacement, allowLargeDecrease: true },
+      { store, now },
+    );
+    assert.equal(result.memberCount, 1);
+    assert.equal(store.replaced.length, 1);
+  });
+
   it('keeps the latest snapshot authoritative while reporting it as expired', async () => {
     const store = new FakeSnapshotStore();
     store.metadata = {

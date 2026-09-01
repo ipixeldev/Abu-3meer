@@ -126,12 +126,24 @@ class _AdminYouTubeMembershipSnapshotCardState
 
   Future<YouTubeMembershipSnapshotStatus> _import(
     Uint8List bytes,
-    String fileName,
-  ) =>
-      widget.importSnapshot?.call(bytes, fileName) ??
-      widget.repository!.importYouTubeMembershipSnapshot(
-        bytes: bytes,
-        fileName: fileName,
+    String fileName, {
+    bool confirmLargeDecrease = false,
+  }) {
+    if (widget.importSnapshot != null) {
+      return widget.importSnapshot!(bytes, fileName);
+    }
+    return widget.repository!.importYouTubeMembershipSnapshot(
+      bytes: bytes,
+      fileName: fileName,
+      confirmLargeDecrease: confirmLargeDecrease,
+    );
+  }
+
+  bool _requiresLargeDecreaseConfirmation(Object error) =>
+      error is AbuApiException &&
+      error.statusCode == 409 &&
+      error.details.toString().contains(
+        'youtube_snapshot_large_decrease_confirmation_required',
       );
 
   Future<void> _selectAndImport() async {
@@ -200,7 +212,48 @@ class _AdminYouTubeMembershipSnapshotCardState
           ),
         );
       }
-      final imported = await _import(bytes, file.name);
+      late YouTubeMembershipSnapshotStatus imported;
+      try {
+        imported = await _import(bytes, file.name);
+      } catch (error) {
+        if (!_requiresLargeDecreaseConfirmation(error) || !mounted) rethrow;
+        final confirmLargeDecrease = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text(
+              abuText(
+                dialogContext,
+                'Large membership decrease',
+                'انخفاض كبير في العضويات',
+              ),
+            ),
+            content: Text(
+              '${productionErrorMessage(error)}\n\n${abuText(dialogContext, 'Only continue if this is the complete current YouTube export. Missing channels will immediately become lapsed.', 'تابع فقط إذا كان هذا هو ملف يوتيوب الحالي والكامل. ستصبح القنوات غير الموجودة منتهية العضوية فوراً.')}',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(abuText(dialogContext, 'CANCEL', 'إلغاء')),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(
+                  abuText(
+                    dialogContext,
+                    'CONFIRM COMPLETE EXPORT',
+                    'تأكيد الملف الكامل',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+        if (confirmLargeDecrease != true || !mounted) {
+          setState(() => _uploading = false);
+          return;
+        }
+        imported = await _import(bytes, file.name, confirmLargeDecrease: true);
+      }
       if (!mounted) return;
       setState(() {
         _uploading = false;
@@ -246,14 +299,14 @@ class _AdminYouTubeMembershipSnapshotCardState
     if (status.state == YouTubeMembershipSnapshotState.expired) {
       return abuText(
         context,
-        'Expired snapshot · ${status.memberCount} members · import a fresh complete export.',
-        'لقطة منتهية · ${status.memberCount} عضواً · استورد ملفاً كاملاً وحديثاً.',
+        'Stale snapshot still in use · ${status.memberCount} members · import a fresh complete export for accurate changes.',
+        'لقطة قديمة ما زالت مستخدمة · ${status.memberCount} عضواً · استورد ملفاً كاملاً وحديثاً لتحديث التغييرات بدقة.',
       );
     }
     return abuText(
       context,
-      '${status.memberCount} members · ${status.matchedUserCount} linked accounts matched · valid until $expires',
-      '${status.memberCount} عضواً · تمت مطابقة ${status.matchedUserCount} حساباً مرتبطاً · صالحة حتى $expires',
+      '${status.memberCount} members · ${status.matchedUserCount} linked accounts matched · fresh through $expires',
+      '${status.memberCount} عضواً · تمت مطابقة ${status.matchedUserCount} حساباً مرتبطاً · حديثة حتى $expires',
     );
   }
 

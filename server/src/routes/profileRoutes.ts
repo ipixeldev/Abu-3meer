@@ -11,7 +11,6 @@ import {
   eligibleLeaderboardSourceTypes,
   listLeaderboardSeasons,
 } from '../services/leaderboardService.js';
-import { youtubeMembershipRefreshIntervalSeconds } from '../services/youtubeOAuthService.js';
 
 const eligibleXpSources = [...eligibleLeaderboardSourceTypes];
 
@@ -181,10 +180,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const res = await query(
       `SELECT u.username, u.display_name, u.avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
-              (yl.is_member = TRUE
-                AND yl.last_verified_at >=
-                    CURRENT_TIMESTAMP - ($3::integer * INTERVAL '1 second'))
-                AS is_youtube_member,
+              (yl.is_member = TRUE) AS is_youtube_member,
               COALESCE(xp.total_points, 0)::integer AS total_points,
               COALESCE(xp.monthly_points, 0)::integer AS monthly_points,
               COALESCE(xp.season_points, 0)::integer AS season_points,
@@ -225,7 +221,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
        ) xp ON TRUE
        WHERE u.id::text = $1 OR u.firebase_uid = $1 OR LOWER(u.username) = LOWER($1)
        LIMIT 1`,
-      [id, eligibleXpSources, youtubeMembershipRefreshIntervalSeconds()]
+      [id, eligibleXpSources]
     );
 
     if (res.rows.length === 0) {

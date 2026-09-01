@@ -1,5 +1,4 @@
 import { getClient, query } from '../db/pool.js';
-import { youtubeMembershipRefreshIntervalSeconds } from './youtubeOAuthService.js';
 
 export const eligibleLeaderboardSourceTypes = [
   'signup_bonus',
@@ -638,10 +637,7 @@ async function rankedRows(
               u.display_name,
               u.avatar_url,
               u.supported_team,
-              (yl.is_member = TRUE
-                AND yl.last_verified_at >=
-                    CURRENT_TIMESTAMP - ($4::integer * INTERVAL '1 second'))
-                AS is_youtube_member,
+              (yl.is_member = TRUE) AS is_youtube_member,
               u.created_at AS account_created_at,
               SUM(pt.final_points)::bigint AS points
        FROM point_transactions pt
@@ -675,7 +671,6 @@ async function rankedRows(
       window.startsAt,
       window.endsAt,
       safeLimit,
-      youtubeMembershipRefreshIntervalSeconds(),
     ],
   );
   return {

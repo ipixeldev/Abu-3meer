@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:abu_3meer/demo/fan_league_app.dart';
+import 'package:abu_3meer/production/api_client.dart';
 import 'package:abu_3meer/production/youtube_membership_snapshot.dart';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -103,5 +104,61 @@ void main() {
     expect(uploadedName, 'members.csv');
     expect(find.textContaining('25 members'), findsWidgets);
     expect(find.text('REPLACE'), findsOneWidget);
+  });
+
+  testWidgets('large membership decrease requires a second confirmation', (
+    tester,
+  ) async {
+    var uploadAttempts = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AdminYouTubeMembershipSnapshotCard(
+            loadStatus: () async => snapshotStatus(
+              state: YouTubeMembershipSnapshotState.active,
+              members: 100,
+            ),
+            pickFile: () async => XFile.fromData(
+              Uint8List.fromList([1, 2, 3]),
+              path: 'members.csv',
+              mimeType: 'text/csv',
+            ),
+            importSnapshot: (bytes, fileName) async {
+              uploadAttempts += 1;
+              if (uploadAttempts == 1) {
+                throw AbuApiException(
+                  statusCode: 409,
+                  message: 'The new export has 10 members while the current snapshot has 100.',
+                  details: '{"error":"youtube_snapshot_large_decrease_confirmation_required"}',
+                );
+              }
+              return snapshotStatus(
+                state: YouTubeMembershipSnapshotState.active,
+                members: 10,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'REPLACE'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'IMPORT'));
+    // The upload spinner intentionally keeps animating while the destructive
+    // confirmation is open, so advance the dialog transition directly.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('Large membership decrease'), findsOneWidget);
+    expect(uploadAttempts, 1);
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'CONFIRM COMPLETE EXPORT'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(uploadAttempts, 2);
+    expect(find.textContaining('10 members'), findsWidgets);
   });
 }

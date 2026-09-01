@@ -83,9 +83,10 @@ extension YouTubeMembershipSnapshotRepository on ProductionRepository {
   Future<YouTubeMembershipSnapshotStatus> importYouTubeMembershipSnapshot({
     required Uint8List bytes,
     required String fileName,
+    bool confirmLargeDecrease = false,
   }) async {
     final response = await apiRepo.api.postMultipart(
-      '/admin/youtube/membership/snapshot',
+      '/admin/youtube/membership/snapshot${confirmLargeDecrease ? '?confirmLargeDecrease=true' : ''}',
       bytes: bytes,
       fileName: fileName,
       requireAuth: true,

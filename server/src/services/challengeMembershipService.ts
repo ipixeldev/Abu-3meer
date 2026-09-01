@@ -1,6 +1,5 @@
 import { query } from '../db/pool.js';
 import { refreshLinkedYouTubeMembership } from './youtubeMembershipService.js';
-import { youtubeMembershipRefreshIntervalSeconds } from './youtubeOAuthService.js';
 
 type QueryMembership = (
   text: string,
@@ -27,14 +26,11 @@ export async function resolveChallengeMembership(
     refreshLinkedYouTubeMembership;
   const read = () => queryMembership(
     `SELECT (yl.user_id IS NOT NULL) AS linked,
-            (yl.is_member = TRUE
-              AND yl.last_verified_at >=
-                  CURRENT_TIMESTAMP - ($2::integer * INTERVAL '1 second'))
-              AS current_member
+            (yl.is_member = TRUE) AS current_member
      FROM users u
      LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
      WHERE u.id = $1`,
-    [userId, youtubeMembershipRefreshIntervalSeconds()],
+    [userId],
   );
 
   const before = (await read()).rows[0];

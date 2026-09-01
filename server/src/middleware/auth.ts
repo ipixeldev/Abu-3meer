@@ -8,10 +8,7 @@ import {
   signupBonusIdempotencyKey,
 } from '../services/pointsService.js';
 import { redactRequestUrl } from '../security/logRedaction.js';
-import {
-  googleProviderSubjectFromFirebaseIdentities,
-  youtubeMembershipRefreshIntervalSeconds,
-} from '../services/youtubeOAuthService.js';
+import { googleProviderSubjectFromFirebaseIdentities } from '../services/youtubeOAuthService.js';
 
 export interface AuthenticatedUser {
   id: string;
@@ -79,17 +76,11 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
     const googleProviderUid = googleProviderSubjectFromFirebaseIdentities(
       decoded.firebase?.identities,
     );
-    const membershipFreshnessSeconds =
-      youtubeMembershipRefreshIntervalSeconds();
-
     // Lookup user in PostgreSQL
     const userLookupSql =
       `SELECT u.id, u.firebase_uid, u.email, u.username, u.display_name, u.avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
-              (yl.is_member = TRUE
-                AND yl.last_verified_at >=
-                    CURRENT_TIMESTAMP - ($2::integer * INTERVAL '1 second'))
-                AS is_youtube_member,
+              (yl.is_member = TRUE) AS is_youtube_member,
               u.account_status, u.onboarding_completed,
               p.is_guest,
               COALESCE(
@@ -106,23 +97,16 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
        LEFT JOIN user_roles ur ON ur.user_id = u.id
          AND (
            ur.role_id <> 'member'
-           OR (
-             yl.is_member = TRUE
-             AND yl.last_verified_at >=
-                 CURRENT_TIMESTAMP - ($2::integer * INTERVAL '1 second')
-           )
+           OR yl.is_member = TRUE
          )
        LEFT JOIN role_permissions rp ON rp.role_id = ur.role_id
        WHERE u.firebase_uid = $1
        GROUP BY u.id, u.firebase_uid, u.email, u.username, u.display_name, u.avatar_url,
                 u.supported_team, u.supported_team_logo, u.country, u.country_code,
-                yl.is_member, yl.last_verified_at,
+                yl.is_member,
                 u.account_status, u.onboarding_completed,
                 p.is_guest`;
-    let res = await query(userLookupSql, [
-      firebaseUid,
-      membershipFreshnessSeconds,
-    ]);
+    let res = await query(userLookupSql, [firebaseUid]);
 
     // Firebase assigns a different UID when an app is moved to another
     // Firebase project. Preserve the existing Abu 3meer account (profile,
@@ -151,10 +135,7 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
           { userId: relinkedUser.rows[0].id },
           'Re-linked verified Firebase identity after Firebase project migration',
         );
-        res = await query(userLookupSql, [
-          firebaseUid,
-          membershipFreshnessSeconds,
-        ]);
+        res = await query(userLookupSql, [firebaseUid]);
       }
     }
 
@@ -242,10 +223,7 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
         client.release();
       }
 
-      res = await query(userLookupSql, [
-        firebaseUid,
-        membershipFreshnessSeconds,
-      ]);
+      res = await query(userLookupSql, [firebaseUid]);
       if (res.rows.length === 0) {
         throw new Error('The new account could not be loaded after provisioning.');
       }

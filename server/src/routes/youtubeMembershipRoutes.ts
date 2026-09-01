@@ -19,6 +19,9 @@ import {
 } from '../services/youtubeMembershipSnapshotService.js';
 
 const flowIdSchema = z.string().uuid();
+const snapshotImportQuerySchema = z.object({
+  confirmLargeDecrease: z.enum(['true']).optional(),
+});
 const callbackSchema = z.object({
   state: z.string().regex(/^[A-Za-z0-9_-]{32,128}$/),
   code: z.string().min(1).max(4096).optional(),
@@ -179,6 +182,13 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
     },
     async (request, reply) => {
       try {
+        const parsedQuery = snapshotImportQuerySchema.safeParse(request.query);
+        if (!parsedQuery.success) {
+          return reply.status(400).send({
+            error: 'ValidationError',
+            message: 'The snapshot confirmation value is invalid.',
+          });
+        }
         const part = await request.file({
           limits: { files: 1, fileSize: youtubeMembershipSnapshotMaxBytes },
         });
@@ -201,6 +211,8 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
           bytes,
           fileName: part.filename,
           importedByUserId: request.user!.id,
+          allowLargeDecrease:
+            parsedQuery.data.confirmLargeDecrease === 'true',
           ipAddress: request.ip,
           userAgent: request.headers['user-agent'] ?? null,
         });
