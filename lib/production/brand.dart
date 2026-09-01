@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 /// Business-owned values can later be loaded from `platformSettings/branding`
 /// without changing feature screens.
 abstract final class AbuBrand {
-  static const appName = 'Abu 3meer';
-  static const shortName = 'Abu 3meer';
+  static const appName = 'ABU 3MEER';
+  static const shortName = 'ABU 3MEER';
   static const tagline = 'WATCH. PREDICT. ANSWER. FIND.';
   static const supportEmail = 'support@abu3meer.com';
   static const youtubeUrl = 'https://www.youtube.com/@abu3meer';

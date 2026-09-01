@@ -382,6 +382,9 @@ class ApiProductionRepository {
         lastCheckInDate: p['streak_last_checkin'] != null
             ? p['streak_last_checkin'].toString().split('T').first
             : '',
+        lastActivityAt: DateTime.tryParse(
+          (p['streak_last_checkin'] ?? '').toString(),
+        ),
         suspended: accountStatus == 'suspended' || accountStatus == 'banned',
         onboardingCompleted: u['onboardingCompleted'] as bool?,
       );

@@ -11,12 +11,22 @@ export interface StreakResult {
   alreadyCheckedIn: boolean;
 }
 
+export const streakInactivityWindowMs = 24 * 60 * 60 * 1000;
+
 function utcDateKey(value: Date): string {
   return value.toISOString().slice(0, 10);
 }
 
 export function dailyStreakIdempotencyKey(userId: string, value: Date): string {
   return `streak:${userId}:${utcDateKey(value)}`;
+}
+
+export function hasStreakExpired(
+  lastCheckIn: Date | null,
+  now: Date,
+): boolean {
+  if (!lastCheckIn) return false;
+  return now.getTime() - lastCheckIn.getTime() >= streakInactivityWindowMs;
 }
 
 export function deriveStreakCount(
@@ -30,16 +40,48 @@ export function deriveStreakCount(
 
   const today = utcDateKey(now);
   const lastDay = utcDateKey(lastCheckIn);
-  if (lastDay === today) {
+  const expired = hasStreakExpired(lastCheckIn, now);
+  if (lastDay === today && !expired) {
     return { alreadyCheckedIn: true, nextStreak: currentStreak };
   }
 
-  const yesterday = new Date(now);
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   return {
     alreadyCheckedIn: false,
-    nextStreak: lastDay === utcDateKey(yesterday) ? currentStreak + 1 : 1,
+    // A streak is based on actual app attendance, not only calendar labels.
+    // Crossing midnight still advances it, but 24 hours without a launch
+    // always starts a new streak even when the previous check-in was on the
+    // immediately preceding UTC date.
+    nextStreak: expired ? 1 : currentStreak + 1,
   };
+}
+
+async function persistStreakActivity(
+  client: Awaited<ReturnType<typeof getClient>>,
+  userId: string,
+  streakCount: number,
+  now: Date,
+): Promise<void> {
+  // Keep the attendance timestamp and the account's last-active timestamp in
+  // the same transaction. The profile row is already locked by the caller,
+  // so concurrent launches cannot award twice or move the timestamp backwards.
+  const result = await client.query(
+    `WITH updated_profile AS (
+       UPDATE user_profiles
+       SET streak_count = $1,
+           streak_best = GREATEST(streak_best, $1),
+           streak_last_checkin = GREATEST(streak_last_checkin, $2),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = $3
+       RETURNING user_id
+     )
+     UPDATE users
+     SET last_active_at = GREATEST(last_active_at, $2)
+     WHERE id IN (SELECT user_id FROM updated_profile)`,
+    [streakCount, now, userId],
+  );
+  if (result.rowCount !== 1) {
+    throw new Error('Unable to update the streak profile.');
+  }
 }
 
 /**
@@ -50,7 +92,6 @@ export function deriveStreakCount(
 export async function checkInDailyStreak(
   userId: string,
 ): Promise<StreakResult> {
-  const now = new Date();
   const client = await getClient();
   let didAwardPoints = false;
 
@@ -68,6 +109,10 @@ export async function checkInDailyStreak(
       throw Object.assign(new Error('User profile not found.'), { statusCode: 404 });
     }
 
+    // Capture the check-in time only after the profile lock is acquired. This
+    // prevents a request that waited on another launch from overwriting the
+    // newer activity timestamp with an earlier pre-lock timestamp.
+    const now = new Date();
     const profile = profileRes.rows[0];
     const currentStreak = Number(profile.streak_count || 0);
     const lastCheckIn = profile.streak_last_checkin
@@ -76,6 +121,10 @@ export async function checkInDailyStreak(
     const derived = deriveStreakCount(currentStreak, lastCheckIn, now);
 
     if (derived.alreadyCheckedIn) {
+      // The daily XP entry remains once-per-UTC-day, but every launch refreshes
+      // the inactivity clock. Without this touch, a morning launch followed by
+      // an evening launch would incorrectly expire 24 hours after the morning.
+      await persistStreakActivity(client, userId, currentStreak, now);
       await client.query('COMMIT');
       return {
         streakCount: currentStreak,
@@ -102,18 +151,7 @@ export async function checkInDailyStreak(
     });
     didAwardPoints = award.alreadyAwarded !== true && award.pointsAwarded > 0;
 
-    const profileUpdate = await client.query(
-      `UPDATE user_profiles
-       SET streak_count = $1,
-           streak_best = GREATEST(streak_best, $1),
-           streak_last_checkin = $2,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE user_id = $3`,
-      [derived.nextStreak, now, userId],
-    );
-    if (profileUpdate.rowCount !== 1) {
-      throw new Error('Unable to update the streak profile.');
-    }
+    await persistStreakActivity(client, userId, derived.nextStreak, now);
 
     await client.query('COMMIT');
     if (didAwardPoints) await invalidatePointCaches();

@@ -1306,6 +1306,7 @@ class ProductionRepository {
               .toIso8601String()
               .split('T')
               .first,
+          lastActivityAt: DateTime.now().toUtc(),
         );
         _localProfiles[uid] = updated;
         _profileResources[uid]?.emit(updated);

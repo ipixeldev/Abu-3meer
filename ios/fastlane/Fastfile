@@ -142,4 +142,26 @@ platform :ios do
       uses_non_exempt_encryption: false
     )
   end
+
+  desc "Select an already processed build for App Store version 1.1.0 without submitting for review"
+  lane :select_app_store_build do |options|
+    abu3meer_api_key
+    build_number = (options[:build_number] || ENV.fetch("APP_STORE_BUILD_NUMBER")).to_s
+    app = Spaceship::ConnectAPI::App.find("com.abu3meer.app")
+    build = Spaceship::ConnectAPI::Build.all(
+      app_id: app.id,
+      version: "1.1.0",
+      build_number: build_number,
+      platform: "IOS"
+    ).first
+    UI.user_error!("Build #{build_number} is not available in App Store Connect") unless build
+    UI.user_error!("Build #{build_number} is not valid yet") unless build.processing_state == "VALID"
+
+    version = app.get_app_store_versions(filter: { platform: "IOS" }).find do |candidate|
+      candidate.version_string == "1.1.0"
+    end
+    UI.user_error!("App Store version 1.1.0 was not found") unless version
+    version.select_build(build_id: build.id)
+    UI.success("Selected build #{build_number} for App Store version 1.1.0")
+  end
 end

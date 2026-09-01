@@ -52,8 +52,20 @@ export async function profileRoutes(fastify: FastifyInstance) {
               COALESCE(xp.monthly_points, 0)::integer AS monthly_points,
               COALESCE(xp.season_points, 0)::integer AS season_points,
               0::integer AS loyalty_points,
-              profile.streak_count, profile.streak_best,
-              profile.streak_last_checkin, profile.level,
+              CASE
+                WHEN profile.streak_last_checkin IS NOT NULL
+                 AND CURRENT_TIMESTAMP >= profile.streak_last_checkin + INTERVAL '24 hours'
+                THEN 0
+                ELSE profile.streak_count
+              END::integer AS streak_count,
+              profile.streak_best,
+              profile.streak_last_checkin,
+              profile.streak_last_checkin + INTERVAL '24 hours' AS streak_expires_at,
+              (
+                profile.streak_last_checkin IS NOT NULL
+                AND CURRENT_TIMESTAMP >= profile.streak_last_checkin + INTERVAL '24 hours'
+              ) AS streak_expired,
+              profile.level,
               profile.exact_predictions_count,
               profile.challenges_completed_count,
               profile.player_cards_collected_count,
@@ -120,7 +132,19 @@ export async function profileRoutes(fastify: FastifyInstance) {
               COALESCE(xp.monthly_points, 0)::integer AS monthly_points,
               COALESCE(xp.season_points, 0)::integer AS season_points,
               0::integer AS loyalty_points,
-              p.streak_count, p.streak_best, p.level, p.exact_predictions_count,
+              CASE
+                WHEN p.streak_last_checkin IS NOT NULL
+                 AND CURRENT_TIMESTAMP >= p.streak_last_checkin + INTERVAL '24 hours'
+                THEN 0
+                ELSE p.streak_count
+              END::integer AS streak_count,
+              p.streak_best, p.streak_last_checkin,
+              p.streak_last_checkin + INTERVAL '24 hours' AS streak_expires_at,
+              (
+                p.streak_last_checkin IS NOT NULL
+                AND CURRENT_TIMESTAMP >= p.streak_last_checkin + INTERVAL '24 hours'
+              ) AS streak_expired,
+              p.level, p.exact_predictions_count,
               p.challenges_completed_count, p.player_cards_collected_count
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
@@ -173,6 +197,9 @@ export async function profileRoutes(fastify: FastifyInstance) {
       loyaltyPoints: Number(row.loyalty_points || 0),
       streakCount: Number(row.streak_count || 0),
       streakBest: Number(row.streak_best || 0),
+      streakLastCheckIn: row.streak_last_checkin,
+      streakExpiresAt: row.streak_expires_at,
+      streakExpired: row.streak_expired === true,
       level: Number(row.level || 1),
       exactPredictionsCount: Number(row.exact_predictions_count || 0),
       challengesCompletedCount: Number(row.challenges_completed_count || 0),

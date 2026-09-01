@@ -23,6 +23,14 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 Upload localized App Store metadata without changing the binary or submitting for review
 
+### ios upload_screenshots
+
+```sh
+[bundle exec] fastlane ios upload_screenshots
+```
+
+Upload localized App Store screenshots without changing metadata, the binary, or review state
+
 ### ios check_testflight
 
 ```sh
@@ -38,6 +46,14 @@ Upload localized App Store metadata without changing the binary or submitting fo
 ```
 
 Upload an existing IPA and distribute it to both Abu 3meer TestFlight groups
+
+### ios select_app_store_build
+
+```sh
+[bundle exec] fastlane ios select_app_store_build
+```
+
+Select an already processed build for App Store version 1.1.0 without submitting for review
 
 ----
 

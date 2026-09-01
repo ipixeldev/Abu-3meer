@@ -2236,6 +2236,12 @@ class _ProductionShellState extends State<_ProductionShell>
             const Duration(seconds: 30)) {
       return;
     }
+    if (!widget.profile.isGuest) {
+      _runProductionBackgroundTask(
+        widget.repository.checkInDailyStreak(widget.profile.uid).then((_) {}),
+        'StreakResume',
+      );
+    }
     _runProductionBackgroundTask(
       widget.repository.refreshActiveResources(
         uid: widget.profile.isGuest ? null : widget.profile.uid,
@@ -2256,6 +2262,7 @@ class _ProductionShellState extends State<_ProductionShell>
         repository: widget.repository,
         profile: profile,
         onOpenStreak: () => _showStreakGoals(context, profile),
+        onOpenLeaderboard: () => _selectShellPage(_leaderboardShellPageIndex),
       ),
       _ProductionMatches(repository: widget.repository, profile: profile),
       _ProductionChallenges(repository: widget.repository, profile: profile),
@@ -2838,10 +2845,12 @@ class _ProductionHome extends StatelessWidget {
     required this.repository,
     required this.profile,
     required this.onOpenStreak,
+    required this.onOpenLeaderboard,
   });
   final ProductionRepository repository;
   final AbuUserProfile profile;
   final VoidCallback onOpenStreak;
+  final VoidCallback onOpenLeaderboard;
 
   @override
   Widget build(BuildContext context) {
@@ -2919,9 +2928,9 @@ class _ProductionHome extends StatelessWidget {
               'YouTube Member · 2× predictions & video challenges',
               'عضو يوتيوب · ×٢ للتوقعات وتحديات الفيديو',
             )
-          : abuText(context, 'Abu 3meer Community', 'مجتمع أبو عمير'),
+          : abuText(context, AbuBrand.appName, 'أبو عمير'),
       title: profile.isGuest
-          ? abuText(context, 'Abu 3meer Community', 'مجتمع أبو عمير')
+          ? abuText(context, AbuBrand.appName, 'أبو عمير')
           : abuText(
               context,
               'Welcome, ${profile.displayName}',
@@ -2936,9 +2945,18 @@ class _ProductionHome extends StatelessWidget {
                   _GuestWelcomeCard(repository: repository),
                   const SizedBox(height: 16),
                 ],
-                _ProductionLatestVideoCard(repository: repository),
+                _ProductionLatestVideoCard(
+                  repository: repository,
+                  profile: profile,
+                ),
                 const SizedBox(height: 16),
                 _ProductionPointsHero(profile: profile),
+                const SizedBox(height: 16),
+                _ProductionHomeRankingCard(
+                  repository: repository,
+                  profile: profile,
+                  onOpenLeaderboard: onOpenLeaderboard,
+                ),
                 const SizedBox(height: 16),
                 _ProductionHomeStreakCard(
                   profile: profile,
@@ -2955,7 +2973,10 @@ class _ProductionHome extends StatelessWidget {
                 _GuestWelcomeCard(repository: repository),
                 const SizedBox(height: 18),
               ],
-              _ProductionLatestVideoCard(repository: repository),
+              _ProductionLatestVideoCard(
+                repository: repository,
+                profile: profile,
+              ),
               const SizedBox(height: 18),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2973,6 +2994,12 @@ class _ProductionHome extends StatelessWidget {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 22),
+              _ProductionHomeRankingCard(
+                repository: repository,
+                profile: profile,
+                onOpenLeaderboard: onOpenLeaderboard,
               ),
               const SizedBox(height: 22),
               match,
@@ -3756,8 +3783,12 @@ class _ProductionHomeStreakCard extends StatelessWidget {
 }
 
 class _ProductionLatestVideoCard extends StatefulWidget {
-  const _ProductionLatestVideoCard({required this.repository});
+  const _ProductionLatestVideoCard({
+    required this.repository,
+    required this.profile,
+  });
   final ProductionRepository repository;
+  final AbuUserProfile profile;
 
   @override
   State<_ProductionLatestVideoCard> createState() =>
@@ -3776,6 +3807,31 @@ class _ProductionLatestVideoCardState
 
   void retry() =>
       setState(() => request = widget.repository.latestVideo(refresh: true));
+
+  AbuChallenge? _matchingChallenge(
+    LatestVideo video,
+    Iterable<AbuChallenge> challenges,
+  ) {
+    final videoId =
+        extractYoutubeVideoId(video.id) ?? extractYoutubeVideoId(video.url);
+    if (videoId == null) return null;
+    for (final challenge in challenges) {
+      if (!challenge.isOpen) continue;
+      if (extractYoutubeVideoId(challenge.videoUrl) == videoId) {
+        return challenge;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _openChallenge(AbuChallenge challenge) => showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _ChallengePlayDialog(
+      challenge: challenge,
+      repository: widget.repository,
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => FutureBuilder<LatestVideo>(
@@ -3802,93 +3858,221 @@ class _ProductionLatestVideoCardState
         );
       }
       final video = snapshot.data!;
-      return Card(
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: () => launchUrl(
-            Uri.parse(video.url),
-            mode: LaunchMode.externalApplication,
-          ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final compact = constraints.maxWidth < 680;
-              final image = AspectRatio(
-                aspectRatio: 16 / 9,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    video.thumbnailUrl.startsWith('assets/')
-                        ? Image.asset(video.thumbnailUrl, fit: BoxFit.cover)
-                        : _ProductionRemoteImage(
-                            url: video.thumbnailUrl,
-                            fit: BoxFit.cover,
-                            fallback: Image.asset(
-                              'assets/images/latest_abu3meer.jpg',
-                              fit: BoxFit.cover,
+      return StreamBuilder<List<AbuChallenge>>(
+        stream: widget.repository.watchChallenges(),
+        builder: (context, challengeSnapshot) {
+          final challenge = _matchingChallenge(
+            video,
+            challengeSnapshot.data ?? const <AbuChallenge>[],
+          );
+          final canPlayChallenge =
+              challenge != null &&
+              !challenge.solved &&
+              challenge.attemptsRemaining > 0 &&
+              (!challenge.memberOnly || widget.profile.isYouTubeMember);
+          return Card(
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: () => launchUrl(
+                Uri.parse(video.url),
+                mode: LaunchMode.externalApplication,
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final compact = constraints.maxWidth < 680;
+                  final image = AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        video.thumbnailUrl.startsWith('assets/')
+                            ? Image.asset(video.thumbnailUrl, fit: BoxFit.cover)
+                            : _ProductionRemoteImage(
+                                url: video.thumbnailUrl,
+                                fit: BoxFit.cover,
+                                fallback: Image.asset(
+                                  'assets/images/latest_abu3meer.jpg',
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                        if (challenge != null)
+                          PositionedDirectional(
+                            top: 12,
+                            end: 12,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _ink.withValues(alpha: .84),
+                                borderRadius: BorderRadius.circular(99),
+                                border: Border.all(
+                                  color: _productionPrimary(context)
+                                      .withValues(alpha: .7),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.bolt_rounded,
+                                    color: _productionPrimary(context),
+                                    size: 14,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    abuText(
+                                      context,
+                                      'VIDEO CHALLENGE',
+                                      'تحدي الفيديو',
+                                    ),
+                                    style: TextStyle(
+                                      color: _productionPrimary(context),
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: .7,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                  ],
-                ),
-              );
-              final details = Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      abuText(
-                        context,
-                        'LATEST ABU 3MEER VIDEO',
-                        'أحدث فيديو لأبو عمير',
-                      ),
-                      style: TextStyle(
-                        color: _productionPrimary(context),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.2,
-                      ),
+                      ],
                     ),
-                    const SizedBox(height: 9),
-                    Text(
-                      video.title,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: _display(24, height: 1.05),
-                    ),
-                    const SizedBox(height: 14),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => launchUrl(
-                          Uri.parse(video.url),
-                          mode: LaunchMode.externalApplication,
-                        ),
-                        child: SizedBox(
-                          width: 155,
-                          height: 42,
-                          child: Lottie.asset(
-                            'assets/animations/youtube.json',
-                            repeat: true,
-                            fit: BoxFit.contain,
+                  );
+                  final details = Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          abuText(
+                            context,
+                            'LATEST ABU 3MEER VIDEO',
+                            'أحدث فيديو لأبو عمير',
+                          ),
+                          style: TextStyle(
+                            color: _productionPrimary(context),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.2,
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-              return compact
-                  ? Column(children: [image, details])
-                  : Row(
-                      children: [
-                        Expanded(flex: 5, child: image),
-                        Expanded(flex: 4, child: details),
+                        const SizedBox(height: 9),
+                        Text(
+                          video.title,
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                          style: _display(24, height: 1.05),
+                        ),
+                        const SizedBox(height: 14),
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: () => launchUrl(
+                                  Uri.parse(video.url),
+                                  mode: LaunchMode.externalApplication,
+                                ),
+                                child: SizedBox(
+                                  width: 155,
+                                  height: 42,
+                                  child: Lottie.asset(
+                                    'assets/animations/youtube.json',
+                                    repeat: true,
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (challenge != null)
+                              FilledButton.icon(
+                                onPressed: widget.profile.isGuest
+                                    ? () => showAuthModal(
+                                        context,
+                                        widget.repository,
+                                      )
+                                    : canPlayChallenge
+                                    ? () => _openChallenge(challenge)
+                                    : null,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: _productionPrimary(context),
+                                  foregroundColor: _ink,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 14,
+                                    vertical: 12,
+                                  ),
+                                ),
+                                icon: Icon(
+                                  challenge.solved
+                                      ? Icons.check_circle_rounded
+                                      : Icons.bolt_rounded,
+                                  size: 18,
+                                ),
+                                label: Text(
+                                  widget.profile.isGuest
+                                      ? abuText(
+                                          context,
+                                          'SIGN IN TO ANSWER',
+                                          'سجّل الدخول للإجابة',
+                                        )
+                                      : challenge.solved
+                                      ? abuText(context, 'COMPLETED', 'مكتمل')
+                                      : challenge.memberOnly &&
+                                            !widget.profile.isYouTubeMember
+                                      ? abuText(
+                                          context,
+                                          'MEMBERS ONLY',
+                                          'للأعضاء فقط',
+                                        )
+                                      : abuText(
+                                          context,
+                                          'ANSWER CHALLENGE',
+                                          'أجب عن التحدي',
+                                        ),
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        if (challenge != null) ...[
+                          const SizedBox(height: 9),
+                          Text(
+                            challenge.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _muted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
                       ],
-                    );
-            },
-          ),
-        ),
+                    ),
+                  );
+                  return compact
+                      ? Column(children: [image, details])
+                      : Row(
+                          children: [
+                            Expanded(flex: 5, child: image),
+                            Expanded(flex: 4, child: details),
+                          ],
+                        );
+                },
+              ),
+            ),
+          );
+        },
       );
     },
   );
@@ -3947,18 +4131,370 @@ class _ProductionPointsHero extends StatelessWidget {
                 color: _gold,
               ),
             ),
-            Expanded(
-              child: _Metric(
-                value: profile.supportedTeam == 'Barcelona' ? 'FCB' : 'RMA',
-                label: abuText(context, 'YOUR TEAM', 'فريقك'),
-                color: Colors.white,
-              ),
-            ),
           ],
         ),
       ],
     ),
   );
+}
+
+class _ProductionHomeRankingCard extends StatefulWidget {
+  const _ProductionHomeRankingCard({
+    required this.repository,
+    required this.profile,
+    required this.onOpenLeaderboard,
+  });
+
+  final ProductionRepository repository;
+  final AbuUserProfile profile;
+  final VoidCallback onOpenLeaderboard;
+
+  @override
+  State<_ProductionHomeRankingCard> createState() =>
+      _ProductionHomeRankingCardState();
+}
+
+class _ProductionHomeRankingCardState
+    extends State<_ProductionHomeRankingCard> {
+  LeaderboardPeriod period = LeaderboardPeriod.currentMonth;
+
+  List<RankedLeaderboardEntry> _nearbyEntries(LeaderboardSnapshot snapshot) {
+    final entries = snapshot.entries;
+    if (entries.isEmpty) return const <RankedLeaderboardEntry>[];
+    final currentUser = snapshot.currentUser;
+    if (currentUser == null) {
+      return entries.take(5).toList(growable: false);
+    }
+    final index = entries.indexWhere(
+      (ranked) => ranked.entry.uid == currentUser.entry.uid,
+    );
+    if (index < 0) {
+      return <RankedLeaderboardEntry>[...entries.take(4), currentUser];
+    }
+    final count = math.min(5, entries.length);
+    final start = math.max(0, math.min(entries.length - count, index - 2));
+    return entries.sublist(start, start + count);
+  }
+
+  Widget _periodDropdown(BuildContext context) => Container(
+    padding: const EdgeInsetsDirectional.only(start: 12, end: 6),
+    decoration: BoxDecoration(
+      color: _surface2,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: _line),
+    ),
+    child: DropdownButtonHideUnderline(
+      child: DropdownButton<LeaderboardPeriod>(
+        value: period,
+        borderRadius: BorderRadius.circular(16),
+        icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+        items: [
+          DropdownMenuItem(
+            value: LeaderboardPeriod.currentMonth,
+            child: Text(abuText(context, 'This month', 'هذا الشهر')),
+          ),
+          DropdownMenuItem(
+            value: LeaderboardPeriod.season,
+            child: Text(abuText(context, 'This season', 'هذا الموسم')),
+          ),
+        ],
+        onChanged: (value) {
+          if (value != null) setState(() => period = value);
+        },
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => StreamBuilder<LeaderboardSnapshot>(
+    stream: widget.repository.watchLeaderboardView(period: period),
+    builder: (context, snapshot) {
+      final leaderboard = snapshot.data;
+      final currentUser = leaderboard?.currentUser;
+      final nearby = leaderboard == null
+          ? const <RankedLeaderboardEntry>[]
+          : _nearbyEntries(leaderboard);
+      final primary = _productionPrimary(context);
+      return Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [Color(0xFF132012), Color(0xFF101722)],
+          ),
+          border: Border.all(color: primary.withValues(alpha: .38)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.trending_up_rounded, color: primary, size: 22),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    period == LeaderboardPeriod.season
+                        ? abuText(context, 'SEASON RANKING', 'ترتيب الموسم')
+                        : abuText(context, 'MONTHLY RANKING', 'الترتيب الشهري'),
+                    style: TextStyle(
+                      color: primary,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                ),
+                _periodDropdown(context),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                leaderboard == null)
+              const _ProductionSkeleton(height: 150)
+            else if (snapshot.hasError && leaderboard == null)
+              _ProductionEmpty(
+                icon: Icons.cloud_off_rounded,
+                title: abuText(
+                  context,
+                  'Ranking unavailable',
+                  'الترتيب غير متاح',
+                ),
+                body: productionErrorMessage(snapshot.error!),
+              )
+            else ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: primary.withValues(alpha: .09),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: primary.withValues(alpha: .28)),
+                ),
+                child: currentUser == null
+                    ? Row(
+                        children: [
+                          Icon(
+                            widget.profile.isGuest
+                                ? Icons.login_rounded
+                                : Icons.hourglass_empty_rounded,
+                            color: primary,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              widget.profile.isGuest
+                                  ? abuText(
+                                      context,
+                                      'Sign in to see your place in the ranking.',
+                                      'سجّل الدخول لمعرفة مركزك في الترتيب.',
+                                    )
+                                  : abuText(
+                                      context,
+                                      'Earn XP to receive your first ranking.',
+                                      'اجمع XP لتحصل على أول ترتيب لك.',
+                                    ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                abuText(context, 'YOU ARE', 'ترتيبك'),
+                                style: TextStyle(
+                                  color: _muted,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                              Text(
+                                '#${currentUser.rank}',
+                                style: _display(42, color: primary),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 18),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  currentUser.entry.displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  '${currentUser.points} XP · ${leaderboard?.totalPlayers ?? 0} ${abuText(context, 'ranked fans', 'مشجعاً مصنفاً')}',
+                                  maxLines: 2,
+                                  style: TextStyle(color: _muted, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+              if (nearby.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    color: _surface.withValues(alpha: .62),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: _line),
+                  ),
+                  child: Column(
+                    children: [
+                      for (var index = 0; index < nearby.length; index++) ...[
+                        _HomeRankingEntryRow(
+                          ranked: nearby[index],
+                          currentUid: widget.profile.uid,
+                        ),
+                        if (index != nearby.length - 1)
+                          const Divider(height: 1, color: _line),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ],
+            const SizedBox(height: 10),
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: TextButton.icon(
+                onPressed: widget.onOpenLeaderboard,
+                icon: const Icon(Icons.leaderboard_rounded, size: 17),
+                label: Text(
+                  abuText(
+                    context,
+                    'VIEW FULL LEADERBOARD',
+                    'عرض الترتيب الكامل',
+                  ),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+class _HomeRankingEntryRow extends StatelessWidget {
+  const _HomeRankingEntryRow({required this.ranked, required this.currentUid});
+
+  final RankedLeaderboardEntry ranked;
+  final String currentUid;
+
+  @override
+  Widget build(BuildContext context) {
+    final entry = ranked.entry;
+    final mine = entry.uid == currentUid;
+    final initials = entry.displayName.trim().isEmpty
+        ? '?'
+        : entry.displayName.trim()[0].toUpperCase();
+    return ColoredBox(
+      color: mine
+          ? _productionPrimary(context).withValues(alpha: .12)
+          : Colors.transparent,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 37,
+              child: Text(
+                '#${ranked.rank}',
+                style: TextStyle(
+                  color: mine ? _productionPrimary(context) : _muted,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: mine ? _productionPrimary(context) : _line,
+                ),
+                color: _surface2,
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: entry.avatarUrl.isEmpty
+                  ? Center(
+                      child: Text(
+                        initials,
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    )
+                  : _ProductionRemoteImage(
+                      url: entry.avatarUrl,
+                      fit: BoxFit.cover,
+                      fallback: Center(
+                        child: Text(
+                          initials,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                    ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                mine
+                    ? abuText(
+                        context,
+                        '${entry.displayName} (YOU)',
+                        '${entry.displayName} (أنت)',
+                      )
+                    : entry.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: mine ? _productionPrimary(context) : Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${ranked.points} XP',
+              style: TextStyle(
+                color: mine ? _productionPrimary(context) : Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 enum _PredictionHistoryFilter { all, pending, resolved }
@@ -7072,12 +7608,23 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
           _seasonControl(context, snapshot),
         ],
         const SizedBox(height: 16),
+        if (snapshot.currentUser != null) ...[
+          _StickyUserLeaderboardPill(
+            currentUser: snapshot.currentUser!,
+            profile: widget.profile,
+          ),
+          const SizedBox(height: 16),
+        ],
         if (top3.isNotEmpty) ...[
           _LeaderboardPodium(
             top3: top3,
             currentUid: widget.profile.uid,
-            onTapUser: (uid) =>
-                _showOtherUserProfileDialog(context, uid, widget.repository),
+            onTapUser: (ranked) => _showOtherUserProfileDialog(
+              context,
+              ranked.entry.uid,
+              widget.repository,
+              rank: ranked.rank,
+            ),
           ),
           const SizedBox(height: 16),
         ],
@@ -7118,11 +7665,11 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                   context,
                   entry.uid,
                   widget.repository,
+                  rank: ranked.rank,
                 ),
               );
             },
           ),
-        const SizedBox(height: 80), // Space for sticky bottom pill
       ],
     );
   }
@@ -7214,10 +7761,11 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                       _LeaderboardPodium(
                         top3: top3,
                         currentUid: widget.profile.uid,
-                        onTapUser: (uid) => _showOtherUserProfileDialog(
+                        onTapUser: (ranked) => _showOtherUserProfileDialog(
                           context,
-                          uid,
+                          ranked.entry.uid,
                           widget.repository,
+                          rank: ranked.rank,
                         ),
                       ),
                       if (remaining.isNotEmpty) const SizedBox(height: 14),
@@ -7409,21 +7957,7 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
             previousMonthAvailable,
           );
         }
-        return Stack(
-          children: [
-            _mobileLeaderboard(context, leaderboard, previousMonthAvailable),
-            if (leaderboard.currentUser != null)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 8,
-                child: _StickyUserLeaderboardPill(
-                  currentUser: leaderboard.currentUser!,
-                  profile: widget.profile,
-                ),
-              ),
-          ],
-        );
+        return _mobileLeaderboard(context, leaderboard, previousMonthAvailable);
       },
     ),
   );
@@ -7438,7 +7972,7 @@ class _LeaderboardPodium extends StatelessWidget {
 
   final List<RankedLeaderboardEntry> top3;
   final String currentUid;
-  final ValueChanged<String>? onTapUser;
+  final ValueChanged<RankedLeaderboardEntry>? onTapUser;
 
   @override
   Widget build(BuildContext context) {
@@ -7476,7 +8010,7 @@ class _LeaderboardPodium extends StatelessWidget {
                     medalIcon: '🥈',
                     height: 100,
                     isMine: second.entry.uid == currentUid,
-                    onTap: () => onTapUser?.call(second.entry.uid),
+                    onTap: () => onTapUser?.call(second),
                   ),
           ),
           const SizedBox(width: 8),
@@ -7491,7 +8025,7 @@ class _LeaderboardPodium extends StatelessWidget {
                     medalIcon: '🥇',
                     height: 128,
                     isMine: first.entry.uid == currentUid,
-                    onTap: () => onTapUser?.call(first.entry.uid),
+                    onTap: () => onTapUser?.call(first),
                   ),
           ),
           const SizedBox(width: 8),
@@ -7506,7 +8040,7 @@ class _LeaderboardPodium extends StatelessWidget {
                     medalIcon: '🥉',
                     height: 88,
                     isMine: third.entry.uid == currentUid,
-                    onTap: () => onTapUser?.call(third.entry.uid),
+                    onTap: () => onTapUser?.call(third),
                   ),
           ),
         ],
@@ -7863,8 +8397,7 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
         : '?';
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         gradient: const LinearGradient(
@@ -7886,25 +8419,29 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: _productionPrimary(context),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '#${currentUser.rank}',
-              style: TextStyle(
-                color: _ink,
-                fontWeight: FontWeight.w900,
-                fontSize: 12,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                abuText(context, 'YOUR RANK', 'ترتيبك'),
+                style: TextStyle(
+                  color: _muted,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1,
+                ),
               ),
-            ),
+              Text(
+                '#${currentUser.rank}',
+                style: _display(36, color: _productionPrimary(context)),
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 16),
           Container(
-            width: 34,
-            height: 34,
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(color: _productionPrimary(context)),
@@ -7936,7 +8473,7 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
                     ),
             ),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -7948,7 +8485,7 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
                       abuText(context, 'YOU', 'أنت'),
                       style: TextStyle(
                         color: _productionPrimary(context),
-                        fontSize: 9,
+                        fontSize: 10,
                         fontWeight: FontWeight.w900,
                         letterSpacing: .8,
                       ),
@@ -7961,7 +8498,7 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontWeight: FontWeight.w900,
-                          fontSize: 12,
+                          fontSize: 14,
                         ),
                       ),
                     ),
@@ -7976,7 +8513,7 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
           ),
           Text(
             '${currentUser.points} XP',
-            style: _display(18, color: _productionPrimary(context)),
+            style: _display(20, color: _productionPrimary(context)),
           ),
         ],
       ),
@@ -7987,8 +8524,9 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
 void _showOtherUserProfileDialog(
   BuildContext context,
   String uid,
-  ProductionRepository repository,
-) {
+  ProductionRepository repository, {
+  int? rank,
+}) {
   showDialog(
     context: context,
     builder: (dialogContext) => Dialog(
@@ -8083,10 +8621,11 @@ void _showOtherUserProfileDialog(
                       ),
                       const SizedBox(height: 8),
                       SizedBox(
-                        width: 300,
-                        height: 370,
+                        width: 320,
+                        height: 410,
                         child: _InteractiveFanCard(
                           profile: userProfile,
+                          rank: rank,
                           repository: repository,
                         ),
                       ),
@@ -8235,6 +8774,7 @@ class _ProductionLeaderboardTable extends StatelessWidget {
                     context,
                     entries[index].entry.uid,
                     repository!,
+                    rank: entries[index].rank,
                   )
                 : null,
           ),

@@ -4251,6 +4251,9 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
 
   Future<void> _fetchStats() async {
     if (widget.repository == null) return;
+    final isOwnProfile =
+        widget.repository!.auth.currentUser?.uid == widget.profile.uid;
+    if (!isOwnProfile) return;
     if (widget.rank == null) {
       final r = await widget.repository!.fetchUserRank(widget.profile.uid);
       if (mounted) setState(() => _loadedRank = r);
@@ -4539,62 +4542,77 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                               final effectiveRank =
                                   widget.rank ?? _loadedRank ?? 0;
                               final effectiveAccuracy =
-                                  widget.accuracy ?? _loadedAccuracy ?? 100.0;
+                                  widget.accuracy ?? _loadedAccuracy;
                               final rankText = effectiveRank > 0
                                   ? '#$effectiveRank'
                                   : '—';
-                              final accuracyText = profile.totalPoints > 0
+                              final accuracyText =
+                                  profile.totalPoints > 0 &&
+                                      effectiveAccuracy != null
                                   ? '${effectiveAccuracy.toStringAsFixed(0)}%'
                                   : '—';
                               return Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      _FanCardStat(
-                                        value: '${profile.totalPoints}',
-                                        label: 'TOTAL XP',
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          value: '${profile.totalPoints}',
+                                          label: 'TOTAL XP',
+                                        ),
                                       ),
-                                      _FanCardStat(
-                                        value: rankText,
-                                        label: 'RANK',
-                                        reverse: true,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          value: rankText,
+                                          label: 'RANK',
+                                          reverse: true,
+                                        ),
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 6),
                                   Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      _FanCardStat(
-                                        icon: const _StreakIconWidget(size: 13),
-                                        value: '${profile.currentStreak}',
-                                        label: 'STREAK',
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          icon: const _StreakIconWidget(
+                                            size: 13,
+                                          ),
+                                          value: '${profile.currentStreak}',
+                                          label: 'STREAK',
+                                        ),
                                       ),
-                                      _FanCardStat(
-                                        value: accuracyText,
-                                        label: 'ACCURACY',
-                                        reverse: true,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          value: accuracyText,
+                                          label: 'ACCURACY',
+                                          reverse: true,
+                                        ),
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 6),
                                   Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      _FanCardStat(
-                                        value: '${profile.seasonPoints}',
-                                        label: 'SEASON XP',
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          value: '${profile.seasonPoints}',
+                                          label: 'SEASON XP',
+                                        ),
                                       ),
-                                      _FanCardStat(
-                                        icon: const _StreakIconWidget(size: 13),
-                                        value: '${profile.longestStreak}',
-                                        label: 'BEST',
-                                        reverse: true,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          icon: const _StreakIconWidget(
+                                            size: 13,
+                                          ),
+                                          value: '${profile.longestStreak}',
+                                          label: 'BEST',
+                                          reverse: true,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -4702,7 +4720,9 @@ class _FanCardStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final valueWidget = Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: reverse
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
       children: [
         if (icon != null) ...[icon!, const SizedBox(width: 4)],
         Text(
@@ -4715,13 +4735,17 @@ class _FanCardStat extends StatelessWidget {
         ),
       ],
     );
-    final labelWidget = Text(
-      label,
-      style: TextStyle(
-        color: _muted,
-        fontSize: 9,
-        fontWeight: FontWeight.w800,
-        letterSpacing: .8,
+    final labelWidget = SizedBox(
+      width: double.infinity,
+      child: Text(
+        label,
+        textAlign: reverse ? TextAlign.end : TextAlign.start,
+        style: TextStyle(
+          color: _muted,
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          letterSpacing: .8,
+        ),
       ),
     );
 
