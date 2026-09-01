@@ -7645,7 +7645,6 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
               context,
               ranked.entry.uid,
               widget.repository,
-              rank: ranked.rank,
             ),
           ),
           const SizedBox(height: 16),
@@ -7691,7 +7690,6 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                   context,
                   entry.uid,
                   widget.repository,
-                  rank: ranked.rank,
                 ),
               );
             },
@@ -7792,7 +7790,6 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                           context,
                           ranked.entry.uid,
                           widget.repository,
-                          rank: ranked.rank,
                         ),
                       ),
                       if (remaining.isNotEmpty) const SizedBox(height: 14),
@@ -8566,9 +8563,8 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
 void _showOtherUserProfileDialog(
   BuildContext context,
   String uid,
-  ProductionRepository repository, {
-  int? rank,
-}) {
+  ProductionRepository repository,
+) {
   showDialog(
     context: context,
     builder: (dialogContext) => Dialog(
@@ -8667,7 +8663,6 @@ void _showOtherUserProfileDialog(
                         height: 410,
                         child: _InteractiveFanCard(
                           profile: userProfile,
-                          rank: rank,
                           repository: repository,
                         ),
                       ),
@@ -8822,7 +8817,6 @@ class _ProductionLeaderboardTable extends StatelessWidget {
                     context,
                     entries[index].entry.uid,
                     repository!,
-                    rank: entries[index].rank,
                   )
                 : null,
           ),
@@ -9797,7 +9791,7 @@ class _ProductionProfileState extends State<_ProductionProfile> {
   Uint8List? temporaryImage;
   bool pickingImage = false;
   final ImagePicker imagePicker = ImagePicker();
-  int? userRank;
+  UserLeaderboardRanks? userRanks;
   double? userAccuracy;
 
   Future<void> pickTemporaryImage() async {
@@ -10365,11 +10359,11 @@ class _ProductionProfileState extends State<_ProductionProfile> {
   }
 
   Future<void> _loadStats() async {
-    final r = await widget.repository.fetchUserRank(widget.profile.uid);
+    final ranks = await widget.repository.fetchUserRanks(widget.profile);
     final a = await widget.repository.fetchUserAccuracy(widget.profile.uid);
     if (mounted) {
       setState(() {
-        userRank = r;
+        userRanks = ranks;
         userAccuracy = a;
       });
     }
@@ -10451,7 +10445,8 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                 profile: profile,
                 temporaryImage: temporaryImage,
                 onEdit: editProfile,
-                rank: userRank,
+                monthlyRank: userRanks?.currentMonth,
+                seasonRank: userRanks?.season,
                 accuracy: userAccuracy,
                 repository: widget.repository,
               ),
@@ -10544,7 +10539,8 @@ class _ProductionProfileState extends State<_ProductionProfile> {
           const SizedBox(height: 24),
           _ProductionProfileSummary(
             profile: profile,
-            rank: userRank,
+            monthlyRank: userRanks?.currentMonth,
+            seasonRank: userRanks?.season,
             accuracy: userAccuracy,
           ),
           const SizedBox(height: 24),
@@ -10623,18 +10619,20 @@ class _ProductionProfileState extends State<_ProductionProfile> {
 class _ProductionProfileSummary extends StatelessWidget {
   const _ProductionProfileSummary({
     required this.profile,
-    this.rank,
+    this.monthlyRank,
+    this.seasonRank,
     this.accuracy,
   });
   final AbuUserProfile profile;
-  final int? rank;
+  final int? monthlyRank;
+  final int? seasonRank;
   final double? accuracy;
 
   @override
   Widget build(BuildContext context) {
-    final effectiveRank = rank ?? 0;
     final effectiveAccuracy = accuracy ?? 100.0;
-    final rankText = effectiveRank > 0 ? '#$effectiveRank' : '—';
+    final monthlyRankText = (monthlyRank ?? 0) > 0 ? '#$monthlyRank' : '—';
+    final seasonRankText = (seasonRank ?? 0) > 0 ? '#$seasonRank' : '—';
     final accuracyText = profile.totalPoints > 0
         ? '${effectiveAccuracy.toStringAsFixed(0)}%'
         : '—';
@@ -10653,7 +10651,7 @@ class _ProductionProfileSummary extends StatelessWidget {
               color: _productionPrimary(context),
             ),
             _StatItem(
-              value: rankText,
+              value: seasonRankText,
               label: abuText(context, 'SEASON RANK', 'ترتيب الموسم'),
               color: _gold,
             ),
@@ -10666,6 +10664,11 @@ class _ProductionProfileSummary extends StatelessWidget {
               value: '${profile.monthlyPoints}',
               label: abuText(context, 'THIS MONTH', 'هذا الشهر'),
               color: Colors.white,
+            ),
+            _StatItem(
+              value: monthlyRankText,
+              label: abuText(context, 'MONTH RANK', 'ترتيب الشهر'),
+              color: _productionPrimary(context),
             ),
           ],
         ),

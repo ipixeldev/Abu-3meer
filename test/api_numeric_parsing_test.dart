@@ -16,6 +16,23 @@ void main() {
       expect(parseApiDouble(null, 1), 1.0);
     });
 
+    test(
+      'parses current-month and season rank from the shared rank response',
+      () {
+        final ranks = parseApiUserLeaderboardRanks(<String, dynamic>{
+          'monthlyRank': '24',
+          'seasonRank': 11,
+        });
+
+        expect(ranks.currentMonth, 24);
+        expect(ranks.season, 11);
+        expect(
+          parseApiUserLeaderboardRanks(const <String, dynamic>{}).currentMonth,
+          0,
+        );
+      },
+    );
+
     test('parses shared football matches and preserves provider team ids', () {
       final match = parseApiMatchEvent(<String, dynamic>{
         'id': 'external_1234',

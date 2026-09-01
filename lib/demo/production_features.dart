@@ -2643,14 +2643,16 @@ class _InteractiveFanCard extends StatefulWidget {
     required this.profile,
     this.temporaryImage,
     this.onEdit,
-    this.rank,
+    this.monthlyRank,
+    this.seasonRank,
     this.accuracy,
     this.repository,
   });
   final AbuUserProfile profile;
   final Uint8List? temporaryImage;
   final VoidCallback? onEdit;
-  final int? rank;
+  final int? monthlyRank;
+  final int? seasonRank;
   final double? accuracy;
   final ProductionRepository? repository;
 
@@ -4227,7 +4229,7 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
   static const double _stiffness = 110;
   static const double _damping = 18;
   bool _isHovered = false;
-  int? _loadedRank;
+  UserLeaderboardRanks? _loadedRanks;
   double? _loadedAccuracy;
 
   @override
@@ -4253,12 +4255,11 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
     if (widget.repository == null) return;
     final isOwnProfile =
         widget.repository!.auth.currentUser?.uid == widget.profile.uid;
-    if (!isOwnProfile) return;
-    if (widget.rank == null) {
-      final r = await widget.repository!.fetchUserRank(widget.profile.uid);
-      if (mounted) setState(() => _loadedRank = r);
+    if (widget.monthlyRank == null || widget.seasonRank == null) {
+      final ranks = await widget.repository!.fetchUserRanks(widget.profile);
+      if (mounted) setState(() => _loadedRanks = ranks);
     }
-    if (widget.accuracy == null) {
+    if (isOwnProfile && widget.accuracy == null) {
       final a = await widget.repository!.fetchUserAccuracy(widget.profile.uid);
       if (mounted) setState(() => _loadedAccuracy = a);
     }
@@ -4539,12 +4540,21 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                           const SizedBox(height: 10),
                           Builder(
                             builder: (context) {
-                              final effectiveRank =
-                                  widget.rank ?? _loadedRank ?? 0;
+                              final effectiveMonthlyRank =
+                                  widget.monthlyRank ??
+                                  _loadedRanks?.currentMonth ??
+                                  0;
+                              final effectiveSeasonRank =
+                                  widget.seasonRank ??
+                                  _loadedRanks?.season ??
+                                  0;
                               final effectiveAccuracy =
                                   widget.accuracy ?? _loadedAccuracy;
-                              final rankText = effectiveRank > 0
-                                  ? '#$effectiveRank'
+                              final monthlyRankText = effectiveMonthlyRank > 0
+                                  ? '#$effectiveMonthlyRank'
+                                  : '—';
+                              final seasonRankText = effectiveSeasonRank > 0
+                                  ? '#$effectiveSeasonRank'
                                   : '—';
                               final accuracyText =
                                   profile.totalPoints > 0 &&
@@ -4565,8 +4575,8 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: _FanCardStat(
-                                          value: rankText,
-                                          label: 'RANK',
+                                          value: monthlyRankText,
+                                          label: 'MONTH RANK',
                                           reverse: true,
                                         ),
                                       ),
@@ -4606,11 +4616,8 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                                       const SizedBox(width: 12),
                                       Expanded(
                                         child: _FanCardStat(
-                                          icon: const _StreakIconWidget(
-                                            size: 13,
-                                          ),
-                                          value: '${profile.longestStreak}',
-                                          label: 'BEST',
+                                          value: seasonRankText,
+                                          label: 'SEASON RANK',
                                           reverse: true,
                                         ),
                                       ),

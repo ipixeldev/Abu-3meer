@@ -55,6 +55,25 @@ String footballTeamKeyForMatching(String value) {
 }
 
 @visibleForTesting
+int leaderboardRankForProfile(
+  Iterable<RankedLeaderboardEntry> entries,
+  AbuUserProfile profile,
+) {
+  final identifiers = <String>{
+    profile.uid.trim().toLowerCase(),
+    profile.username.trim().toLowerCase(),
+  }..removeWhere((value) => value.isEmpty);
+  for (final ranked in entries) {
+    final entryIdentifiers = <String>{
+      ranked.entry.uid.trim().toLowerCase(),
+      ranked.entry.username.trim().toLowerCase(),
+    }..removeWhere((value) => value.isEmpty);
+    if (entryIdentifiers.any(identifiers.contains)) return ranked.rank;
+  }
+  return 0;
+}
+
+@visibleForTesting
 bool sameFootballMatchForMatching(MatchEvent left, MatchEvent right) {
   if (left.id == right.id) return true;
   final sameHome =
@@ -835,13 +854,30 @@ class ProductionRepository {
     return null;
   }
 
-  Future<int> fetchUserRank(String uid) async {
-    if (uid.isEmpty || uid == 'guest') return 0;
+  Future<UserLeaderboardRanks> fetchUserRanks(AbuUserProfile profile) async {
+    if (profile.isGuest) return const UserLeaderboardRanks.unranked();
+
+    if (auth.currentUser?.uid == profile.uid) {
+      try {
+        return await apiRepo.fetchMyLeaderboardRanks();
+      } catch (_) {
+        // Public snapshots below remain a useful fallback if the personalized
+        // rank endpoint is briefly unavailable.
+      }
+    }
+
     try {
-      final rank = await apiRepo.fetchMySeasonRank();
-      if (rank > 0) return rank;
-    } catch (_) {}
-    return 0;
+      final snapshots = await Future.wait<LeaderboardSnapshot>([
+        apiRepo.fetchLeaderboardSnapshot(period: 'monthly'),
+        apiRepo.fetchLeaderboardSnapshot(period: 'season'),
+      ]);
+      return UserLeaderboardRanks(
+        currentMonth: leaderboardRankForProfile(snapshots[0].entries, profile),
+        season: leaderboardRankForProfile(snapshots[1].entries, profile),
+      );
+    } catch (_) {
+      return const UserLeaderboardRanks.unranked();
+    }
   }
 
   Future<double> fetchUserAccuracy(String uid) async {

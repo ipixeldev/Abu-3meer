@@ -19,6 +19,16 @@ double parseApiDouble(dynamic value, [double fallback = 0]) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
+@visibleForTesting
+UserLeaderboardRanks parseApiUserLeaderboardRanks(dynamic value) {
+  if (value is! Map) return const UserLeaderboardRanks.unranked();
+  final ranks = Map<String, dynamic>.from(value);
+  return UserLeaderboardRanks(
+    currentMonth: parseApiInt(ranks['monthlyRank']),
+    season: parseApiInt(ranks['seasonRank']),
+  );
+}
+
 enum YouTubeOAuthFlowState {
   pending,
   verified,
@@ -1319,19 +1329,22 @@ class ApiProductionRepository {
           .map((ranked) => ranked.entry)
           .toList(growable: false);
 
-  Future<int> fetchMySeasonRank() async {
+  Future<UserLeaderboardRanks> fetchMyLeaderboardRanks() async {
     final res = await api.get(
       '/leaderboards/my-rank',
       requireAuth: true,
       bypassCache: true,
     );
-    if (res is Map) return parseApiInt(res['seasonRank']);
+    if (res is Map) return parseApiUserLeaderboardRanks(res);
     throw AbuApiException(
       statusCode: 502,
-      message: 'The server returned an invalid season rank.',
+      message: 'The server returned invalid leaderboard ranks.',
       details: res,
     );
   }
+
+  Future<int> fetchMySeasonRank() async =>
+      (await fetchMyLeaderboardRanks()).season;
 
   Future<void> updateSupportedTeam(String teamName, {String? teamLogo}) async {
     await api.put(

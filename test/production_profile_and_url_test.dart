@@ -161,6 +161,57 @@ void main() {
       },
     );
   });
+
+  group('profile leaderboard ranks', () {
+    test('matches public leaderboard identities without case sensitivity', () {
+      final profile = _profile(
+        currentStreak: 2,
+        longestStreak: 4,
+        lastActivityAt: DateTime.utc(2026, 9, 1),
+      );
+      final entries = <RankedLeaderboardEntry>[
+        RankedLeaderboardEntry(
+          entry: const LeaderboardEntry(
+            uid: 'someone_else',
+            username: 'someone_else',
+            displayName: 'Someone Else',
+            avatarUrl: '',
+            supportedTeam: '',
+            monthlyPoints: 90,
+            seasonPoints: 90,
+            totalPoints: 90,
+            isMember: false,
+          ),
+          rank: 1,
+          points: 90,
+        ),
+        RankedLeaderboardEntry(
+          entry: const LeaderboardEntry(
+            uid: 'FAN_7',
+            username: 'FAN_7',
+            displayName: 'Fan Seven',
+            avatarUrl: '',
+            supportedTeam: '',
+            monthlyPoints: 60,
+            seasonPoints: 60,
+            totalPoints: 60,
+            isMember: false,
+          ),
+          rank: 24,
+          points: 60,
+        ),
+      ];
+
+      expect(leaderboardRankForProfile(entries, profile), 24);
+      expect(
+        leaderboardRankForProfile(
+          entries,
+          profile.copyWith(username: 'not_ranked'),
+        ),
+        0,
+      );
+    });
+  });
 }
 
 AbuUserProfile _profile({

@@ -1546,6 +1546,21 @@ class RankedLeaderboardEntry {
   final int points;
 }
 
+/// A fan's standing in the two live recognition periods shown on profile cards.
+///
+/// A zero value means the fan has not earned rank-eligible XP in that period.
+class UserLeaderboardRanks {
+  const UserLeaderboardRanks({
+    required this.currentMonth,
+    required this.season,
+  });
+
+  const UserLeaderboardRanks.unranked() : currentMonth = 0, season = 0;
+
+  final int currentMonth;
+  final int season;
+}
+
 class LeaderboardSnapshot {
   const LeaderboardSnapshot({
     required this.entries,
