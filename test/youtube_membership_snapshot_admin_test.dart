@@ -91,8 +91,8 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('IMPORT CSV'), findsOneWidget);
-    await tester.tap(find.widgetWithText(OutlinedButton, 'IMPORT CSV'));
+    expect(find.text('IMPORT CSV / TSV'), findsOneWidget);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'IMPORT CSV / TSV'));
     await tester.pumpAndSettle();
     expect(pickerCalled, isTrue);
     expect(find.text('Replace membership snapshot?'), findsOneWidget);

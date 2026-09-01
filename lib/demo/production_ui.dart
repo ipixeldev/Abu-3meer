@@ -10382,8 +10382,8 @@ class _ProductionProfileState extends State<_ProductionProfile> {
             content: Text(
               abuText(
                 context,
-                'Google is linked. Tap Verify again to connect the same YouTube account; Google sign-in alone does not prove membership.',
-                'تم ربط Google. اضغط التوثيق مجدداً لربط حساب يوتيوب نفسه؛ تسجيل Google وحده لا يثبت العضوية.',
+                'Google is linked. Tap again to prove which YouTube channel belongs to you. Membership comes only from the current admin-uploaded snapshot.',
+                'تم ربط Google. اضغط مجدداً لإثبات قناة يوتيوب التابعة لك. تأتي حالة العضوية فقط من اللقطة الحالية التي رفعها المسؤول.',
               ),
             ),
           ),
@@ -10407,8 +10407,8 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                     )
                   : abuText(
                       context,
-                      'YouTube membership was not verified. You can reconnect and choose another channel.',
-                      'لم يتم توثيق عضوية يوتيوب. يمكنك إعادة الربط واختيار قناة أخرى.',
+                      'Your channel was linked but did not match the current membership snapshot. You can reconnect and choose another channel.',
+                      'تم ربط قناتك لكنها لم تطابق لقطة العضويات الحالية. يمكنك إعادة الربط واختيار قناة أخرى.',
                     ),
             ),
           ),
@@ -10515,8 +10515,8 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                             )
                           : abuText(
                               context,
-                              'CONNECT & VERIFY YOUTUBE',
-                              'ربط وتوثيق يوتيوب',
+                              'LINK & CHECK YOUTUBE',
+                              'ربط ومطابقة يوتيوب',
                             ),
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
@@ -10948,7 +10948,6 @@ Future<bool?> _openYouTubeMembershipConnection(
     context: context,
     barrierDismissible: false,
     builder: (_) => _YouTubeOAuthStatusDialog(
-      creatorConnection: false,
       checkStatus: () => repository.checkYouTubeMembershipConnection(
         uid,
         flowId: attempt.flowId,
@@ -10957,49 +10956,24 @@ Future<bool?> _openYouTubeMembershipConnection(
   );
 }
 
-Future<bool?> _openYouTubeCreatorConnection(
-  BuildContext context, {
-  required ProductionRepository repository,
-}) async {
-  final attempt = await repository.startYouTubeCreatorConnection();
-  final opened = await launchUrl(
-    attempt.authorizationUrl,
-    mode: LaunchMode.externalApplication,
-  );
-  if (!opened) {
-    throw StateError('Google authorization could not be opened.');
-  }
-  if (!context.mounted) return null;
-  return showDialog<bool>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => _YouTubeOAuthStatusDialog(
-      creatorConnection: true,
-      checkStatus: () =>
-          repository.checkYouTubeCreatorConnection(flowId: attempt.flowId),
-    ),
-  );
-}
-
 String _localizedYouTubeOAuthError(
   BuildContext context,
-  YouTubeOAuthErrorCode code, {
-  required bool creatorConnection,
-}) => switch (code) {
+  YouTubeOAuthErrorCode code,
+) => switch (code) {
   YouTubeOAuthErrorCode.creatorMembersApiUnavailable => abuText(
     context,
-    'Google has not enabled the YouTube Members API for this creator channel. The channel may need YouTube Partner Manager approval before automatic verification can work.',
-    'لم تفعّل Google واجهة أعضاء يوتيوب لهذه القناة. قد تحتاج القناة إلى موافقة مدير شركاء يوتيوب قبل أن يعمل التحقق التلقائي.',
+    'The current membership snapshot is unavailable. Ask an administrator to import a complete current UTF-8 CSV/TSV export.',
+    'لقطة العضويات الحالية غير متاحة. اطلب من المسؤول استيراد ملف CSV/TSV حالي وكامل بترميز UTF-8.',
   ),
   YouTubeOAuthErrorCode.creatorMembershipsDisabled => abuText(
     context,
-    'Channel Memberships are not enabled for the configured ABU 3MEER YouTube channel.',
-    'عضويات القناة غير مفعلة لقناة ABU 3MEER المحددة على يوتيوب.',
+    'No active membership snapshot is available. Contact support.',
+    'لا توجد لقطة عضويات نشطة. تواصل مع الدعم.',
   ),
   YouTubeOAuthErrorCode.creatorChannelMismatch => abuText(
     context,
-    'The authorized Google account does not own the configured ABU 3MEER channel. Reconnect using the channel-owner account.',
-    'حساب Google الذي تم تفويضه لا يملك قناة ABU 3MEER المحددة. أعد الربط باستخدام حساب مالك القناة.',
+    'The selected Google account does not prove ownership of the expected YouTube channel. Reconnect and choose the correct account.',
+    'حساب Google المحدد لا يثبت ملكية قناة يوتيوب المتوقعة. أعد الربط واختر الحساب الصحيح.',
   ),
   YouTubeOAuthErrorCode.googleAccountMismatch => abuText(
     context,
@@ -11033,22 +11007,18 @@ String _localizedYouTubeOAuthError(
   ),
   YouTubeOAuthErrorCode.creatorNotConnected => abuText(
     context,
-    creatorConnection
-        ? 'Connect the ABU 3MEER channel-owner account before checking memberships.'
-        : 'The ABU 3MEER channel owner must finish the secure creator connection before memberships can be verified.',
-    creatorConnection
-        ? 'اربط حساب مالك قناة ABU 3MEER قبل التحقق من العضويات.'
-        : 'يجب أن يكمل مالك قناة ABU 3MEER ربط حساب المنشئ الآمن قبل توثيق العضويات.',
+    'No active complete membership snapshot is available. Ask an administrator to import the current CSV/TSV export.',
+    'لا توجد لقطة عضويات كاملة ونشطة. اطلب من المسؤول استيراد ملف CSV/TSV الحالي.',
   ),
   YouTubeOAuthErrorCode.creatorReauthorizationRequired => abuText(
     context,
-    'The channel-owner authorization is no longer valid. An administrator must reconnect the creator account.',
-    'لم يعد تفويض مالك القناة صالحاً. يجب على أحد المسؤولين إعادة ربط حساب المنشئ.',
+    'The membership snapshot must be refreshed by an administrator.',
+    'يجب على أحد المسؤولين تحديث لقطة العضويات.',
   ),
   YouTubeOAuthErrorCode.creatorReusableAuthorizationMissing => abuText(
     context,
-    'Google did not issue a reusable creator authorization. Revoke the previous ABU 3MEER grant in Google Account settings, then reconnect.',
-    'لم تصدر Google تفويضاً دائماً لحساب المنشئ. ألغِ تفويض ABU 3MEER السابق من إعدادات حساب Google ثم أعد الربط.',
+    'The membership snapshot is not ready. Contact support.',
+    'لقطة العضويات غير جاهزة. تواصل مع الدعم.',
   ),
   YouTubeOAuthErrorCode.youtubeScopeMissing => abuText(
     context,
@@ -11070,6 +11040,21 @@ String _localizedYouTubeOAuthError(
     'YouTube verification is not configured correctly on the ABU 3MEER server. Contact support.',
     'لم يتم إعداد التحقق عبر يوتيوب بشكل صحيح على خادم ABU 3MEER. تواصل مع الدعم.',
   ),
+  YouTubeOAuthErrorCode.youtubeSnapshotNotImported => abuText(
+    context,
+    'Membership checking is not ready because no complete member snapshot has been imported. Contact support.',
+    'التحقق من العضوية غير جاهز لأنه لم يتم استيراد لقطة كاملة للأعضاء. تواصل مع الدعم.',
+  ),
+  YouTubeOAuthErrorCode.youtubeSnapshotExpired => abuText(
+    context,
+    'The membership snapshot has expired. Ask an administrator to import a fresh complete CSV/TSV export.',
+    'انتهت صلاحية لقطة العضويات. اطلب من المسؤول استيراد ملف CSV/TSV جديد وكامل.',
+  ),
+  YouTubeOAuthErrorCode.youtubeSnapshotUnavailable => abuText(
+    context,
+    'The membership snapshot is temporarily unavailable. Your channel was not marked as a member; try again later.',
+    'لقطة العضويات غير متاحة مؤقتاً. لم يتم اعتبار قناتك عضواً؛ حاول لاحقاً.',
+  ),
   YouTubeOAuthErrorCode.none || YouTubeOAuthErrorCode.unknown => abuText(
     context,
     'YouTube authorization could not be completed. Nothing was linked. Close this message and try again.',
@@ -11078,12 +11063,8 @@ String _localizedYouTubeOAuthError(
 };
 
 class _YouTubeOAuthStatusDialog extends StatefulWidget {
-  const _YouTubeOAuthStatusDialog({
-    required this.creatorConnection,
-    required this.checkStatus,
-  });
+  const _YouTubeOAuthStatusDialog({required this.checkStatus});
 
-  final bool creatorConnection;
   final Future<YouTubeOAuthStatus?> Function() checkStatus;
 
   @override
@@ -11162,37 +11143,25 @@ class _YouTubeOAuthStatusDialogState extends State<_YouTubeOAuthStatusDialog>
         ? _red
         : _gold;
 
-    final title = widget.creatorConnection
-        ? abuText(context, 'Connect channel owner', 'ربط مالك القناة')
-        : abuText(context, 'Verify YouTube membership', 'توثيق عضوية يوتيوب');
+    final title = abuText(context, 'Link YouTube channel', 'ربط قناة يوتيوب');
     final body = successful
-        ? widget.creatorConnection
-              ? abuText(
-                  context,
-                  'The creator account is connected securely on the server${currentChannelTitle.isEmpty ? '' : ' as $currentChannelTitle'}. Creator tokens are never sent to this app.',
-                  'تم ربط حساب مالك القناة بأمان على الخادم${currentChannelTitle.isEmpty ? '' : ' باسم $currentChannelTitle'}. لا تُرسل رموز مالك القناة إلى التطبيق.',
-                )
-              : abuText(
-                  context,
-                  'Membership verified${currentChannelTitle.isEmpty ? '' : ' for $currentChannelTitle'}. Your profile has been refreshed.',
-                  'تم توثيق العضوية${currentChannelTitle.isEmpty ? '' : ' للقناة $currentChannelTitle'}. تم تحديث ملفك.',
-                )
+        ? abuText(
+            context,
+            'Channel ownership confirmed${currentChannelTitle.isEmpty ? '' : ' for $currentChannelTitle'}. Its channel ID matched the current admin-uploaded membership snapshot.',
+            'تم تأكيد ملكية القناة${currentChannelTitle.isEmpty ? '' : ' $currentChannelTitle'}. تطابق معرّفها مع لقطة العضويات الحالية التي رفعها المسؤول.',
+          )
         : notMember
         ? abuText(
             context,
-            'The connected YouTube channel is not an active paid member of ABU 3MEER. If you chose the wrong channel, close this message and connect again.',
-            'قناة يوتيوب المرتبطة ليست عضواً مدفوعاً نشطاً في ABU 3MEER. إذا اخترت قناة غير صحيحة، أغلق الرسالة وحاول الربط مجدداً.',
+            'Channel ownership was confirmed, but its channel ID is not in the current complete membership snapshot. If you chose the wrong channel, close this message and connect again.',
+            'تم تأكيد ملكية القناة، لكن معرّفها غير موجود في لقطة العضويات الكاملة الحالية. إذا اخترت قناة غير صحيحة، أغلق الرسالة وأعد الربط.',
           )
         : failed
-        ? _localizedYouTubeOAuthError(
-            context,
-            current!.errorCode,
-            creatorConnection: widget.creatorConnection,
-          )
+        ? _localizedYouTubeOAuthError(context, current!.errorCode)
         : abuText(
             context,
-            'Finish Google authorization in the browser, then return here. We only check the server result; no Google or creator token is stored in the app.',
-            'أكمل تفويض Google في المتصفح ثم عد إلى هنا. يتحقق التطبيق من نتيجة الخادم فقط، ولا يخزن أي رمز Google أو رمز لمالك القناة.',
+            'Finish Google authorization in the browser, then return here. This only proves which YouTube channel ID belongs to you; the app does not store a Google access token.',
+            'أكمل تفويض Google في المتصفح ثم عد إلى هنا. هذه العملية تثبت فقط معرّف قناة يوتيوب التابع لك؛ لا يخزن التطبيق رمز وصول Google.',
           );
 
     return AlertDialog(
@@ -11485,8 +11454,8 @@ class _ProductionSettings extends StatelessWidget {
                       Text(
                         abuText(
                           context,
-                          'First link Google to this existing account, then connect the same YouTube account so the server can identify its channel and check paid membership. Google sign-in alone does not prove membership. Verified members receive 2× XP on correct predictions and video questions. XP cannot be bought, transferred, redeemed, or used to unlock anything.',
-                          'اربط Google أولاً بهذا الحساب الحالي، ثم اربط حساب يوتيوب نفسه ليحدد الخادم القناة ويتحقق من العضوية المدفوعة. تسجيل الدخول عبر Google وحده لا يثبت العضوية. يحصل الأعضاء الموثقون على XP مضاعف للتوقعات وأسئلة الفيديو الصحيحة. لا يمكن شراء XP أو نقلها أو استبدالها ولا تفتح أي مزايا.',
+                          'Link Google, then authorize YouTube only to prove which channel ID belongs to you. Membership status comes exclusively from the latest complete UTF-8 CSV/TSV uploaded by admins; linking Google or YouTube does not itself prove membership. Matched members receive 2× XP on correct predictions and video questions. XP cannot be bought, transferred, redeemed, or used to unlock anything.',
+                          'اربط Google، ثم فوّض YouTube فقط لإثبات معرّف القناة التابعة لك. تأتي حالة العضوية حصرياً من أحدث ملف CSV/TSV كامل بترميز UTF-8 رفعه المسؤولون؛ ربط Google أو YouTube لا يثبت العضوية بمفرده. يحصل الأعضاء المطابقون على XP مضاعف للتوقعات وأسئلة الفيديو الصحيحة. لا يمكن شراء XP أو نقلها أو استبدالها ولا تفتح أي مزايا.',
                         ),
                         style: TextStyle(color: _muted, height: 1.45),
                       ),
@@ -11504,8 +11473,8 @@ class _ProductionSettings extends StatelessWidget {
                                         content: Text(
                                           abuText(
                                             context,
-                                            'Google is linked to this account. Now tap Connect & Verify YouTube.',
-                                            'تم ربط Google بهذا الحساب. اضغط الآن على ربط وتوثيق يوتيوب.',
+                                            'Google is linked to this account. Now link YouTube to prove your channel ID.',
+                                            'تم ربط Google بهذا الحساب. اربط YouTube الآن لإثبات معرّف قناتك.',
                                           ),
                                         ),
                                       ),
@@ -11524,8 +11493,8 @@ class _ProductionSettings extends StatelessWidget {
                                         content: Text(
                                           abuText(
                                             context,
-                                            'YouTube membership verified and profile refreshed.',
-                                            'تم توثيق عضوية يوتيوب وتحديث الملف.',
+                                            'YouTube channel linked and membership snapshot matched.',
+                                            'تم ربط قناة يوتيوب ومطابقتها مع لقطة العضويات.',
                                           ),
                                         ),
                                       ),
@@ -11556,10 +11525,10 @@ class _ProductionSettings extends StatelessWidget {
                                   context,
                                   profile.isYouTubeMember
                                       ? 'RECONNECT / REFRESH YOUTUBE'
-                                      : 'CONNECT & VERIFY YOUTUBE',
+                                      : 'LINK & CHECK YOUTUBE',
                                   profile.isYouTubeMember
                                       ? 'إعادة ربط / تحديث يوتيوب'
-                                      : 'ربط وتوثيق يوتيوب',
+                                      : 'ربط ومطابقة يوتيوب',
                                 ),
                         ),
                       ),
@@ -11952,8 +11921,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Sharing', 'المشاركة'),
       abuText(
         context,
-        'We use service providers such as Firebase, Google sign-in, Apple sign-in, YouTube Data API, push-notification delivery, hosting, and football data providers. User Google access tokens are used only to complete YouTube verification and are not retained. The channel owner authorization is encrypted on the backend. We do not sell personal data.',
-        'نستخدم مزودي خدمات مثل Firebase وتسجيل الدخول عبر Google وApple وواجهة YouTube Data API وتسليم الإشعارات والاستضافة ومزودي بيانات كرة القدم. تُستخدم رموز وصول المستخدم إلى Google فقط لإكمال توثيق يوتيوب ولا نحتفظ بها، بينما يُحفظ تفويض مالك القناة مشفراً في الخادم. لا نبيع البيانات الشخصية.',
+        'We use service providers such as Firebase, Google sign-in, Apple sign-in, YouTube Data API, push-notification delivery, hosting, and football data providers. A temporary user Google authorization is used only to prove ownership of a YouTube channel ID and is not retained. Membership is determined by matching that ID against a complete CSV/TSV snapshot uploaded by administrators. We do not sell personal data.',
+        'نستخدم مزودي خدمات مثل Firebase وتسجيل الدخول عبر Google وApple وواجهة YouTube Data API وتسليم الإشعارات والاستضافة ومزودي بيانات كرة القدم. يُستخدم تفويض Google المؤقت للمستخدم فقط لإثبات ملكية معرّف قناة يوتيوب ولا نحتفظ به. تُحدد العضوية بمطابقة هذا المعرّف مع لقطة CSV/TSV كاملة يرفعها المسؤولون. لا نبيع البيانات الشخصية.',
       ),
     ),
     (
@@ -11968,8 +11937,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Your Controls', 'خياراتك'),
       abuText(
         context,
-        'You can change notification preferences in Settings, link Google for membership verification, and delete your account from Settings. Account deletion removes the profile and personal account data handled by Abu 3meer, subject to fraud prevention and legal retention requirements.',
-        'يمكنك تغيير تفضيلات الإشعارات في الإعدادات وربط Google للتحقق من العضوية وحذف حسابك من الإعدادات. حذف الحساب يزيل الملف والبيانات الشخصية التي يديرها أبو عمير مع مراعاة متطلبات منع الاحتيال والاحتفاظ القانوني.',
+        'You can change notification preferences in Settings, link Google to prove your YouTube channel identity, and delete your account from Settings. Account deletion removes the profile and personal account data handled by Abu 3meer, subject to fraud prevention and legal retention requirements.',
+        'يمكنك تغيير تفضيلات الإشعارات في الإعدادات وربط Google لإثبات هوية قناتك على يوتيوب وحذف حسابك من الإعدادات. حذف الحساب يزيل الملف والبيانات الشخصية التي يديرها أبو عمير مع مراعاة متطلبات منع الاحتيال والاحتفاظ القانوني.',
       ),
     ),
     (
@@ -12053,8 +12022,8 @@ _LegalDocument _termsLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Accounts', 'الحسابات'),
       abuText(
         context,
-        'Use accurate account information and keep your sign-in secure. You may sign in with email, Google, or Apple where available. Email or Apple users can link Google to the same account for YouTube membership verification.',
-        'استخدم معلومات حساب صحيحة وحافظ على أمان تسجيل الدخول. يمكنك تسجيل الدخول بالبريد الإلكتروني أو Google أو Apple حيثما توفر ذلك. يمكن لمستخدمي البريد أو Apple ربط Google بالحساب نفسه للتحقق من عضوية يوتيوب.',
+        'Use accurate account information and keep your sign-in secure. You may sign in with email, Google, or Apple where available. Email or Apple users can link Google to the same account to prove ownership of their YouTube channel ID so it can be matched against the admin-uploaded membership snapshot.',
+        'استخدم معلومات حساب صحيحة وحافظ على أمان تسجيل الدخول. يمكنك تسجيل الدخول بالبريد الإلكتروني أو Google أو Apple حيثما توفر ذلك. يمكن لمستخدمي البريد أو Apple ربط Google بالحساب نفسه لإثبات ملكية معرّف قناتهم على يوتيوب حتى تتم مطابقته مع لقطة العضويات التي رفعها المسؤول.',
       ),
     ),
     (

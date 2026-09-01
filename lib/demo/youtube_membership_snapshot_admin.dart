@@ -9,8 +9,7 @@ typedef YouTubeMembershipSnapshotImporter =
     );
 typedef YouTubeMembershipSnapshotPicker = Future<XFile?> Function();
 
-/// Admin-only fallback for channels where Google's creator Members API is not
-/// allowlisted or temporarily unavailable. Live API results remain primary.
+/// Admin-managed source of truth for active YouTube channel memberships.
 class AdminYouTubeMembershipSnapshotCard extends StatefulWidget {
   const AdminYouTubeMembershipSnapshotCard({
     super.key,
@@ -114,8 +113,8 @@ class _AdminYouTubeMembershipSnapshotCardState
           content: Text(
             abuText(
               dialogContext,
-              'This imports the complete current-member list. Linked channels missing from the file become non-members. The live YouTube API remains primary whenever it is available.',
-              'سيتم استيراد القائمة الكاملة للأعضاء الحاليين. القنوات المرتبطة غير الموجودة في الملف ستصبح غير أعضاء. تبقى واجهة يوتيوب المباشرة هي المصدر الأساسي عند توفرها.',
+              'Import the complete current-member list as UTF-8 CSV or TSV. This replaces the previous snapshot, so every linked channel missing from the file becomes a non-member.',
+              'استورد القائمة الكاملة للأعضاء الحاليين بصيغة CSV أو TSV وبترميز UTF-8. هذا يستبدل اللقطة السابقة، لذلك ستصبح كل قناة مرتبطة غير موجودة في الملف غير عضو.',
             ),
           ),
           actions: [
@@ -179,8 +178,8 @@ class _AdminYouTubeMembershipSnapshotCardState
     if (status.state == YouTubeMembershipSnapshotState.notImported) {
       return abuText(
         context,
-        'No fallback snapshot imported. Upload the complete YouTube members CSV/TSV export.',
-        'لم يتم استيراد لقطة احتياطية. ارفع ملف CSV/TSV الكامل لأعضاء يوتيوب.',
+        'No membership snapshot imported. Upload the complete UTF-8 YouTube members CSV/TSV export.',
+        'لم يتم استيراد لقطة العضويات. ارفع ملف CSV/TSV الكامل لأعضاء يوتيوب بترميز UTF-8.',
       );
     }
     final expires = status.expiresAt == null
@@ -228,8 +227,8 @@ class _AdminYouTubeMembershipSnapshotCardState
                   Text(
                     abuText(
                       context,
-                      'Members CSV fallback',
-                      'نسخة CSV الاحتياطية للأعضاء',
+                      'Membership CSV / TSV',
+                      'ملف عضويات CSV / TSV',
                     ),
                     style: const TextStyle(fontWeight: FontWeight.w900),
                   ),
@@ -265,8 +264,8 @@ class _AdminYouTubeMembershipSnapshotCardState
               label: Text(
                 abuText(
                   context,
-                  active ? 'REPLACE' : 'IMPORT CSV',
-                  active ? 'استبدال' : 'استيراد CSV',
+                  active ? 'REPLACE' : 'IMPORT CSV / TSV',
+                  active ? 'استبدال' : 'استيراد CSV / TSV',
                 ),
               ),
             ),

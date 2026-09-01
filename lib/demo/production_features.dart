@@ -7580,14 +7580,11 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
   final _search = TextEditingController();
   Timer? _debounce;
   late Future<List<AbuUserProfile>> _users;
-  late Future<YouTubeOAuthStatus> _creatorStatus;
-  bool _connectingCreator = false;
 
   @override
   void initState() {
     super.initState();
     _users = widget.repository.fetchAdminUsers();
-    _creatorStatus = widget.repository.fetchYouTubeCreatorConnectionStatus();
   }
 
   @override
@@ -7608,118 +7605,6 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), _refresh);
   }
-
-  Future<void> _connectCreator() async {
-    if (_connectingCreator) return;
-    setState(() => _connectingCreator = true);
-    try {
-      await _openYouTubeCreatorConnection(
-        context,
-        repository: widget.repository,
-      );
-      if (!mounted) return;
-      setState(() {
-        _connectingCreator = false;
-        _creatorStatus = widget.repository
-            .fetchYouTubeCreatorConnectionStatus();
-      });
-      _refresh();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _connectingCreator = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(productionErrorMessage(error))));
-    }
-  }
-
-  Widget _creatorConnectionCard() => FutureBuilder<YouTubeOAuthStatus>(
-    future: _creatorStatus,
-    builder: (context, snapshot) {
-      final connected = snapshot.data?.state == YouTubeOAuthFlowState.connected;
-      final channelTitle = snapshot.data?.channelTitle ?? '';
-      return Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: connected
-              ? _productionPrimary(context).withValues(alpha: .08)
-              : _surface2,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: connected
-                ? _productionPrimary(context).withValues(alpha: .45)
-                : _line,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              connected ? Icons.verified_rounded : Icons.vpn_key_rounded,
-              color: connected ? _productionPrimary(context) : _gold,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    connected
-                        ? abuText(
-                            context,
-                            'Creator connected',
-                            'تم ربط مالك القناة',
-                          )
-                        : abuText(
-                            context,
-                            'Channel-owner authorization',
-                            'تفويض مالك القناة',
-                          ),
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    connected
-                        ? (channelTitle.isEmpty
-                              ? abuText(
-                                  context,
-                                  'Membership checks are authorized on the server.',
-                                  'تم تفويض التحقق من العضوية على الخادم.',
-                                )
-                              : channelTitle)
-                        : snapshot.connectionState == ConnectionState.waiting
-                        ? abuText(
-                            context,
-                            'Checking secure server connection…',
-                            'جارٍ فحص اتصال الخادم الآمن…',
-                          )
-                        : abuText(
-                            context,
-                            'Authorize the ABU 3MEER channel owner. Creator tokens stay on the server and are never shown in this app.',
-                            'فوّض مالك قناة ABU 3MEER. تبقى رموز المالك على الخادم ولا تظهر في التطبيق.',
-                          ),
-                    style: const TextStyle(color: _muted, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            FilledButton(
-              onPressed: _connectingCreator ? null : _connectCreator,
-              child: _connectingCreator
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(
-                      connected
-                          ? abuText(context, 'RECONNECT', 'إعادة الربط')
-                          : abuText(context, 'CONNECT', 'ربط'),
-                    ),
-            ),
-          ],
-        ),
-      );
-    },
-  );
 
   String _verificationDetails(BuildContext context, AbuUserProfile user) {
     if (!user.youtubeChannelLinked) {
@@ -7759,15 +7644,13 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
   Widget build(BuildContext context) => AlertDialog(
     insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
     title: Text(
-      abuText(context, 'YouTube verification status', 'حالة توثيق يوتيوب'),
+      abuText(context, 'YouTube membership snapshot', 'لقطة عضويات يوتيوب'),
     ),
     content: SizedBox(
       width: 600,
       height: math.min(MediaQuery.sizeOf(context).height * .78, 680),
       child: Column(
         children: [
-          _creatorConnectionCard(),
-          const SizedBox(height: 12),
           AdminYouTubeMembershipSnapshotCard(
             repository: widget.repository,
             onImported: _refresh,
@@ -7776,8 +7659,8 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
           Text(
             abuText(
               context,
-              'User membership below is read-only and comes from secure server verification with YouTube. Matching uses the linked channel ID; the live API is primary and a current complete admin snapshot is used only when that API is unavailable.',
-              'حالة العضوية أدناه للقراءة فقط وتأتي من تحقق الخادم الآمن مع يوتيوب. تتم المطابقة بمعرّف القناة المرتبطة؛ الواجهة المباشرة هي المصدر الأساسي وتُستخدم لقطة إدارية كاملة وحديثة فقط عند تعذرها.',
+              'This complete admin-uploaded UTF-8 CSV/TSV is the membership authority. Users link Google/YouTube only to prove their channel ID; the server matches that ID against this snapshot. Always replace it with a complete current export, never a partial list.',
+              'ملف CSV/TSV الكامل الذي يرفعه المسؤول بترميز UTF-8 هو المصدر المعتمد للعضوية. يربط المستخدم Google/YouTube فقط لإثبات معرّف قناته، ثم يطابقه الخادم مع هذه اللقطة. استبدلها دائماً بقائمة حالية كاملة، وليس قائمة جزئية.',
             ),
             style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
           ),

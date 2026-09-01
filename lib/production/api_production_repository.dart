@@ -57,6 +57,9 @@ enum YouTubeOAuthErrorCode {
   oauthFlowExpired,
   youtubeApiUnavailable,
   youtubeNotConfigured,
+  youtubeSnapshotNotImported,
+  youtubeSnapshotExpired,
+  youtubeSnapshotUnavailable,
   unknown,
 }
 
@@ -133,6 +136,11 @@ YouTubeOAuthErrorCode _parseYouTubeOAuthErrorCode(dynamic value) {
     'youtube_secret_encryption_failed' ||
     'youtube_secret_decryption_failed' =>
       YouTubeOAuthErrorCode.youtubeNotConfigured,
+    'youtube_snapshot_not_imported' =>
+      YouTubeOAuthErrorCode.youtubeSnapshotNotImported,
+    'youtube_snapshot_expired' => YouTubeOAuthErrorCode.youtubeSnapshotExpired,
+    'youtube_snapshot_unavailable' =>
+      YouTubeOAuthErrorCode.youtubeSnapshotUnavailable,
     _ => YouTubeOAuthErrorCode.unknown,
   };
 }

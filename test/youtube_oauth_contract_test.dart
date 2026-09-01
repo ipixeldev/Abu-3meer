@@ -64,6 +64,12 @@ void main() {
         'youtube_channel_already_linked':
             YouTubeOAuthErrorCode.youtubeChannelAlreadyLinked,
         'oauth_authorization_denied': YouTubeOAuthErrorCode.authorizationDenied,
+        'youtube_snapshot_not_imported':
+            YouTubeOAuthErrorCode.youtubeSnapshotNotImported,
+        'youtube_snapshot_expired':
+            YouTubeOAuthErrorCode.youtubeSnapshotExpired,
+        'youtube_snapshot_unavailable':
+            YouTubeOAuthErrorCode.youtubeSnapshotUnavailable,
       };
 
       for (final entry in expected.entries) {
@@ -110,7 +116,10 @@ void main() {
     );
     expect(ui, contains('LaunchMode.externalApplication'));
     expect(ui, contains('CHECK STATUS'));
-    expect(ui, contains('Google sign-in alone does not prove membership'));
+    expect(ui, contains('only to prove which channel ID belongs to you'));
+    expect(ui, contains('youtubeSnapshotNotImported'));
+    expect(ui, contains('youtubeSnapshotExpired'));
+    expect(ui, contains('youtubeSnapshotUnavailable'));
     expect(ui, contains('creatorMembersApiUnavailable'));
     expect(ui, contains('creatorMembershipsDisabled'));
     expect(ui, contains('creatorChannelMismatch'));
@@ -119,10 +128,10 @@ void main() {
     expect(ui, contains('authorizationDenied'));
     expect(ui, isNot(contains('current.message')));
     expect(repository, contains('await user.getIdToken(true)'));
-    expect(
-      adminUi,
-      contains('User membership below is read-only and comes from secure'),
-    );
+    expect(adminUi, contains('is the membership authority'));
+    expect(adminUi, contains('Always replace it with a complete current'));
+    expect(adminUi, isNot(contains('_creatorConnectionCard')));
+    expect(adminUi, isNot(contains('Channel-owner authorization')));
     expect(adminUi, contains('youtubeMembershipVerifiedAt'));
     expect(adminUi, contains('youtubeMemberSince'));
     expect(combined, isNot(contains('setAdminYouTubeMembership')));
