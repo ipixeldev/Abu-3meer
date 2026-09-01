@@ -26,6 +26,7 @@ import { videoRoutes } from './routes/videoRoutes.js';
 import { publicMediaRoutes, uploadRoutes } from './routes/uploadRoutes.js';
 import { youtubeMembershipRoutes } from './routes/youtubeMembershipRoutes.js';
 import { serializeRequestForLog } from './security/logRedaction.js';
+import { startYouTubeVideoSynchronization } from './services/youtubeVideoSyncService.js';
 
 const fastify = Fastify({
   genReqId: () => crypto.randomUUID(),
@@ -40,6 +41,7 @@ const fastify = Fastify({
 });
 
 let stopWorkers: (() => Promise<void>) | null = null;
+let stopYouTubeVideoSync: (() => void) | null = null;
 let shuttingDown = false;
 
 async function main() {
@@ -160,6 +162,10 @@ async function main() {
   // error instead of silent profile/prediction write failures.
   await runMigrations();
 
+  // Public channel uploads are discovered independently of creator-membership
+  // OAuth. Admin Studio remains the manual fallback and can edit synced rows.
+  stopYouTubeVideoSync = startYouTubeVideoSynchronization(fastify.log);
+
   // Start BullMQ background workers
   stopWorkers = await startWorkers();
 
@@ -181,6 +187,7 @@ for (const signal of signals) {
     shuttingDown = true;
     console.log(`[Process] Received ${signal}, shutting down gracefully...`);
     await fastify.close();
+    stopYouTubeVideoSync?.();
     await stopWorkers?.();
     await redis.quit();
     await closeDatabasePools();
