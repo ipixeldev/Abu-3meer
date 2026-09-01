@@ -172,31 +172,20 @@ class _AdminYouTubeMembershipSnapshotCardState
       }
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(
-            abuText(
-              dialogContext,
-              'Replace membership snapshot?',
-              'استبدال لقطة العضويات؟',
-            ),
+        builder: (dialogContext) => _MembershipSnapshotConfirmationDialog(
+          title: abuText(
+            dialogContext,
+            'Replace membership snapshot?',
+            'استبدال لقطة العضويات؟',
           ),
-          content: Text(
-            abuText(
-              dialogContext,
-              'Import the complete current-member list as UTF-8 CSV or TSV. This replaces the previous snapshot, so every linked channel missing from the file becomes a non-member.',
-              'استورد القائمة الكاملة للأعضاء الحاليين بصيغة CSV أو TSV وبترميز UTF-8. هذا يستبدل اللقطة السابقة، لذلك ستصبح كل قناة مرتبطة غير موجودة في الملف غير عضو.',
-            ),
+          body: abuText(
+            dialogContext,
+            'Import “${file.name}” as the complete current-member UTF-8 CSV/TSV list. This replaces the previous snapshot, so every linked channel missing from the file becomes a non-member.',
+            'استورد «${file.name}» بوصفه قائمة CSV/TSV الكاملة للأعضاء الحاليين بترميز UTF-8. سيستبدل هذا اللقطة السابقة، ولذلك ستصبح كل قناة مرتبطة غير موجودة في الملف غير عضو.',
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(abuText(dialogContext, 'CANCEL', 'إلغاء')),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(abuText(dialogContext, 'IMPORT', 'استيراد')),
-            ),
-          ],
+          confirmLabel: abuText(dialogContext, 'IMPORT', 'استيراد'),
+          cancelLabel: abuText(dialogContext, 'CANCEL', 'إلغاء'),
+          icon: Icons.upload_file_rounded,
         ),
       );
       if (confirmed != true || !mounted) return;
@@ -219,33 +208,22 @@ class _AdminYouTubeMembershipSnapshotCardState
         if (!_requiresLargeDecreaseConfirmation(error) || !mounted) rethrow;
         final confirmLargeDecrease = await showDialog<bool>(
           context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: Text(
-              abuText(
-                dialogContext,
-                'Large membership decrease',
-                'انخفاض كبير في العضويات',
-              ),
+          builder: (dialogContext) => _MembershipSnapshotConfirmationDialog(
+            title: abuText(
+              dialogContext,
+              'Large membership decrease',
+              'انخفاض كبير في العضويات',
             ),
-            content: Text(
-              '${productionErrorMessage(error)}\n\n${abuText(dialogContext, 'Only continue if this is the complete current YouTube export. Missing channels will immediately become lapsed.', 'تابع فقط إذا كان هذا هو ملف يوتيوب الحالي والكامل. ستصبح القنوات غير الموجودة منتهية العضوية فوراً.')}',
+            body:
+                '${productionErrorMessage(error)}\n\n${abuText(dialogContext, 'Only continue if this is the complete current YouTube export. Missing channels will immediately become lapsed.', 'تابع فقط إذا كان هذا هو ملف يوتيوب الحالي والكامل. ستصبح القنوات غير الموجودة منتهية العضوية فوراً.')}',
+            confirmLabel: abuText(
+              dialogContext,
+              'CONFIRM COMPLETE EXPORT',
+              'تأكيد الملف الكامل',
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: Text(abuText(dialogContext, 'CANCEL', 'إلغاء')),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: Text(
-                  abuText(
-                    dialogContext,
-                    'CONFIRM COMPLETE EXPORT',
-                    'تأكيد الملف الكامل',
-                  ),
-                ),
-              ),
-            ],
+            cancelLabel: abuText(dialogContext, 'CANCEL', 'إلغاء'),
+            icon: Icons.warning_amber_rounded,
+            warning: true,
           ),
         );
         if (confirmLargeDecrease != true || !mounted) {
@@ -323,66 +301,193 @@ class _AdminYouTubeMembershipSnapshotCardState
       builder: (context, snapshot) {
         final status = snapshot.data;
         final active = status?.isActive == true;
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              active ? Icons.table_view_rounded : Icons.upload_file_rounded,
-              color: active ? _productionPrimary(context) : _gold,
+        final statusIcon = Icon(
+          active ? Icons.table_view_rounded : Icons.upload_file_rounded,
+          color: active ? _productionPrimary(context) : _gold,
+        );
+        final title = Text(
+          abuText(context, 'Membership CSV / TSV', 'ملف عضويات CSV / TSV'),
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        );
+        final summary = Text(
+          key: const Key('membership-snapshot-summary'),
+          snapshot.connectionState == ConnectionState.waiting
+              ? abuText(context, 'Checking snapshot…', 'جارٍ فحص اللقطة…')
+              : snapshot.hasError
+              ? productionErrorMessage(snapshot.error!)
+              : _summary(context, status!),
+          style: const TextStyle(color: _muted, fontSize: 12, height: 1.35),
+        );
+        final uploadButton = OutlinedButton.icon(
+          key: const Key('membership-snapshot-upload-button'),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(0, 46),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+          ),
+          onPressed: _uploading ? null : _selectAndImport,
+          icon: _uploading
+              ? const SizedBox.square(
+                  dimension: 15,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.file_upload_outlined, size: 18),
+          label: Text(
+            abuText(
+              context,
+              active ? 'REPLACE' : 'IMPORT CSV / TSV',
+              active ? 'استبدال' : 'استيراد CSV / TSV',
             ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            textAlign: TextAlign.center,
+          ),
+        );
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 520) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text(
-                    abuText(
-                      context,
-                      'Membership CSV / TSV',
-                      'ملف عضويات CSV / TSV',
-                    ),
-                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  Row(
+                    children: [
+                      statusIcon,
+                      const SizedBox(width: 10),
+                      Expanded(child: title),
+                    ],
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    snapshot.connectionState == ConnectionState.waiting
-                        ? abuText(
-                            context,
-                            'Checking snapshot…',
-                            'جارٍ فحص اللقطة…',
-                          )
-                        : snapshot.hasError
-                        ? productionErrorMessage(snapshot.error!)
-                        : _summary(context, status!),
-                    style: const TextStyle(
-                      color: _muted,
-                      fontSize: 12,
-                      height: 1.35,
-                    ),
-                  ),
+                  const SizedBox(height: 8),
+                  summary,
+                  const SizedBox(height: 12),
+                  uploadButton,
                 ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: _uploading ? null : _selectAndImport,
-              icon: _uploading
-                  ? const SizedBox.square(
-                      dimension: 15,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.file_upload_outlined, size: 18),
-              label: Text(
-                abuText(
-                  context,
-                  active ? 'REPLACE' : 'IMPORT CSV / TSV',
-                  active ? 'استبدال' : 'استيراد CSV / TSV',
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                statusIcon,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [title, const SizedBox(height: 3), summary],
+                  ),
                 ),
-              ),
-            ),
-          ],
+                const SizedBox(width: 12),
+                uploadButton,
+              ],
+            );
+          },
         );
       },
     ),
   );
+}
+
+class _MembershipSnapshotConfirmationDialog extends StatelessWidget {
+  const _MembershipSnapshotConfirmationDialog({
+    required this.title,
+    required this.body,
+    required this.confirmLabel,
+    required this.cancelLabel,
+    required this.icon,
+    this.warning = false,
+  });
+
+  final String title;
+  final String body;
+  final String confirmLabel;
+  final String cancelLabel;
+  final IconData icon;
+  final bool warning;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final availableHeight =
+        media.size.height -
+        media.padding.vertical -
+        media.viewInsets.bottom -
+        32;
+    final maxHeight = availableHeight.clamp(180.0, 720.0).toDouble();
+    final accent = warning ? _gold : _productionPrimary(context);
+
+    return Dialog(
+      key: const Key('membership-snapshot-confirmation-dialog'),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 520, maxHeight: maxHeight),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: .12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(icon, color: accent, size: 22),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        height: 1.15,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Text(
+                    body,
+                    style: const TextStyle(fontSize: 14, height: 1.45),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final cancel = TextButton(
+                    style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                    onPressed: () => Navigator.pop(context, false),
+                    child: Text(cancelLabel, textAlign: TextAlign.center),
+                  );
+                  final confirm = FilledButton(
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size(0, 48),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                    ),
+                    onPressed: () => Navigator.pop(context, true),
+                    child: Text(confirmLabel, textAlign: TextAlign.center),
+                  );
+                  if (constraints.maxWidth < 410) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [confirm, const SizedBox(height: 6), cancel],
+                    );
+                  }
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [cancel, const SizedBox(width: 8), confirm],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

@@ -7641,134 +7641,152 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-    title: Text(
-      abuText(context, 'YouTube membership snapshot', 'لقطة عضويات يوتيوب'),
-    ),
-    content: SizedBox(
-      width: 600,
-      height: math.min(MediaQuery.sizeOf(context).height * .78, 680),
-      child: Column(
-        children: [
-          AdminYouTubeMembershipSnapshotCard(
-            repository: widget.repository,
-            onImported: _refresh,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            abuText(
-              context,
-              'This complete admin-uploaded UTF-8 CSV/TSV is the membership authority. Users link Google/YouTube only to prove their channel ID; the server matches that ID against this snapshot. Always replace it with a complete current export, never a partial list.',
-              'ملف CSV/TSV الكامل الذي يرفعه المسؤول بترميز UTF-8 هو المصدر المعتمد للعضوية. يربط المستخدم Google/YouTube فقط لإثبات معرّف قناته، ثم يطابقه الخادم مع هذه اللقطة. استبدلها دائماً بقائمة حالية كاملة، وليس قائمة جزئية.',
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final availableContentHeight =
+        media.size.height - media.padding.vertical - 190;
+    final contentHeight = availableContentHeight.clamp(300.0, 720.0);
+    return AlertDialog(
+      key: const Key('admin-membership-snapshot-dialog'),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      clipBehavior: Clip.antiAlias,
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+      contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      title: Text(
+        abuText(context, 'YouTube membership snapshot', 'لقطة عضويات يوتيوب'),
+      ),
+      content: SizedBox(
+        width: 600,
+        height: contentHeight,
+        child: Column(
+          children: [
+            AdminYouTubeMembershipSnapshotCard(
+              repository: widget.repository,
+              onImported: _refresh,
             ),
-            style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _search,
-            onChanged: _queueSearch,
-            onSubmitted: (_) => _refresh(),
-            decoration: InputDecoration(
-              labelText: abuText(
+            const SizedBox(height: 12),
+            Text(
+              abuText(
                 context,
-                'Search name, username or email',
-                'ابحث بالاسم أو اسم المستخدم أو البريد',
+                'This complete admin-uploaded UTF-8 CSV/TSV is the membership authority. Users link Google/YouTube only to prove their channel ID; the server matches that ID against this snapshot. Always replace it with a complete current export, never a partial list.',
+                'ملف CSV/TSV الكامل الذي يرفعه المسؤول بترميز UTF-8 هو المصدر المعتمد للعضوية. يربط المستخدم Google/YouTube فقط لإثبات معرّف قناته، ثم يطابقه الخادم مع هذه اللقطة. استبدلها دائماً بقائمة حالية كاملة، وليس قائمة جزئية.',
               ),
-              prefixIcon: const Icon(Icons.person_search_rounded),
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
             ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: FutureBuilder<List<AbuUserProfile>>(
-              future: _users,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text(productionErrorMessage(snapshot.error!)),
-                  );
-                }
-                final users = snapshot.data ?? const <AbuUserProfile>[];
-                if (users.isEmpty) {
-                  return _ProductionEmpty(
-                    icon: Icons.people_outline_rounded,
-                    title: abuText(
-                      context,
-                      'No matching users',
-                      'لا يوجد مستخدمون مطابقون',
-                    ),
-                    body: abuText(
-                      context,
-                      'Try another name, username or email.',
-                      'جرّب اسماً أو اسم مستخدم أو بريداً آخر.',
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  itemCount: users.length,
-                  itemBuilder: (context, index) {
-                    final user = users[index];
-                    final label = user.displayName.isNotEmpty
-                        ? user.displayName
-                        : user.username.isNotEmpty
-                        ? user.username
-                        : user.email;
-                    return ListTile(
-                      leading: Icon(
-                        user.isYouTubeMember
-                            ? Icons.workspace_premium_rounded
-                            : user.youtubeChannelLinked
-                            ? Icons.link_rounded
-                            : Icons.link_off_rounded,
-                        color: user.isYouTubeMember
-                            ? _gold
-                            : user.youtubeChannelLinked
-                            ? _productionPrimary(context)
-                            : _muted,
+            const SizedBox(height: 12),
+            TextField(
+              controller: _search,
+              onChanged: _queueSearch,
+              onSubmitted: (_) => _refresh(),
+              decoration: InputDecoration(
+                labelText: abuText(
+                  context,
+                  'Search name, username or email',
+                  'ابحث بالاسم أو اسم المستخدم أو البريد',
+                ),
+                prefixIcon: const Icon(Icons.person_search_rounded),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: FutureBuilder<List<AbuUserProfile>>(
+                future: _users,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text(productionErrorMessage(snapshot.error!)),
+                    );
+                  }
+                  final users = snapshot.data ?? const <AbuUserProfile>[];
+                  if (users.isEmpty) {
+                    return _ProductionEmpty(
+                      icon: Icons.people_outline_rounded,
+                      title: abuText(
+                        context,
+                        'No matching users',
+                        'لا يوجد مستخدمون مطابقون',
                       ),
-                      title: Text(label),
-                      subtitle: Text(
-                        <String>[
-                          if (user.username.isNotEmpty) '@${user.username}',
-                          if (user.email.isNotEmpty) user.email,
-                          _verificationDetails(context, user),
-                        ].join(' · '),
-                      ),
-                      trailing: Text(
-                        user.isYouTubeMember
-                            ? abuText(context, 'VERIFIED', 'موثّق')
-                            : user.youtubeChannelLinked
-                            ? abuText(context, 'LINKED', 'مرتبط')
-                            : abuText(context, 'NOT LINKED', 'غير مرتبط'),
-                        style: TextStyle(
-                          color: user.isYouTubeMember
-                              ? _gold
-                              : user.youtubeChannelLinked
-                              ? _productionPrimary(context)
-                              : _muted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                        ),
+                      body: abuText(
+                        context,
+                        'Try another name, username or email.',
+                        'جرّب اسماً أو اسم مستخدم أو بريداً آخر.',
                       ),
                     );
-                  },
-                );
-              },
+                  }
+                  return Scrollbar(
+                    child: ListView.builder(
+                      key: const Key('admin-membership-user-list'),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.only(bottom: 24),
+                      itemCount: users.length,
+                      itemBuilder: (context, index) {
+                        final user = users[index];
+                        final label = user.displayName.isNotEmpty
+                            ? user.displayName
+                            : user.username.isNotEmpty
+                            ? user.username
+                            : user.email;
+                        return ListTile(
+                          leading: Icon(
+                            user.isYouTubeMember
+                                ? Icons.workspace_premium_rounded
+                                : user.youtubeChannelLinked
+                                ? Icons.link_rounded
+                                : Icons.link_off_rounded,
+                            color: user.isYouTubeMember
+                                ? _gold
+                                : user.youtubeChannelLinked
+                                ? _productionPrimary(context)
+                                : _muted,
+                          ),
+                          title: Text(label),
+                          subtitle: Text(
+                            <String>[
+                              if (user.username.isNotEmpty) '@${user.username}',
+                              if (user.email.isNotEmpty) user.email,
+                              _verificationDetails(context, user),
+                            ].join(' · '),
+                          ),
+                          trailing: Text(
+                            user.isYouTubeMember
+                                ? abuText(context, 'VERIFIED', 'موثّق')
+                                : user.youtubeChannelLinked
+                                ? abuText(context, 'LINKED', 'مرتبط')
+                                : abuText(context, 'NOT LINKED', 'غير مرتبط'),
+                            style: TextStyle(
+                              color: user.isYouTubeMember
+                                  ? _gold
+                                  : user.youtubeChannelLinked
+                                  ? _productionPrimary(context)
+                                  : _muted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: Text(abuText(context, 'DONE', 'تم')),
-      ),
-    ],
-  );
+      actions: [
+        TextButton(
+          style: TextButton.styleFrom(minimumSize: const Size(88, 46)),
+          onPressed: () => Navigator.pop(context),
+          child: Text(abuText(context, 'DONE', 'تم')),
+        ),
+      ],
+    );
+  }
 }
 
 class _AdminRolesDialog extends StatefulWidget {

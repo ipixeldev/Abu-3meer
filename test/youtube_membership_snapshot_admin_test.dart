@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:abu_3meer/demo/fan_league_app.dart';
@@ -106,6 +107,59 @@ void main() {
     expect(find.text('REPLACE'), findsOneWidget);
   });
 
+  testWidgets('snapshot card and confirmation stay usable on a narrow phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AdminYouTubeMembershipSnapshotCard(
+            loadStatus: () async => snapshotStatus(),
+            pickFile: () async => XFile.fromData(
+              Uint8List.fromList([1, 2, 3]),
+              path: 'members.csv',
+              mimeType: 'text/csv',
+            ),
+            importSnapshot: (_, _) async => snapshotStatus(
+              state: YouTubeMembershipSnapshotState.active,
+              members: 25,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final button = find.byKey(const Key('membership-snapshot-upload-button'));
+    final summary = find.byKey(const Key('membership-snapshot-summary'));
+    expect(tester.getSize(button).width, greaterThan(270));
+    expect(tester.getSize(summary).width, greaterThan(270));
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    final dialog = find.byKey(
+      const Key('membership-snapshot-confirmation-dialog'),
+    );
+    expect(dialog, findsOneWidget);
+    final dialogRect = tester.getRect(dialog);
+    expect(dialogRect.left, greaterThanOrEqualTo(0));
+    expect(dialogRect.right, lessThanOrEqualTo(320));
+    expect(dialogRect.top, greaterThanOrEqualTo(0));
+    expect(dialogRect.bottom, lessThanOrEqualTo(640));
+    expect(
+      tester.getSize(find.widgetWithText(FilledButton, 'IMPORT')).width,
+      greaterThan(230),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('large membership decrease requires a second confirmation', (
     tester,
   ) async {
@@ -161,4 +215,20 @@ void main() {
     expect(uploadAttempts, 2);
     expect(find.textContaining('10 members'), findsWidgets);
   });
+
+  test(
+    'admin mobile layout reserves nav paint and uses equal action columns',
+    () {
+      final source = File('lib/demo/production_ui.dart').readAsStringSync();
+      final features = File('lib/demo/production_features.dart')
+          .readAsStringSync();
+      expect(source, contains("Key('primary-nav-paint-clearance')"));
+      expect(source, contains('EdgeInsets.only(top: 28)'));
+      expect(source, contains("Key('admin-primary-action-grid')"));
+      expect(source, contains('minWidth: 230'));
+      expect(features, contains("Key('admin-membership-snapshot-dialog')"));
+      expect(features, contains("Key('admin-membership-user-list')"));
+      expect(features, contains('EdgeInsets.only(bottom: 24)'));
+    },
+  );
 }

@@ -2559,31 +2559,38 @@ class _LiquidGlassNavBar extends StatelessWidget {
             ),
           );
 
-    return Transform.translate(
-      offset: const Offset(0, 4),
-      child: Directionality(
-        textDirection: TextDirection.ltr,
-        child: glass_nav.LiquidGlassNavbar(
-          key: ValueKey('primary-liquid-navbar-$rtl-$dark-${items.length}'),
-          currentIndex: visualSelectedIndex,
-          onTap: (visualIndex) =>
-              onSelect(rtl ? items.length - 1 - visualIndex : visualIndex),
-          theme: theme,
-          // The package adds this value to the rendered pill height. Keeping it
-          // at zero anchors the 54px glass surface directly above the system
-          // inset.
-          floatingOffset: 0,
-          animationDuration: const Duration(milliseconds: 280),
-          enableHaptics: true,
-          showLabels: true,
-          items: [
-            for (final item in visualItems)
-              glass_nav.LiquidNavItem(
-                icon: item.$1,
-                activeIcon: item.$1,
-                label: item.$2,
-              ),
-          ],
+    // The glass package paints blur and shadow above its reported height.
+    // Reserve that paint area so scroll content ends above the persistent bar
+    // instead of remaining readable or tappable underneath it.
+    return Padding(
+      key: const Key('primary-nav-paint-clearance'),
+      padding: const EdgeInsets.only(top: 28),
+      child: Transform.translate(
+        offset: const Offset(0, 4),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: glass_nav.LiquidGlassNavbar(
+            key: ValueKey('primary-liquid-navbar-$rtl-$dark-${items.length}'),
+            currentIndex: visualSelectedIndex,
+            onTap: (visualIndex) =>
+                onSelect(rtl ? items.length - 1 - visualIndex : visualIndex),
+            theme: theme,
+            // The package adds this value to the rendered pill height. Keeping
+            // it at zero anchors the 54px glass surface directly above the
+            // system inset.
+            floatingOffset: 0,
+            animationDuration: const Duration(milliseconds: 280),
+            enableHaptics: true,
+            showLabels: true,
+            items: [
+              for (final item in visualItems)
+                glass_nav.LiquidNavItem(
+                  icon: item.$1,
+                  activeIcon: item.$1,
+                  label: item.$2,
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -12261,39 +12268,68 @@ class _ProductionAdmin extends StatelessWidget {
         const SizedBox(height: 18),
         _ProductionAdminTools(repository: repository, profile: profile),
         const SizedBox(height: 18),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            if (profile.isAdmin) ...[
-              FilledButton.icon(
-                onPressed: () => _showCreateMatch(context),
-                icon: Icon(Icons.add_rounded),
-                label: Text(
-                  abuText(context, 'CREATE MATCH EVENT', 'إنشاء فعالية مباراة'),
-                ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            if (!profile.isAdmin) return const SizedBox.shrink();
+            final actionStyle = ButtonStyle(
+              minimumSize: WidgetStateProperty.all(const Size(0, 52)),
+              padding: WidgetStateProperty.all(
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
-              OutlinedButton.icon(
-                onPressed: () => _showPointRules(context),
-                icon: Icon(Icons.tune_rounded),
-                label: Text(abuText(context, 'POINT RULES', 'قواعد النقاط')),
+            );
+            return KeyedSubtree(
+              key: const Key('admin-primary-action-grid'),
+              child: _ResponsiveGrid(
+                minWidth: 230,
+                children: [
+                  FilledButton.icon(
+                    style: actionStyle,
+                    onPressed: () => _showCreateMatch(context),
+                    icon: Icon(Icons.add_rounded),
+                    label: Text(
+                      abuText(
+                        context,
+                        'CREATE MATCH EVENT',
+                        'إنشاء فعالية مباراة',
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    style: actionStyle,
+                    onPressed: () => _showPointRules(context),
+                    icon: Icon(Icons.tune_rounded),
+                    label: Text(
+                      abuText(context, 'POINT RULES', 'قواعد النقاط'),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    style: actionStyle,
+                    onPressed: () => _showExclusiveVideosManager(context),
+                    icon: Icon(Icons.video_library_rounded),
+                    label: Text(
+                      abuText(
+                        context,
+                        'EXCLUSIVE VIDEOS',
+                        'الفيديوهات الحصرية',
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    style: actionStyle,
+                    onPressed: () => _showNotificationComposer(context),
+                    icon: Icon(Icons.notifications_active_rounded),
+                    label: Text(
+                      abuText(context, 'SEND NOTIFICATION', 'إرسال إشعار'),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
               ),
-              OutlinedButton.icon(
-                onPressed: () => _showExclusiveVideosManager(context),
-                icon: Icon(Icons.video_library_rounded),
-                label: Text(
-                  abuText(context, 'EXCLUSIVE VIDEOS', 'الفيديوهات الحصرية'),
-                ),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => _showNotificationComposer(context),
-                icon: Icon(Icons.notifications_active_rounded),
-                label: Text(
-                  abuText(context, 'SEND NOTIFICATION', 'إرسال إشعار'),
-                ),
-              ),
-            ],
-          ],
+            );
+          },
         ),
         const SizedBox(height: 18),
         StreamBuilder<List<MatchEvent>>(
