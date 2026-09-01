@@ -4,6 +4,8 @@ import {
   getPointRules,
   memberMultiplierForSource,
 } from './pointsService.js';
+import { youtubeMembershipRefreshIntervalSeconds } from './youtubeOAuthService.js';
+import { refreshStaleYouTubeMembershipsForUsers } from './youtubeMembershipService.js';
 import { normalizeChallengeAnswer } from './challengeService.js';
 import { config } from '../config.js';
 import {
@@ -233,14 +235,33 @@ async function settleMatchPredictionsUnlocked(
     throw new Error('Match does not have official final scores yet');
   }
 
+  const pendingPredictionUsers = await query<{ user_id: string }>(
+    `SELECT DISTINCT user_id
+     FROM predictions
+     WHERE match_id = $1 AND NOT rewarded`,
+    [matchId],
+  );
+  const membershipRefresh = await refreshStaleYouTubeMembershipsForUsers(
+    pendingPredictionUsers.rows.map((row) => row.user_id),
+  );
+  if (membershipRefresh.unavailable > 0) {
+    // Settlement must retry rather than permanently writing base XP for a
+    // genuine member merely because Google/configuration was temporarily
+    // unavailable. Point idempotency keeps a later retry safe.
+    throw new Error('YouTube membership verification is temporarily unavailable');
+  }
+
   const predictionsRes = await query(
     `SELECT p.id, p.user_id, p.home_score, p.away_score, p.first_scorer,
             p.rewarded,
-            u.is_youtube_member
+            (yl.is_member = TRUE
+              AND yl.last_verified_at >=
+                  CURRENT_TIMESTAMP - ($2::integer * INTERVAL '1 second'))
+              AS is_youtube_member
      FROM predictions p
-     JOIN users u ON u.id = p.user_id
+     LEFT JOIN youtube_account_links yl ON yl.user_id = p.user_id
      WHERE p.match_id = $1 AND NOT p.rewarded`,
-    [matchId]
+    [matchId, youtubeMembershipRefreshIntervalSeconds()]
   );
 
   const rules = await getPointRules();

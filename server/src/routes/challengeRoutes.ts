@@ -8,6 +8,10 @@ import {
 import { query } from '../db/pool.js';
 import { getCachedJson, setCachedJson } from '../redis/client.js';
 import { listPlayerCardsForUser } from '../services/playerCardService.js';
+import {
+  ChallengeMembershipUnavailableError,
+  resolveChallengeMembership,
+} from '../services/challengeMembershipService.js';
 
 const submitSchema = z.object({
   answer: z.string().trim().min(1).max(200),
@@ -38,7 +42,12 @@ export async function challengeRoutes(fastify: FastifyInstance) {
     '/challenges/active',
     { preHandler: [authenticateUser] },
     async (request, reply) => {
-      const canAccessMemberContent = request.user!.isYouTubeMember;
+      let canAccessMemberContent = false;
+      try {
+        canAccessMemberContent = await resolveChallengeMembership(request.user!.id);
+      } catch (error) {
+        request.log.warn({ err: error }, 'Member challenge visibility unavailable');
+      }
       reply.header(
         'Cache-Control',
         'private, max-age=30, stale-while-revalidate=120',
@@ -106,6 +115,21 @@ export async function challengeRoutes(fastify: FastifyInstance) {
       });
     }
 
+    let isYouTubeMember: boolean;
+    try {
+      // Resolve before any attempt or award write. An outage consumes nothing.
+      isYouTubeMember = await resolveChallengeMembership(user.id);
+    } catch (error) {
+      if (error instanceof ChallengeMembershipUnavailableError) {
+        return reply.status(503).send({
+          error: 'YouTubeMembershipUnavailable',
+          message: error.message,
+          retryable: true,
+        });
+      }
+      throw error;
+    }
+
     // Check anti-brute force lock
     const lockRes = await query(
       `SELECT failed_attempts, locked_until FROM challenge_attempt_locks WHERE user_id = $1 AND challenge_id = $2`,
@@ -124,7 +148,12 @@ export async function challengeRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const result = await submitChallengeAnswer(id, user.id, parsed.data.answer, user.isYouTubeMember);
+      const result = await submitChallengeAnswer(
+        id,
+        user.id,
+        parsed.data.answer,
+        isYouTubeMember,
+      );
 
       if (!result.correct) {
         // Record failed attempt

@@ -7573,13 +7573,14 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
   final _search = TextEditingController();
   Timer? _debounce;
   late Future<List<AbuUserProfile>> _users;
-  AbuUserProfile? _selected;
-  bool _saving = false;
+  late Future<YouTubeOAuthStatus> _creatorStatus;
+  bool _connectingCreator = false;
 
   @override
   void initState() {
     super.initState();
     _users = widget.repository.fetchAdminUsers();
+    _creatorStatus = widget.repository.fetchYouTubeCreatorConnectionStatus();
   }
 
   @override
@@ -7601,60 +7602,176 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
     _debounce = Timer(const Duration(milliseconds: 350), _refresh);
   }
 
-  Future<void> _save(bool isMember) async {
-    final selected = _selected;
-    if (selected == null) return;
-    setState(() => _saving = true);
+  Future<void> _connectCreator() async {
+    if (_connectingCreator) return;
+    setState(() => _connectingCreator = true);
     try {
-      await widget.repository.setAdminYouTubeMembership(
-        uid: selected.uid,
-        isMember: isMember,
+      await _openYouTubeCreatorConnection(
+        context,
+        repository: widget.repository,
       );
       if (!mounted) return;
       setState(() {
-        _selected = null;
-        _saving = false;
+        _connectingCreator = false;
+        _creatorStatus = widget.repository
+            .fetchYouTubeCreatorConnectionStatus();
       });
       _refresh();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isMember
-                ? abuText(
-                    context,
-                    'Gold membership granted.',
-                    'تم منح العضوية الذهبية.',
-                  )
-                : abuText(
-                    context,
-                    'Gold membership revoked.',
-                    'تم إلغاء العضوية الذهبية.',
-                  ),
-          ),
-        ),
-      );
     } catch (error) {
       if (!mounted) return;
-      setState(() => _saving = false);
+      setState(() => _connectingCreator = false);
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(productionErrorMessage(error))));
     }
+  }
+
+  Widget _creatorConnectionCard() => FutureBuilder<YouTubeOAuthStatus>(
+    future: _creatorStatus,
+    builder: (context, snapshot) {
+      final connected = snapshot.data?.state == YouTubeOAuthFlowState.connected;
+      final channelTitle = snapshot.data?.channelTitle ?? '';
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: connected
+              ? _productionPrimary(context).withValues(alpha: .08)
+              : _surface2,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: connected
+                ? _productionPrimary(context).withValues(alpha: .45)
+                : _line,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              connected ? Icons.verified_rounded : Icons.vpn_key_rounded,
+              color: connected ? _productionPrimary(context) : _gold,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    connected
+                        ? abuText(
+                            context,
+                            'Creator connected',
+                            'تم ربط مالك القناة',
+                          )
+                        : abuText(
+                            context,
+                            'Channel-owner authorization',
+                            'تفويض مالك القناة',
+                          ),
+                    style: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    connected
+                        ? (channelTitle.isEmpty
+                              ? abuText(
+                                  context,
+                                  'Membership checks are authorized on the server.',
+                                  'تم تفويض التحقق من العضوية على الخادم.',
+                                )
+                              : channelTitle)
+                        : snapshot.connectionState == ConnectionState.waiting
+                        ? abuText(
+                            context,
+                            'Checking secure server connection…',
+                            'جارٍ فحص اتصال الخادم الآمن…',
+                          )
+                        : abuText(
+                            context,
+                            'Authorize the ABU 3MEER channel owner. Creator tokens stay on the server and are never shown in this app.',
+                            'فوّض مالك قناة ABU 3MEER. تبقى رموز المالك على الخادم ولا تظهر في التطبيق.',
+                          ),
+                    style: const TextStyle(color: _muted, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            FilledButton(
+              onPressed: _connectingCreator ? null : _connectCreator,
+              child: _connectingCreator
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(
+                      connected
+                          ? abuText(context, 'RECONNECT', 'إعادة الربط')
+                          : abuText(context, 'CONNECT', 'ربط'),
+                    ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+
+  String _verificationDetails(BuildContext context, AbuUserProfile user) {
+    if (!user.youtubeChannelLinked) {
+      return abuText(context, 'YouTube not linked', 'يوتيوب غير مرتبط');
+    }
+    final details = <String>[
+      user.isYouTubeMember
+          ? abuText(context, 'Active paid member', 'عضو مدفوع نشط')
+          : abuText(
+              context,
+              'Linked · not an active member',
+              'مرتبط · ليس عضواً نشطاً',
+            ),
+      if (user.youtubeMembershipLevelId.isNotEmpty)
+        abuText(
+          context,
+          'Level ${user.youtubeMembershipLevelId}',
+          'المستوى ${user.youtubeMembershipLevelId}',
+        ),
+      if (user.youtubeMemberSince != null)
+        abuText(
+          context,
+          'Member since ${_productionDate(user.youtubeMemberSince!)}',
+          'عضو منذ ${_productionDate(user.youtubeMemberSince!)}',
+        ),
+      if (user.youtubeMembershipVerifiedAt != null)
+        abuText(
+          context,
+          'Checked ${_productionDate(user.youtubeMembershipVerifiedAt!)}',
+          'آخر تحقق ${_productionDate(user.youtubeMembershipVerifiedAt!)}',
+        ),
+    ];
+    return details.join(' · ');
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
     insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
     title: Text(
-      abuText(context, 'YouTube membership manager', 'إدارة أعضاء يوتيوب'),
+      abuText(context, 'YouTube verification status', 'حالة توثيق يوتيوب'),
     ),
     content: SizedBox(
       width: 600,
-      height: math.min(MediaQuery.sizeOf(context).height * .65, 530),
+      height: math.min(MediaQuery.sizeOf(context).height * .78, 680),
       child: Column(
         children: [
+          _creatorConnectionCard(),
+          const SizedBox(height: 12),
+          Text(
+            abuText(
+              context,
+              'User membership below is read-only and comes from secure server verification with YouTube. Administrators cannot grant or revoke it manually.',
+              'حالة العضوية أدناه للقراءة فقط وتأتي من تحقق الخادم الآمن مع يوتيوب. لا يمكن للمسؤولين منحها أو إلغاؤها يدوياً.',
+            ),
+            style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _search,
-            enabled: !_saving,
             onChanged: _queueSearch,
             onSubmitted: (_) => _refresh(),
             decoration: InputDecoration(
@@ -7699,37 +7816,47 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
                   itemCount: users.length,
                   itemBuilder: (context, index) {
                     final user = users[index];
-                    final selected = _selected?.uid == user.uid;
                     final label = user.displayName.isNotEmpty
                         ? user.displayName
                         : user.username.isNotEmpty
                         ? user.username
                         : user.email;
                     return ListTile(
-                      selected: selected,
-                      onTap: _saving
-                          ? null
-                          : () => setState(() => _selected = user),
                       leading: Icon(
-                        selected
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_unchecked_rounded,
-                        color: selected ? _productionPrimary(context) : _muted,
+                        user.isYouTubeMember
+                            ? Icons.workspace_premium_rounded
+                            : user.youtubeChannelLinked
+                            ? Icons.link_rounded
+                            : Icons.link_off_rounded,
+                        color: user.isYouTubeMember
+                            ? _gold
+                            : user.youtubeChannelLinked
+                            ? _productionPrimary(context)
+                            : _muted,
                       ),
                       title: Text(label),
                       subtitle: Text(
                         <String>[
                           if (user.username.isNotEmpty) '@${user.username}',
                           if (user.email.isNotEmpty) user.email,
+                          _verificationDetails(context, user),
                         ].join(' · '),
                       ),
-                      trailing: Icon(
+                      trailing: Text(
                         user.isYouTubeMember
-                            ? Icons.workspace_premium_rounded
-                            : Icons.person_outline_rounded,
-                        color: user.isYouTubeMember
-                            ? _gold
-                            : _productionPrimary(context),
+                            ? abuText(context, 'VERIFIED', 'موثّق')
+                            : user.youtubeChannelLinked
+                            ? abuText(context, 'LINKED', 'مرتبط')
+                            : abuText(context, 'NOT LINKED', 'غير مرتبط'),
+                        style: TextStyle(
+                          color: user.isYouTubeMember
+                              ? _gold
+                              : user.youtubeChannelLinked
+                              ? _productionPrimary(context)
+                              : _muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w900,
+                        ),
                       ),
                     );
                   },
@@ -7742,16 +7869,8 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
     ),
     actions: [
       TextButton(
-        onPressed: _saving ? null : () => Navigator.pop(context),
+        onPressed: () => Navigator.pop(context),
         child: Text(abuText(context, 'DONE', 'تم')),
-      ),
-      OutlinedButton(
-        onPressed: _saving || _selected == null ? null : () => _save(false),
-        child: Text(abuText(context, 'REVOKE', 'إلغاء')),
-      ),
-      FilledButton(
-        onPressed: _saving || _selected == null ? null : () => _save(true),
-        child: Text(abuText(context, 'GRANT GOLD', 'منح الذهبية')),
       ),
     ],
   );

@@ -2,7 +2,6 @@ import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import {
   authenticateUser,
-  requirePermission,
   requireRecentFirebaseAuthentication,
 } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
@@ -12,6 +11,7 @@ import {
   eligibleLeaderboardSourceTypes,
   listLeaderboardSeasons,
 } from '../services/leaderboardService.js';
+import { youtubeMembershipRefreshIntervalSeconds } from '../services/youtubeOAuthService.js';
 
 const eligibleXpSources = [...eligibleLeaderboardSourceTypes];
 
@@ -181,7 +181,10 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const res = await query(
       `SELECT u.username, u.display_name, u.avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
-              u.is_youtube_member,
+              (yl.is_member = TRUE
+                AND yl.last_verified_at >=
+                    CURRENT_TIMESTAMP - ($3::integer * INTERVAL '1 second'))
+                AS is_youtube_member,
               COALESCE(xp.total_points, 0)::integer AS total_points,
               COALESCE(xp.monthly_points, 0)::integer AS monthly_points,
               COALESCE(xp.season_points, 0)::integer AS season_points,
@@ -197,6 +200,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
               p.challenges_completed_count, p.player_cards_collected_count
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
+       LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(pt.final_points), 0) AS total_points,
                 COALESCE(SUM(pt.final_points) FILTER (
@@ -221,7 +225,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
        ) xp ON TRUE
        WHERE u.id::text = $1 OR u.firebase_uid = $1 OR LOWER(u.username) = LOWER($1)
        LIMIT 1`,
-      [id, eligibleXpSources]
+      [id, eligibleXpSources, youtubeMembershipRefreshIntervalSeconds()]
     );
 
     if (res.rows.length === 0) {
@@ -361,7 +365,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
         countryCode: row.country_code,
         onboardingCompleted: row.onboarding_completed,
         locationUpdatedAt: row.location_updated_at,
-        isYouTubeMember: row.is_youtube_member,
+        isYouTubeMember: user.isYouTubeMember,
         accountStatus: row.account_status,
       },
     };
@@ -423,56 +427,4 @@ export async function profileRoutes(fastify: FastifyInstance) {
     return { success: true, supportedTeam: parsed.data.teamName, supportedTeamLogo: parsed.data.teamLogo };
   });
 
-  // Admin-only membership management: Normal users CANNOT self-promote to YouTube Member
-  fastify.post(
-    '/admin/users/:id/membership',
-    // Membership changes affect point economics and are intentionally more
-    // privileged than ordinary moderator suspension actions.
-    { preHandler: [requirePermission('settings.manage')] },
-    async (request, reply) => {
-      const { id: identifier } = request.params as { id: string };
-      const schema = z.object({
-        isMember: z.boolean(),
-        channelId: z.string().trim().max(100).optional(),
-        reason: z.string().trim().min(3).max(200),
-      });
-
-      const parsed = schema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply.status(400).send({ error: 'Invalid parameters', issues: parsed.error.issues });
-      }
-
-      const targetResult = await query(
-        `SELECT id
-         FROM users
-         WHERE id::text = $1 OR firebase_uid = $1
-         ORDER BY (id::text = $1) DESC
-         LIMIT 1`,
-        [identifier],
-      );
-      const id = targetResult.rows[0]?.id;
-      if (!id) {
-        return reply.status(404).send({ error: 'NotFound', message: 'User not found.' });
-      }
-
-      await query(
-        `UPDATE users
-         SET is_youtube_member = $1, youtube_channel_id = $2, youtube_member_since = CASE WHEN $1 THEN CURRENT_TIMESTAMP ELSE NULL END, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $3`,
-        [parsed.data.isMember, parsed.data.channelId || null, id]
-      );
-
-      await query(
-        `INSERT INTO admin_audit_logs (admin_user_id, action, target_entity, target_id, after_state)
-         VALUES ($1, 'membership.update', 'user', $2, $3)`,
-        [
-          request.user!.id,
-          id,
-          JSON.stringify({ isMember: parsed.data.isMember, reason: parsed.data.reason }),
-        ]
-      );
-
-      return { success: true, isYouTubeMember: parsed.data.isMember };
-    }
-  );
 }

@@ -98,6 +98,28 @@ describe('Request log privacy', () => {
     }
   });
 
+  it('templates member and creator OAuth polling flow UUIDs', () => {
+    const flowId = '4bff16c1-b990-4a3f-8129-f42eafb120a8';
+    assert.equal(
+      redactRequestUrl(
+        `/api/v1/profile/youtube/connect/${flowId}/status?poll=1`,
+      ),
+      '/api/v1/profile/youtube/connect/:flowId/status',
+    );
+    assert.equal(
+      redactRequestUrl(
+        `/api/v1/admin/youtube/creator/connect/${flowId}/status`,
+      ),
+      '/api/v1/admin/youtube/creator/connect/:flowId/status',
+    );
+    assert.doesNotMatch(
+      JSON.stringify(serializeRequestForLog({
+        url: `/api/v1/profile/youtube/connect/${flowId}/status`,
+      })),
+      /4bff16c1|b990|f42eafb/i,
+    );
+  });
+
   it('preserves static profile operations and unrelated operational routes', () => {
     for (const safePath of [
       '/api/v1/profile/me',

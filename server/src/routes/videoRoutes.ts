@@ -15,6 +15,7 @@ import {
   isValidYoutubeVideoId,
   listExclusiveVideos,
 } from '../services/videoDomain.js';
+import { resolveChallengeMembership } from '../services/challengeMembershipService.js';
 
 export async function videoRoutes(fastify: FastifyInstance) {
   // GET /api/v1/videos/exclusive - List published exclusive videos for app users
@@ -23,11 +24,17 @@ export async function videoRoutes(fastify: FastifyInstance) {
     { preHandler: [authenticateUser] },
     async (request, reply) => {
       reply.header('Cache-Control', 'private, no-store');
+      let canAccessMemberOnly = false;
+      try {
+        canAccessMemberOnly = await resolveChallengeMembership(request.user!.id);
+      } catch (error) {
+        request.log.warn({ err: error }, 'Member video visibility unavailable');
+      }
       return listExclusiveVideos(
         (text, params) => query(text, params),
         {
           includeScheduled: false,
-          canAccessMemberOnly: request.user!.isYouTubeMember,
+          canAccessMemberOnly,
         },
       );
     },

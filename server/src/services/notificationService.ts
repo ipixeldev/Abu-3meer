@@ -11,6 +11,7 @@ import {
   safePushFailureCode,
   type NotificationCategory,
 } from './notificationDomain.js';
+import { youtubeMembershipRefreshIntervalSeconds } from './youtubeOAuthService.js';
 
 export interface DeviceRegistration {
   fcmToken: string;
@@ -541,9 +542,18 @@ export async function processNotificationCampaign(campaignId: string) {
     const preferenceFilter = preferenceColumn
       ? `AND COALESCE(np.${preferenceColumn}, true) = true`
       : '';
+    const membershipFreshnessSeconds =
+      youtubeMembershipRefreshIntervalSeconds();
     const audienceFilters: Record<string, string> = {
       all: '',
-      members_only: 'AND u.is_youtube_member = true',
+      members_only: `AND EXISTS (
+        SELECT 1
+        FROM youtube_account_links member_link
+        WHERE member_link.user_id = u.id
+          AND member_link.is_member = TRUE
+          AND member_link.last_verified_at >=
+              CURRENT_TIMESTAMP - (${membershipFreshnessSeconds} * INTERVAL '1 second')
+      )`,
       team_specific: 'AND LOWER(u.supported_team) = LOWER($2)',
       inactive_users: "AND d.last_seen_at < CURRENT_TIMESTAMP - INTERVAL '14 days'",
       user_specific: 'AND u.id = $2',

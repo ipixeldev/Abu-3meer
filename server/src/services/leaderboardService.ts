@@ -1,4 +1,5 @@
 import { getClient, query } from '../db/pool.js';
+import { youtubeMembershipRefreshIntervalSeconds } from './youtubeOAuthService.js';
 
 export const eligibleLeaderboardSourceTypes = [
   'signup_bonus',
@@ -637,16 +638,20 @@ async function rankedRows(
               u.display_name,
               u.avatar_url,
               u.supported_team,
-              u.is_youtube_member,
+              (yl.is_member = TRUE
+                AND yl.last_verified_at >=
+                    CURRENT_TIMESTAMP - ($4::integer * INTERVAL '1 second'))
+                AS is_youtube_member,
               u.created_at AS account_created_at,
               SUM(pt.final_points)::bigint AS points
        FROM point_transactions pt
        JOIN users u ON u.id = pt.user_id
+       LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
        WHERE u.account_status = 'active'
          AND pt.source_type IN (${eligibleSourceSql})
          AND pt.created_at >= $1
          AND ($2::timestamptz IS NULL OR pt.created_at < $2)
-       GROUP BY u.id
+       GROUP BY u.id, yl.user_id
        HAVING SUM(pt.final_points) > 0
      ), ranked AS (
        SELECT username AS "publicId",
@@ -666,7 +671,12 @@ async function rankedRows(
      FROM ranked
      ORDER BY rank
      LIMIT $3`,
-    [window.startsAt, window.endsAt, safeLimit],
+    [
+      window.startsAt,
+      window.endsAt,
+      safeLimit,
+      youtubeMembershipRefreshIntervalSeconds(),
+    ],
   );
   return {
     entries: result.rows.map(mapPublicLeaderboardEntry),

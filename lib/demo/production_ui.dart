@@ -10380,15 +10380,32 @@ class _ProductionProfileState extends State<_ProductionProfile> {
   Future<void> _verifyMember() async {
     setState(() => verifyingMember = true);
     try {
-      await widget.repository.refreshProfile(widget.profile.uid, force: true);
-      final verified = await widget.repository.verifyYouTubeMembership(
-        widget.profile.uid,
+      if (widget.repository.canLinkGoogleAccount) {
+        await widget.repository.linkGoogleAccount();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              abuText(
+                context,
+                'Google is linked. Tap Verify again to connect the same YouTube account; Google sign-in alone does not prove membership.',
+                'تم ربط Google. اضغط التوثيق مجدداً لربط حساب يوتيوب نفسه؛ تسجيل Google وحده لا يثبت العضوية.',
+              ),
+            ),
+          ),
+        );
+        return;
+      }
+      final verified = await _openYouTubeMembershipConnection(
+        context,
+        repository: widget.repository,
+        uid: widget.profile.uid,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              verified
+              verified == true
                   ? abuText(
                       context,
                       'Verified! Welcome Gold Channel Member ⭐',
@@ -10396,8 +10413,8 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                     )
                   : abuText(
                       context,
-                      'Paid channel membership is not verified yet. Membership status is approved by an administrator until secure YouTube verification is connected.',
-                      'لم يتم توثيق عضوية القناة المدفوعة بعد. يعتمد توثيق العضوية حالياً من المشرف إلى أن يتم ربط تحقق يوتيوب الآمن.',
+                      'YouTube membership was not verified. You can reconnect and choose another channel.',
+                      'لم يتم توثيق عضوية يوتيوب. يمكنك إعادة الربط واختيار قناة أخرى.',
                     ),
             ),
           ),
@@ -10494,11 +10511,17 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                         : Icon(Icons.workspace_premium_rounded, size: 18),
                     label: Text(
                       verifyingMember
-                          ? abuText(context, 'REFRESHING…', 'جارٍ التحديث…')
+                          ? abuText(context, 'CONNECTING…', 'جارٍ الربط…')
+                          : widget.repository.canLinkGoogleAccount
+                          ? abuText(
+                              context,
+                              'LINK GOOGLE FIRST',
+                              'اربط GOOGLE أولاً',
+                            )
                           : abuText(
                               context,
-                              'REFRESH MEMBERSHIP STATUS',
-                              'تحديث حالة العضوية',
+                              'CONNECT & VERIFY YOUTUBE',
+                              'ربط وتوثيق يوتيوب',
                             ),
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
@@ -10904,6 +10927,324 @@ class _ProductionRecentActivity extends StatelessWidget {
   );
 }
 
+Future<bool?> _openYouTubeMembershipConnection(
+  BuildContext context, {
+  required ProductionRepository repository,
+  required String uid,
+}) async {
+  final attempt = await repository.startYouTubeMembershipConnection(uid);
+  final opened = await launchUrl(
+    attempt.authorizationUrl,
+    mode: LaunchMode.externalApplication,
+  );
+  if (!opened) {
+    throw StateError('Google authorization could not be opened.');
+  }
+  if (!context.mounted) return null;
+  return showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _YouTubeOAuthStatusDialog(
+      creatorConnection: false,
+      checkStatus: () => repository.checkYouTubeMembershipConnection(
+        uid,
+        flowId: attempt.flowId,
+      ),
+    ),
+  );
+}
+
+Future<bool?> _openYouTubeCreatorConnection(
+  BuildContext context, {
+  required ProductionRepository repository,
+}) async {
+  final attempt = await repository.startYouTubeCreatorConnection();
+  final opened = await launchUrl(
+    attempt.authorizationUrl,
+    mode: LaunchMode.externalApplication,
+  );
+  if (!opened) {
+    throw StateError('Google authorization could not be opened.');
+  }
+  if (!context.mounted) return null;
+  return showDialog<bool>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _YouTubeOAuthStatusDialog(
+      creatorConnection: true,
+      checkStatus: () =>
+          repository.checkYouTubeCreatorConnection(flowId: attempt.flowId),
+    ),
+  );
+}
+
+String _localizedYouTubeOAuthError(
+  BuildContext context,
+  YouTubeOAuthErrorCode code, {
+  required bool creatorConnection,
+}) => switch (code) {
+  YouTubeOAuthErrorCode.creatorMembersApiUnavailable => abuText(
+    context,
+    'Google has not enabled the YouTube Members API for this creator channel. The channel may need YouTube Partner Manager approval before automatic verification can work.',
+    'لم تفعّل Google واجهة أعضاء يوتيوب لهذه القناة. قد تحتاج القناة إلى موافقة مدير شركاء يوتيوب قبل أن يعمل التحقق التلقائي.',
+  ),
+  YouTubeOAuthErrorCode.creatorMembershipsDisabled => abuText(
+    context,
+    'Channel Memberships are not enabled for the configured ABU 3MEER YouTube channel.',
+    'عضويات القناة غير مفعلة لقناة ABU 3MEER المحددة على يوتيوب.',
+  ),
+  YouTubeOAuthErrorCode.creatorChannelMismatch => abuText(
+    context,
+    'The authorized Google account does not own the configured ABU 3MEER channel. Reconnect using the channel-owner account.',
+    'حساب Google الذي تم تفويضه لا يملك قناة ABU 3MEER المحددة. أعد الربط باستخدام حساب مالك القناة.',
+  ),
+  YouTubeOAuthErrorCode.googleAccountMismatch => abuText(
+    context,
+    'You authorized a different Google account from the one linked to this ABU 3MEER account. Reconnect and choose the same Google account.',
+    'تم تفويض حساب Google مختلف عن الحساب المرتبط بحساب ABU 3MEER هذا. أعد الربط واختر حساب Google نفسه.',
+  ),
+  YouTubeOAuthErrorCode.youtubeChannelAlreadyLinked => abuText(
+    context,
+    'This YouTube channel is already linked to another ABU 3MEER account. Sign in to that account or contact support.',
+    'قناة يوتيوب هذه مرتبطة بالفعل بحساب ABU 3MEER آخر. سجّل الدخول إلى ذلك الحساب أو تواصل مع الدعم.',
+  ),
+  YouTubeOAuthErrorCode.authorizationDenied => abuText(
+    context,
+    'Google authorization was cancelled or denied. Nothing was linked. Try again and approve the requested read-only access.',
+    'تم إلغاء تفويض Google أو رفضه. لم يتم ربط أي شيء. حاول مجدداً ووافق على صلاحية القراءة المطلوبة.',
+  ),
+  YouTubeOAuthErrorCode.youtubeChannelMissing => abuText(
+    context,
+    'The selected Google account does not have a YouTube channel. Choose the Google account that owns the intended channel.',
+    'حساب Google المحدد لا يملك قناة يوتيوب. اختر حساب Google الذي يملك القناة المطلوبة.',
+  ),
+  YouTubeOAuthErrorCode.youtubeChannelAmbiguous => abuText(
+    context,
+    'This Google account owns multiple YouTube channels and no active membership was found. Select the intended YouTube or Brand Account and try again.',
+    'يملك حساب Google هذا عدة قنوات يوتيوب ولم يتم العثور على عضوية نشطة. اختر قناة يوتيوب أو حساب العلامة التجارية المطلوب وحاول مجدداً.',
+  ),
+  YouTubeOAuthErrorCode.googleAccountLinkRequired => abuText(
+    context,
+    'Link Google to this ABU 3MEER account first, then start YouTube verification again.',
+    'اربط Google بحساب ABU 3MEER هذا أولاً، ثم ابدأ توثيق يوتيوب مجدداً.',
+  ),
+  YouTubeOAuthErrorCode.creatorNotConnected => abuText(
+    context,
+    creatorConnection
+        ? 'Connect the ABU 3MEER channel-owner account before checking memberships.'
+        : 'The ABU 3MEER channel owner must finish the secure creator connection before memberships can be verified.',
+    creatorConnection
+        ? 'اربط حساب مالك قناة ABU 3MEER قبل التحقق من العضويات.'
+        : 'يجب أن يكمل مالك قناة ABU 3MEER ربط حساب المنشئ الآمن قبل توثيق العضويات.',
+  ),
+  YouTubeOAuthErrorCode.creatorReauthorizationRequired => abuText(
+    context,
+    'The channel-owner authorization is no longer valid. An administrator must reconnect the creator account.',
+    'لم يعد تفويض مالك القناة صالحاً. يجب على أحد المسؤولين إعادة ربط حساب المنشئ.',
+  ),
+  YouTubeOAuthErrorCode.creatorReusableAuthorizationMissing => abuText(
+    context,
+    'Google did not issue a reusable creator authorization. Revoke the previous ABU 3MEER grant in Google Account settings, then reconnect.',
+    'لم تصدر Google تفويضاً دائماً لحساب المنشئ. ألغِ تفويض ABU 3MEER السابق من إعدادات حساب Google ثم أعد الربط.',
+  ),
+  YouTubeOAuthErrorCode.youtubeScopeMissing => abuText(
+    context,
+    'The required YouTube permission was not granted. Reconnect and approve all requested read-only permissions.',
+    'لم يتم منح صلاحية يوتيوب المطلوبة. أعد الربط ووافق على جميع صلاحيات القراءة المطلوبة.',
+  ),
+  YouTubeOAuthErrorCode.oauthFlowExpired => abuText(
+    context,
+    'This connection attempt expired. Close this message and start a new connection.',
+    'انتهت صلاحية محاولة الربط هذه. أغلق الرسالة وابدأ محاولة ربط جديدة.',
+  ),
+  YouTubeOAuthErrorCode.youtubeApiUnavailable => abuText(
+    context,
+    'YouTube verification is temporarily unavailable. No membership was granted; try again later.',
+    'التحقق عبر يوتيوب غير متاح مؤقتاً. لم يتم منح العضوية؛ حاول لاحقاً.',
+  ),
+  YouTubeOAuthErrorCode.youtubeNotConfigured => abuText(
+    context,
+    'YouTube verification is not configured correctly on the ABU 3MEER server. Contact support.',
+    'لم يتم إعداد التحقق عبر يوتيوب بشكل صحيح على خادم ABU 3MEER. تواصل مع الدعم.',
+  ),
+  YouTubeOAuthErrorCode.none || YouTubeOAuthErrorCode.unknown => abuText(
+    context,
+    'YouTube authorization could not be completed. Nothing was linked. Close this message and try again.',
+    'تعذر إكمال تفويض يوتيوب. لم يتم ربط أي شيء. أغلق الرسالة وحاول مجدداً.',
+  ),
+};
+
+class _YouTubeOAuthStatusDialog extends StatefulWidget {
+  const _YouTubeOAuthStatusDialog({
+    required this.creatorConnection,
+    required this.checkStatus,
+  });
+
+  final bool creatorConnection;
+  final Future<YouTubeOAuthStatus?> Function() checkStatus;
+
+  @override
+  State<_YouTubeOAuthStatusDialog> createState() =>
+      _YouTubeOAuthStatusDialogState();
+}
+
+class _YouTubeOAuthStatusDialogState extends State<_YouTubeOAuthStatusDialog>
+    with WidgetsBindingObserver {
+  YouTubeOAuthStatus? status;
+  bool checking = false;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_check());
+    }
+  }
+
+  Future<void> _check() async {
+    if (checking) return;
+    setState(() {
+      checking = true;
+      error = null;
+    });
+    try {
+      final next = await widget.checkStatus();
+      if (!mounted) return;
+      setState(() {
+        status = next;
+        checking = false;
+      });
+    } catch (exception) {
+      if (!mounted) return;
+      setState(() {
+        checking = false;
+        error = productionErrorMessage(exception);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final current = status;
+    final currentChannelTitle = current?.channelTitle ?? '';
+    final successful = current?.isSuccessful == true;
+    final notMember = current?.state == YouTubeOAuthFlowState.notMember;
+    final failed =
+        current?.state == YouTubeOAuthFlowState.error ||
+        current?.state == YouTubeOAuthFlowState.expired;
+    final icon = successful
+        ? Icons.verified_rounded
+        : notMember
+        ? Icons.person_search_rounded
+        : failed
+        ? Icons.error_outline_rounded
+        : Icons.youtube_searched_for_rounded;
+    final iconColor = successful
+        ? _productionPrimary(context)
+        : notMember
+        ? _gold
+        : failed
+        ? _red
+        : _gold;
+
+    final title = widget.creatorConnection
+        ? abuText(context, 'Connect channel owner', 'ربط مالك القناة')
+        : abuText(context, 'Verify YouTube membership', 'توثيق عضوية يوتيوب');
+    final body = successful
+        ? widget.creatorConnection
+              ? abuText(
+                  context,
+                  'The creator account is connected securely on the server${currentChannelTitle.isEmpty ? '' : ' as $currentChannelTitle'}. Creator tokens are never sent to this app.',
+                  'تم ربط حساب مالك القناة بأمان على الخادم${currentChannelTitle.isEmpty ? '' : ' باسم $currentChannelTitle'}. لا تُرسل رموز مالك القناة إلى التطبيق.',
+                )
+              : abuText(
+                  context,
+                  'Membership verified${currentChannelTitle.isEmpty ? '' : ' for $currentChannelTitle'}. Your profile has been refreshed.',
+                  'تم توثيق العضوية${currentChannelTitle.isEmpty ? '' : ' للقناة $currentChannelTitle'}. تم تحديث ملفك.',
+                )
+        : notMember
+        ? abuText(
+            context,
+            'The connected YouTube channel is not an active paid member of ABU 3MEER. If you chose the wrong channel, close this message and connect again.',
+            'قناة يوتيوب المرتبطة ليست عضواً مدفوعاً نشطاً في ABU 3MEER. إذا اخترت قناة غير صحيحة، أغلق الرسالة وحاول الربط مجدداً.',
+          )
+        : failed
+        ? _localizedYouTubeOAuthError(
+            context,
+            current!.errorCode,
+            creatorConnection: widget.creatorConnection,
+          )
+        : abuText(
+            context,
+            'Finish Google authorization in the browser, then return here. We only check the server result; no Google or creator token is stored in the app.',
+            'أكمل تفويض Google في المتصفح ثم عد إلى هنا. يتحقق التطبيق من نتيجة الخادم فقط، ولا يخزن أي رمز Google أو رمز لمالك القناة.',
+          );
+
+    return AlertDialog(
+      icon: Icon(icon, color: iconColor, size: 42),
+      title: Text(title, textAlign: TextAlign.center),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: const TextStyle(height: 1.45),
+            ),
+            if (error != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: _red, height: 1.4),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: checking ? null : () => Navigator.pop(context, successful),
+          child: Text(
+            successful
+                ? abuText(context, 'DONE', 'تم')
+                : abuText(context, 'CLOSE', 'إغلاق'),
+          ),
+        ),
+        if (!successful && !notMember && !failed)
+          FilledButton.icon(
+            onPressed: checking ? null : _check,
+            icon: checking
+                ? const SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh_rounded),
+            label: Text(
+              checking
+                  ? abuText(context, 'CHECKING…', 'جارٍ التحقق…')
+                  : abuText(context, 'CHECK STATUS', 'تحقق من الحالة'),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
 class _ProductionSettings extends StatelessWidget {
   const _ProductionSettings({required this.repository, required this.profile});
   final ProductionRepository repository;
@@ -10978,8 +11319,8 @@ class _ProductionSettings extends StatelessWidget {
                       subtitle: Text(
                         abuText(
                           context,
-                          'Keep this account and use Google for sign-in and membership verification.',
-                          'احتفظ بهذا الحساب واستخدم Google لتسجيل الدخول والتحقق من العضوية.',
+                          'Keep this account, add Google sign-in, then complete the separate YouTube verification step below.',
+                          'احتفظ بهذا الحساب وأضف تسجيل Google، ثم أكمل خطوة توثيق يوتيوب المنفصلة أدناه.',
                         ),
                       ),
                       trailing: const Icon(Icons.chevron_right_rounded),
@@ -11141,12 +11482,85 @@ class _ProductionSettings extends StatelessWidget {
                       Text(
                         abuText(
                           context,
-                          'Verified members receive 2× XP on correct predictions and video questions, including player guesses. Signup gives 50 XP once and the first login each UTC day gives 5 XP; neither is doubled. XP cannot be bought, transferred, redeemed, or used to unlock anything.',
-                          'يحصل الأعضاء الموثقون على XP مضاعف للتوقعات وأسئلة الفيديو الصحيحة، بما فيها تخمين اللاعب. يمنح التسجيل 50 XP مرة واحدة، ويمنح أول دخول كل يوم UTC عدد 5 XP، ولا يضاعف أي منهما. لا يمكن شراء XP أو نقلها أو استبدالها ولا تفتح أي مزايا.',
+                          'First link Google to this existing account, then connect the same YouTube account so the server can identify its channel and check paid membership. Google sign-in alone does not prove membership. Verified members receive 2× XP on correct predictions and video questions. XP cannot be bought, transferred, redeemed, or used to unlock anything.',
+                          'اربط Google أولاً بهذا الحساب الحالي، ثم اربط حساب يوتيوب نفسه ليحدد الخادم القناة ويتحقق من العضوية المدفوعة. تسجيل الدخول عبر Google وحده لا يثبت العضوية. يحصل الأعضاء الموثقون على XP مضاعف للتوقعات وأسئلة الفيديو الصحيحة. لا يمكن شراء XP أو نقلها أو استبدالها ولا تفتح أي مزايا.',
                         ),
                         style: TextStyle(color: _muted, height: 1.45),
                       ),
                       const SizedBox(height: 14),
+                      FilledButton.icon(
+                        onPressed: profile.isGuest
+                            ? null
+                            : () async {
+                                try {
+                                  if (repository.canLinkGoogleAccount) {
+                                    await repository.linkGoogleAccount();
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          abuText(
+                                            context,
+                                            'Google is linked to this account. Now tap Connect & Verify YouTube.',
+                                            'تم ربط Google بهذا الحساب. اضغط الآن على ربط وتوثيق يوتيوب.',
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                  final verified =
+                                      await _openYouTubeMembershipConnection(
+                                        context,
+                                        repository: repository,
+                                        uid: profile.uid,
+                                      );
+                                  if (verified == true && context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          abuText(
+                                            context,
+                                            'YouTube membership verified and profile refreshed.',
+                                            'تم توثيق عضوية يوتيوب وتحديث الملف.',
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                } catch (error) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        productionErrorMessage(error),
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                        icon: repository.canLinkGoogleAccount
+                            ? const _GoogleGMark(size: 18)
+                            : const Icon(Icons.youtube_searched_for_rounded),
+                        label: Text(
+                          repository.canLinkGoogleAccount
+                              ? abuText(
+                                  context,
+                                  'LINK GOOGLE FIRST',
+                                  'اربط GOOGLE أولاً',
+                                )
+                              : abuText(
+                                  context,
+                                  profile.isYouTubeMember
+                                      ? 'RECONNECT / REFRESH YOUTUBE'
+                                      : 'CONNECT & VERIFY YOUTUBE',
+                                  profile.isYouTubeMember
+                                      ? 'إعادة ربط / تحديث يوتيوب'
+                                      : 'ربط وتوثيق يوتيوب',
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
                       OutlinedButton.icon(
                         onPressed: () => launchUrl(
                           Uri.parse(
@@ -11510,8 +11924,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
   title: abuText(context, 'Privacy Policy', 'سياسة الخصوصية'),
   updated: abuText(
     context,
-    'Updated 31 August 2026',
-    'آخر تحديث 31 أغسطس 2026',
+    'Updated 1 September 2026',
+    'آخر تحديث 1 سبتمبر 2026',
   ),
   webUrl: AbuBrand.privacyUrl,
   sections: [
@@ -11519,8 +11933,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Data We Collect', 'البيانات التي نجمعها'),
       abuText(
         context,
-        'Abu 3meer collects account details such as name, email address, sign-in provider, selected team and country, profile image, prediction entries, challenge answers, points, streaks, notification tokens, and basic device or diagnostics data needed to run the service.',
-        'يجمع أبو عمير بيانات الحساب مثل الاسم والبريد الإلكتروني وطريقة تسجيل الدخول والفريق والدولة وصورة الحساب والتوقعات وإجابات التحديات والنقاط والسلاسل ورموز الإشعارات وبيانات الجهاز أو التشخيص اللازمة لتشغيل الخدمة.',
+        'Abu 3meer collects account details such as name, email address, sign-in provider, selected team and country, profile image, prediction entries, challenge answers, points, streaks, notification tokens, and basic device or diagnostics data needed to run the service. If you deliberately connect YouTube, we also store the connected channel ID, derived membership status, membership level identifier, member-since date, and verification timestamps.',
+        'يجمع أبو عمير بيانات الحساب مثل الاسم والبريد الإلكتروني وطريقة تسجيل الدخول والفريق والدولة وصورة الحساب والتوقعات وإجابات التحديات والنقاط والسلاسل ورموز الإشعارات وبيانات الجهاز أو التشخيص اللازمة لتشغيل الخدمة. وإذا ربطت يوتيوب بإرادتك، نخزن أيضاً معرّف القناة المرتبطة وحالة العضوية المستنتجة ومعرّف مستوى العضوية وتاريخ بدء العضوية وتوقيتات التحقق.',
       ),
     ),
     (
@@ -11535,8 +11949,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Sharing', 'المشاركة'),
       abuText(
         context,
-        'We use service providers such as Firebase, Google sign-in, Apple sign-in, push-notification delivery, hosting, and football data providers. We do not sell personal data.',
-        'نستخدم مزودي خدمات مثل Firebase وتسجيل الدخول عبر Google وApple وتسليم الإشعارات والاستضافة ومزودي بيانات كرة القدم. لا نبيع البيانات الشخصية.',
+        'We use service providers such as Firebase, Google sign-in, Apple sign-in, YouTube Data API, push-notification delivery, hosting, and football data providers. User Google access tokens are used only to complete YouTube verification and are not retained. The channel owner authorization is encrypted on the backend. We do not sell personal data.',
+        'نستخدم مزودي خدمات مثل Firebase وتسجيل الدخول عبر Google وApple وواجهة YouTube Data API وتسليم الإشعارات والاستضافة ومزودي بيانات كرة القدم. تُستخدم رموز وصول المستخدم إلى Google فقط لإكمال توثيق يوتيوب ولا نحتفظ بها، بينما يُحفظ تفويض مالك القناة مشفراً في الخادم. لا نبيع البيانات الشخصية.',
       ),
     ),
     (

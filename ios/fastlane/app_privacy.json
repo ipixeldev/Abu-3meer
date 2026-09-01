@@ -12,11 +12,6 @@
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
     {
-      "category": "PHONE_NUMBER",
-      "purposes": ["APP_FUNCTIONALITY"],
-      "dataProtections": ["DATA_LINKED_TO_YOU"]
-    },
-    {
       "category": "PRECISE_LOCATION",
       "purposes": ["APP_FUNCTIONALITY"],
       "dataProtections": ["DATA_LINKED_TO_YOU"]

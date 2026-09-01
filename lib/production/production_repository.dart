@@ -467,6 +467,10 @@ class ProductionRepository {
       'admin_notification_pending_signature_v1';
   static const String _pendingRewardRedemptionPreferencePrefix =
       'loyalty_redemption_pending_v1:';
+  static const String _pendingYouTubeMembershipFlowPreferencePrefix =
+      'youtube_membership_oauth_flow_v1:';
+  static const String _pendingYouTubeCreatorFlowPreference =
+      'youtube_creator_oauth_flow_v1';
 
   ProductionRepository({
     FirebaseAuth? auth,
@@ -1090,6 +1094,10 @@ class ProductionRepository {
       );
     }
     await user.reload();
+    // Linking changes Firebase's provider identities. Force a new signed ID
+    // token so the backend can require the google.com identity before it
+    // starts the separate YouTube OAuth flow.
+    await user.getIdToken(true);
     await refreshProfile(user.uid, force: true);
   }
 
@@ -2825,25 +2833,82 @@ class ProductionRepository {
 
   // ── YouTube Member Verification ─────────────────────────────────────────
 
-  Future<bool> verifyYouTubeMembership(String uid) async {
-    if (uid.isEmpty || uid == 'guest') return false;
-    // Automatic paid-channel membership verification is not configured yet.
-    // Never infer it from a normal subscription or let a client write its own
-    // multiplier. The API/admin directory remains the source of truth.
-    return _localProfiles[uid]?.isYouTubeMember ?? false;
+  String _pendingYouTubeMembershipFlowKey(String uid) =>
+      '$_pendingYouTubeMembershipFlowPreferencePrefix$uid';
+
+  Future<YouTubeOAuthStart> startYouTubeMembershipConnection(String uid) async {
+    final currentUser = auth.currentUser;
+    if (uid.isEmpty || uid == 'guest' || currentUser == null) {
+      throw FirebaseAuthException(
+        code: 'unauthenticated',
+        message: 'Sign in before connecting YouTube.',
+      );
+    }
+    if (canLinkGoogleAccount) {
+      throw FirebaseAuthException(
+        code: 'youtube-google-link-required',
+        message: 'Link Google to this account before connecting YouTube.',
+      );
+    }
+    final attempt = await apiRepo.startYouTubeMembershipConnection();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _pendingYouTubeMembershipFlowKey(currentUser.uid),
+      attempt.flowId,
+    );
+    return attempt;
   }
 
-  Future<void> setAdminYouTubeMembership({
-    required String uid,
-    required bool isMember,
+  Future<YouTubeOAuthStatus?> checkYouTubeMembershipConnection(
+    String uid, {
+    String? flowId,
   }) async {
-    await apiRepo.setAdminYouTubeMembership(userId: uid, isMember: isMember);
-    // PostgreSQL is the production source of truth for membership and reward
-    // multipliers. Do not report a false failure by invoking the retired
-    // Firebase callable after this audited server mutation has committed.
-    if (_profileResources.containsKey(uid)) {
-      await _profileResources[uid]!.refresh(force: true);
+    final currentUser = auth.currentUser;
+    if (uid.isEmpty || uid == 'guest' || currentUser == null) return null;
+    final preferences = await SharedPreferences.getInstance();
+    final pendingKey = _pendingYouTubeMembershipFlowKey(currentUser.uid);
+    final resolvedFlowId = (flowId ?? preferences.getString(pendingKey) ?? '')
+        .trim();
+    if (resolvedFlowId.isEmpty) return null;
+
+    final status = await apiRepo.fetchYouTubeMembershipConnectionStatus(
+      resolvedFlowId,
+    );
+    if (status.isTerminal) {
+      await preferences.remove(pendingKey);
+      await refreshProfile(uid, force: true);
     }
+    return status;
+  }
+
+  Future<YouTubeOAuthStatus> fetchYouTubeCreatorConnectionStatus() =>
+      apiRepo.fetchYouTubeCreatorConnectionStatus();
+
+  Future<YouTubeOAuthStart> startYouTubeCreatorConnection() async {
+    final attempt = await apiRepo.startYouTubeCreatorConnection();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      _pendingYouTubeCreatorFlowPreference,
+      attempt.flowId,
+    );
+    return attempt;
+  }
+
+  Future<YouTubeOAuthStatus?> checkYouTubeCreatorConnection({
+    String? flowId,
+  }) async {
+    final preferences = await SharedPreferences.getInstance();
+    final resolvedFlowId =
+        (flowId ??
+                preferences.getString(_pendingYouTubeCreatorFlowPreference) ??
+                '')
+            .trim();
+    if (resolvedFlowId.isEmpty) return null;
+    final status = await apiRepo.fetchYouTubeCreatorFlowStatus(resolvedFlowId);
+    if (status.isTerminal) {
+      await preferences.remove(_pendingYouTubeCreatorFlowPreference);
+    }
+    return status;
   }
 
   // ── Games Arena Visibility Toggle ───────────────────────────────────────
@@ -2894,6 +2959,8 @@ String productionErrorMessage(Object error) {
       'account-exists-with-different-credential' => 'An account already uses this email. Sign in with the method you used before.',
       'credential-already-in-use' => 'That Google account is linked to another Abu 3meer account. Sign out of that account first, then link Google here.',
       'provider-already-linked' => 'Google is already linked to this account.',
+      'youtube-google-link-required' =>
+        'Link Google to this account before connecting YouTube.',
       'operation-not-allowed' =>
         'This sign-in method is not enabled yet. Contact support.',
       'account-deletion-password-required' =>

@@ -133,6 +133,10 @@ void main() {
         'avatarUrl': 'https://example.com/avatar.png',
         'role': 'super_admin',
         'isYouTubeMember': true,
+        'youtubeChannelLinked': true,
+        'youtubeMembershipLevelId': 'gold-level',
+        'youtubeMembershipVerifiedAt': '2026-09-01T08:30:00.000Z',
+        'youtubeMemberSince': '2026-01-15T12:00:00.000Z',
         'totalPoints': '120',
         'monthlyPoints': 30,
         'seasonPoints': '75',
@@ -145,6 +149,16 @@ void main() {
       expect(profile.email, 'admin@example.com');
       expect(profile.role, 'superAdmin');
       expect(profile.isYouTubeMember, isTrue);
+      expect(profile.youtubeChannelLinked, isTrue);
+      expect(profile.youtubeMembershipLevelId, 'gold-level');
+      expect(
+        profile.youtubeMembershipVerifiedAt?.toUtc(),
+        DateTime.utc(2026, 9, 1, 8, 30),
+      );
+      expect(
+        profile.youtubeMemberSince?.toUtc(),
+        DateTime.utc(2026, 1, 15, 12),
+      );
       expect(profile.totalPoints, 120);
       expect(profile.seasonPoints, 75);
       expect(profile.onboardingComplete, isTrue);
@@ -165,6 +179,7 @@ void main() {
 
       expect(profile.uid, 'database-only-id');
       expect(profile.suspended, isTrue);
+      expect(profile.youtubeChannelLinked, isFalse);
       expect(adjustment.delta, -25);
       expect(adjustment.totalAfter, 100);
     });

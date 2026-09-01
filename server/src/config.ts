@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import { loadYouTubeOAuthConfig } from './youtubeOAuthConfig.js';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
@@ -51,6 +52,11 @@ export const config = {
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',
     privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
   },
+
+  // Creator OAuth credentials are server-only. Missing or malformed values do
+  // not stop unrelated API features from booting; membership endpoints can use
+  // `configured`/`status` to fail closed without ever returning secret values.
+  youtubeOAuth: loadYouTubeOAuthConfig(),
 
   // No implicit production administrator. The first configured address is the
   // protected bootstrap Super Administrator, so it must be explicit in .env.

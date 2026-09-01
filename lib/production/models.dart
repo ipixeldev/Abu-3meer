@@ -47,6 +47,10 @@ class AbuUserProfile {
     this.lastCheckInDate = '',
     this.lastActivityAt,
     this.onboardingCompleted,
+    this.youtubeChannelLinked = false,
+    this.youtubeMembershipLevelId = '',
+    this.youtubeMembershipVerifiedAt,
+    this.youtubeMemberSince,
   });
 
   final String uid;
@@ -75,6 +79,10 @@ class AbuUserProfile {
   final int playerCardsCollected;
   final String lastCheckInDate;
   final DateTime? lastActivityAt;
+  final bool youtubeChannelLinked;
+  final String youtubeMembershipLevelId;
+  final DateTime? youtubeMembershipVerifiedAt;
+  final DateTime? youtubeMemberSince;
 
   /// Explicit PostgreSQL onboarding state. Legacy Firestore-only profiles do
   /// not have this field, so `null` deliberately falls back to field inference.
@@ -180,6 +188,10 @@ class AbuUserProfile {
     String? lastCheckInDate,
     DateTime? lastActivityAt,
     bool? onboardingCompleted,
+    bool? youtubeChannelLinked,
+    String? youtubeMembershipLevelId,
+    DateTime? youtubeMembershipVerifiedAt,
+    DateTime? youtubeMemberSince,
   }) => AbuUserProfile(
     uid: uid,
     email: email ?? this.email,
@@ -208,6 +220,12 @@ class AbuUserProfile {
     lastCheckInDate: lastCheckInDate ?? this.lastCheckInDate,
     lastActivityAt: lastActivityAt ?? this.lastActivityAt,
     onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
+    youtubeChannelLinked: youtubeChannelLinked ?? this.youtubeChannelLinked,
+    youtubeMembershipLevelId:
+        youtubeMembershipLevelId ?? this.youtubeMembershipLevelId,
+    youtubeMembershipVerifiedAt:
+        youtubeMembershipVerifiedAt ?? this.youtubeMembershipVerifiedAt,
+    youtubeMemberSince: youtubeMemberSince ?? this.youtubeMemberSince,
   );
 
   factory AbuUserProfile.fromDocument(

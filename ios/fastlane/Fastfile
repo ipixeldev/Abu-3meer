@@ -169,7 +169,7 @@ platform :ios do
 
   desc "Submit App Store version 1.1.0 for review and release after approval"
   lane :submit_app_store_review do |options|
-    build_number = (options[:build_number] || ENV.fetch("APP_STORE_BUILD_NUMBER", "9")).to_s
+    build_number = (options[:build_number] || ENV.fetch("APP_STORE_BUILD_NUMBER", "10")).to_s
     deliver(
       api_key: abu3meer_api_key,
       app_identifier: "com.abu3meer.app",

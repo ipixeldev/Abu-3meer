@@ -19,6 +19,179 @@ double parseApiDouble(dynamic value, [double fallback = 0]) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
+enum YouTubeOAuthFlowState {
+  pending,
+  verified,
+  notMember,
+  connected,
+  disconnected,
+  expired,
+  error,
+}
+
+enum YouTubeOAuthErrorCode {
+  none,
+  creatorMembersApiUnavailable,
+  creatorMembershipsDisabled,
+  creatorChannelMismatch,
+  googleAccountMismatch,
+  youtubeChannelAlreadyLinked,
+  authorizationDenied,
+  youtubeChannelMissing,
+  youtubeChannelAmbiguous,
+  googleAccountLinkRequired,
+  creatorNotConnected,
+  creatorReauthorizationRequired,
+  creatorReusableAuthorizationMissing,
+  youtubeScopeMissing,
+  oauthFlowExpired,
+  youtubeApiUnavailable,
+  youtubeNotConfigured,
+  unknown,
+}
+
+class YouTubeOAuthStart {
+  const YouTubeOAuthStart({
+    required this.flowId,
+    required this.authorizationUrl,
+  });
+
+  final String flowId;
+  final Uri authorizationUrl;
+}
+
+class YouTubeOAuthStatus {
+  const YouTubeOAuthStatus({
+    required this.state,
+    this.isYouTubeMember = false,
+    this.channelTitle = '',
+    this.errorCode = YouTubeOAuthErrorCode.none,
+  });
+
+  final YouTubeOAuthFlowState state;
+  final bool isYouTubeMember;
+  final String channelTitle;
+  final YouTubeOAuthErrorCode errorCode;
+
+  bool get isPending => state == YouTubeOAuthFlowState.pending;
+  bool get isSuccessful =>
+      state == YouTubeOAuthFlowState.verified ||
+      state == YouTubeOAuthFlowState.connected;
+  bool get isTerminal => !isPending;
+}
+
+YouTubeOAuthErrorCode _parseYouTubeOAuthErrorCode(dynamic value) {
+  final code = value?.toString().trim().toLowerCase() ?? '';
+  return switch (code) {
+    '' => YouTubeOAuthErrorCode.none,
+    'creator_members_api_unavailable' =>
+      YouTubeOAuthErrorCode.creatorMembersApiUnavailable,
+    'creator_memberships_disabled' =>
+      YouTubeOAuthErrorCode.creatorMembershipsDisabled,
+    'creator_channel_mismatch' => YouTubeOAuthErrorCode.creatorChannelMismatch,
+    'google_account_mismatch' ||
+    'google_identity_invalid' => YouTubeOAuthErrorCode.googleAccountMismatch,
+    'youtube_channel_already_linked' =>
+      YouTubeOAuthErrorCode.youtubeChannelAlreadyLinked,
+    'oauth_authorization_denied' => YouTubeOAuthErrorCode.authorizationDenied,
+    'youtube_channel_missing' => YouTubeOAuthErrorCode.youtubeChannelMissing,
+    'youtube_channel_ambiguous' =>
+      YouTubeOAuthErrorCode.youtubeChannelAmbiguous,
+    'google_account_link_required' =>
+      YouTubeOAuthErrorCode.googleAccountLinkRequired,
+    'creator_not_connected' => YouTubeOAuthErrorCode.creatorNotConnected,
+    'creator_reauthorization_required' ||
+    'creator_token_rejected' ||
+    'creator_token_unavailable' ||
+    'creator_token_incomplete' =>
+      YouTubeOAuthErrorCode.creatorReauthorizationRequired,
+    'creator_refresh_token_missing' =>
+      YouTubeOAuthErrorCode.creatorReusableAuthorizationMissing,
+    'youtube_scope_missing' => YouTubeOAuthErrorCode.youtubeScopeMissing,
+    'oauth_flow_expired' ||
+    'invalid_or_expired_oauth_state' ||
+    'youtube_flow_not_found' => YouTubeOAuthErrorCode.oauthFlowExpired,
+    'youtube_api_unavailable' ||
+    'youtube_api_rejected' ||
+    'youtube_verification_failed' =>
+      YouTubeOAuthErrorCode.youtubeApiUnavailable,
+    'youtube_not_configured' ||
+    'youtube_invalid_encryption_key' ||
+    'youtube_invalid_redirect_uri' ||
+    'youtube_invalid_client_id' ||
+    'youtube_invalid_creator_channel' ||
+    'youtube_secret_encryption_failed' ||
+    'youtube_secret_decryption_failed' =>
+      YouTubeOAuthErrorCode.youtubeNotConfigured,
+    _ => YouTubeOAuthErrorCode.unknown,
+  };
+}
+
+@visibleForTesting
+YouTubeOAuthStart parseYouTubeOAuthStart(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid YouTube connection response.');
+  }
+  final response = Map<String, dynamic>.from(value);
+  final flowId = (response['flowId'] ?? response['flow_id'] ?? '')
+      .toString()
+      .trim();
+  final authorizationUrl = Uri.tryParse(
+    (response['authorizationUrl'] ?? response['authorization_url'] ?? '')
+        .toString()
+        .trim(),
+  );
+  final safeFlowId = RegExp(r'^[A-Za-z0-9_-]{8,200}$').hasMatch(flowId);
+  // OAuth must open Google's own authorization host. Neither a creator token
+  // nor a generic server-provided web destination is accepted by the client.
+  final safeAuthorizationUrl =
+      authorizationUrl != null &&
+      authorizationUrl.scheme == 'https' &&
+      authorizationUrl.host == 'accounts.google.com';
+  if (!safeFlowId || !safeAuthorizationUrl) {
+    throw const FormatException('Invalid YouTube connection response.');
+  }
+  return YouTubeOAuthStart(flowId: flowId, authorizationUrl: authorizationUrl);
+}
+
+@visibleForTesting
+YouTubeOAuthStatus parseYouTubeOAuthStatus(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid YouTube connection status.');
+  }
+  final response = Map<String, dynamic>.from(value);
+  var rawStatus = (response['status'] ?? '').toString().trim().toLowerCase();
+  rawStatus = rawStatus.replaceAll('-', '_').replaceAll(' ', '_');
+  if (rawStatus.isEmpty && response['connected'] == true) {
+    rawStatus = 'connected';
+  } else if (rawStatus.isEmpty && response['connected'] == false) {
+    rawStatus = 'disconnected';
+  }
+  final state = switch (rawStatus) {
+    'pending' || 'awaiting_authorization' => YouTubeOAuthFlowState.pending,
+    'verified' || 'member' || 'active_member' => YouTubeOAuthFlowState.verified,
+    'not_member' || 'notmember' => YouTubeOAuthFlowState.notMember,
+    'connected' || 'authorized' => YouTubeOAuthFlowState.connected,
+    'disconnected' || 'not_connected' => YouTubeOAuthFlowState.disconnected,
+    'expired' || 'cancelled' || 'canceled' => YouTubeOAuthFlowState.expired,
+    'error' || 'failed' || 'denied' => YouTubeOAuthFlowState.error,
+    _ => throw const FormatException('Invalid YouTube connection status.'),
+  };
+  return YouTubeOAuthStatus(
+    state: state,
+    isYouTubeMember:
+        response['isYouTubeMember'] == true || response['is_member'] == true,
+    channelTitle: (response['channelTitle'] ?? response['channel_title'] ?? '')
+        .toString()
+        .trim(),
+    // Only retain an allowlisted enum. Raw provider/server text is never
+    // carried into UI state where it could disclose OAuth diagnostics.
+    errorCode: _parseYouTubeOAuthErrorCode(
+      response['errorCode'] ?? response['error_code'],
+    ),
+  );
+}
+
 class RewardRedemptionReceipt {
   const RewardRedemptionReceipt({
     required this.redemptionId,
@@ -218,6 +391,16 @@ AbuUserProfile parseAdminUserProfile(dynamic value) {
   final rawRole = (user['role'] ?? 'fan').toString();
   final role = rawRole == 'super_admin' ? 'superAdmin' : rawRole;
   final accountStatus = (user['accountStatus'] ?? 'active').toString();
+  DateTime? optionalTimestamp(String camelCase, String snakeCase) {
+    final raw = user[camelCase] ?? user[snakeCase];
+    if (raw == null || raw.toString().trim().isEmpty) return null;
+    return DateTime.tryParse(raw.toString())?.toLocal();
+  }
+
+  final youtubeChannelId =
+      (user['youtubeChannelId'] ?? user['youtube_channel_id'] ?? '')
+          .toString()
+          .trim();
   return AbuUserProfile(
     // Mutating endpoints accept either the PostgreSQL ID or Firebase UID. Use
     // the Firebase UID when present so the same model also works in existing
@@ -244,6 +427,21 @@ AbuUserProfile parseAdminUserProfile(dynamic value) {
     level: parseApiInt(user['level'], 1),
     lastActivityAt: DateTime.tryParse((user['lastActiveAt'] ?? '').toString()),
     onboardingCompleted: user['onboardingCompleted'] as bool?,
+    youtubeChannelLinked:
+        user['youtubeChannelLinked'] == true || youtubeChannelId.isNotEmpty,
+    youtubeMembershipLevelId:
+        (user['youtubeMembershipLevelId'] ??
+                user['youtube_membership_level_id'] ??
+                '')
+            .toString(),
+    youtubeMembershipVerifiedAt: optionalTimestamp(
+      'youtubeMembershipVerifiedAt',
+      'youtube_membership_verified_at',
+    ),
+    youtubeMemberSince: optionalTimestamp(
+      'youtubeMemberSince',
+      'youtube_member_since',
+    ),
   );
 }
 
@@ -1269,15 +1467,55 @@ class ApiProductionRepository {
     );
   }
 
-  Future<void> verifyYouTubeMember({
-    String? channelId,
-    String? googleEmail,
-  }) async {
-    await api.post(
-      '/profile/verify-yt-member',
-      body: {'channelId': channelId, 'googleEmail': googleEmail},
+  Future<YouTubeOAuthStart> startYouTubeMembershipConnection() async {
+    final response = await api.post(
+      '/profile/youtube/connect/start',
+      body: const <String, dynamic>{},
       requireAuth: true,
     );
+    return parseYouTubeOAuthStart(response);
+  }
+
+  Future<YouTubeOAuthStatus> fetchYouTubeMembershipConnectionStatus(
+    String flowId,
+  ) async {
+    final safeFlowId = Uri.encodeComponent(flowId.trim());
+    final response = await api.get(
+      '/profile/youtube/connect/$safeFlowId/status',
+      requireAuth: true,
+      bypassCache: true,
+    );
+    return parseYouTubeOAuthStatus(response);
+  }
+
+  Future<YouTubeOAuthStatus> fetchYouTubeCreatorConnectionStatus() async {
+    final response = await api.get(
+      '/admin/youtube/creator/status',
+      requireAuth: true,
+      bypassCache: true,
+    );
+    return parseYouTubeOAuthStatus(response);
+  }
+
+  Future<YouTubeOAuthStart> startYouTubeCreatorConnection() async {
+    final response = await api.post(
+      '/admin/youtube/creator/connect/start',
+      body: const <String, dynamic>{},
+      requireAuth: true,
+    );
+    return parseYouTubeOAuthStart(response);
+  }
+
+  Future<YouTubeOAuthStatus> fetchYouTubeCreatorFlowStatus(
+    String flowId,
+  ) async {
+    final safeFlowId = Uri.encodeComponent(flowId.trim());
+    final response = await api.get(
+      '/admin/youtube/creator/connect/$safeFlowId/status',
+      requireAuth: true,
+      bypassCache: true,
+    );
+    return parseYouTubeOAuthStatus(response);
   }
 
   Future<List<PointLedgerEntry>> fetchPointHistory() async {
@@ -1515,22 +1753,6 @@ class ApiProductionRepository {
       );
     }
     return response.map(parseAdminPointAdjustment).toList(growable: false);
-  }
-
-  Future<void> setAdminYouTubeMembership({
-    required String userId,
-    required bool isMember,
-  }) async {
-    await api.post(
-      '/admin/users/${Uri.encodeComponent(userId)}/membership',
-      body: <String, dynamic>{
-        'isMember': isMember,
-        'reason': isMember
-            ? 'Gold membership granted from the admin user directory.'
-            : 'Gold membership revoked from the admin user directory.',
-      },
-      requireAuth: true,
-    );
   }
 
   Future<void> updateNotificationPreferences({

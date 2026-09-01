@@ -17,8 +17,10 @@ import {
   listLeaderboardSeasons,
   saveManualLeaderboardSeason,
 } from '../services/leaderboardService.js';
+import { youtubeMembershipRefreshIntervalSeconds } from '../services/youtubeOAuthService.js';
 
 const manageableRoles = ['fan', 'member', 'moderator', 'admin', 'super_admin'] as const;
+const adminAssignableRoles = ['fan', 'moderator', 'admin', 'super_admin'] as const;
 const leaderboardSeasonBodySchema = z.object({
   displayName: z.string().trim().min(1).max(100),
   startsAt: z.string().datetime(),
@@ -72,7 +74,17 @@ export async function adminRoutes(fastify: FastifyInstance) {
     const result = await query(
       `SELECT u.id, u.firebase_uid, u.email, u.username, u.display_name,
               u.avatar_url, u.country, u.country_code, u.supported_team,
-              u.supported_team_logo, u.is_youtube_member, u.account_status,
+              u.supported_team_logo,
+              (yl.is_member = TRUE
+                AND yl.last_verified_at >=
+                    CURRENT_TIMESTAMP - ($6::integer * INTERVAL '1 second'))
+                AS is_youtube_member,
+              yl.youtube_channel_id, yl.membership_level_id,
+              yl.last_verified_at AS youtube_membership_verified_at,
+              yl.last_attempted_at AS youtube_membership_last_attempted_at,
+              yl.last_error_code AS youtube_membership_error_code,
+              yl.member_since AS youtube_member_since,
+              u.account_status,
               u.onboarding_completed, u.created_at, u.last_active_at,
               p.total_points, p.monthly_points, p.season_points,
               p.loyalty_points, p.level, p.is_guest,
@@ -83,7 +95,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
               COUNT(*) OVER() AS total_count
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
+       LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
        LEFT JOIN user_roles ur ON ur.user_id = u.id
+         AND (
+           ur.role_id <> 'member'
+           OR (
+             yl.is_member = TRUE
+             AND yl.last_verified_at >=
+                 CURRENT_TIMESTAMP - ($6::integer * INTERVAL '1 second')
+           )
+         )
        WHERE (
          $1::text IS NULL OR
          u.email ILIKE '%' || $1 || '%' OR
@@ -92,15 +113,35 @@ export async function adminRoutes(fastify: FastifyInstance) {
          u.firebase_uid = $1 OR
          u.id::text = $1
        )
-       AND ($2::text IS NULL OR EXISTS (
-         SELECT 1 FROM user_roles filtered_role
-         WHERE filtered_role.user_id = u.id AND filtered_role.role_id = $2
-       ))
+       AND (
+         $2::text IS NULL
+         OR (
+           $2 = 'member'
+           AND yl.is_member = TRUE
+           AND yl.last_verified_at >=
+               CURRENT_TIMESTAMP - ($6::integer * INTERVAL '1 second')
+         )
+         OR (
+           $2 <> 'member'
+           AND EXISTS (
+             SELECT 1 FROM user_roles filtered_role
+             WHERE filtered_role.user_id = u.id
+               AND filtered_role.role_id = $2
+           )
+         )
+       )
        AND ($3::text IS NULL OR u.account_status = $3)
-       GROUP BY u.id, p.user_id
+       GROUP BY u.id, p.user_id, yl.user_id
        ORDER BY u.created_at DESC, u.id
        LIMIT $4 OFFSET $5`,
-      [search, parsed.data.role ?? null, parsed.data.status ?? null, parsed.data.limit, parsed.data.offset],
+      [
+        search,
+        parsed.data.role ?? null,
+        parsed.data.status ?? null,
+        parsed.data.limit,
+        parsed.data.offset,
+        youtubeMembershipRefreshIntervalSeconds(),
+      ],
     );
 
     const users = result.rows.map((row) => {
@@ -118,6 +159,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
         supportedTeam: row.supported_team,
         supportedTeamLogo: row.supported_team_logo,
         isYouTubeMember: row.is_youtube_member,
+        youtubeChannelLinked: Boolean(row.youtube_channel_id),
+        youtubeChannelId: row.youtube_channel_id ?? null,
+        youtubeMembershipLevelId: row.membership_level_id ?? null,
+        youtubeMembershipVerifiedAt: row.youtube_membership_verified_at ?? null,
+        youtubeMembershipLastAttemptedAt:
+          row.youtube_membership_last_attempted_at ?? null,
+        youtubeMembershipErrorCode: row.youtube_membership_error_code ?? null,
+        youtubeMemberSince: row.youtube_member_since ?? null,
         accountStatus: row.account_status,
         suspended: row.account_status === 'suspended' || row.account_status === 'banned',
         onboardingCompleted: row.onboarding_completed,
@@ -531,7 +580,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
   fastify.post('/admin/users/:id/roles', { preHandler: [requireSuperAdmin] }, async (request, reply) => {
     const { id: identifier } = request.params as { id: string };
     const schema = z.object({
-      roles: z.array(z.enum(manageableRoles)).min(1).max(manageableRoles.length),
+      // `member` is exclusively derived from the verified YouTube account
+      // link and cannot be granted or revoked through role administration.
+      roles: z.array(z.enum(adminAssignableRoles))
+        .min(1)
+        .max(adminAssignableRoles.length),
       reason: z.string().trim().min(5).max(255),
     });
 
@@ -590,13 +643,21 @@ export async function adminRoutes(fastify: FastifyInstance) {
         }
       }
 
-      await client.query('DELETE FROM user_roles WHERE user_id = $1', [id]);
+      await client.query(
+        `DELETE FROM user_roles
+         WHERE user_id = $1 AND role_id <> 'member'`,
+        [id],
+      );
       await client.query(
         `INSERT INTO user_roles (user_id, role_id, assigned_by)
          SELECT $1, role_id, $3
-         FROM unnest($2::varchar[]) AS role_id`,
+         FROM unnest($2::varchar[]) AS role_id
+         ON CONFLICT DO NOTHING`,
         [id, roles, request.user!.id],
       );
+      const resultingRoles = previousRoles.includes('member')
+        ? [...roles, 'member']
+        : roles;
       await client.query(
         `INSERT INTO admin_audit_logs
            (admin_user_id, action, target_entity, target_id, before_state, after_state)
@@ -605,11 +666,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
           request.user!.id,
           id,
           JSON.stringify({ roles: previousRoles }),
-          JSON.stringify({ roles, reason: parsed.data.reason }),
+          JSON.stringify({ roles: resultingRoles, reason: parsed.data.reason }),
         ],
       );
       await client.query('COMMIT');
-      return { success: true, userId: id, roles };
+      return { success: true, userId: id, roles: resultingRoles };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
       throw error;

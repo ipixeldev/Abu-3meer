@@ -3,7 +3,10 @@ Abu 3meer supports Arabic and English.
 Authentication and account controls:
 - Sign in with Apple is available on iOS as an equivalent option alongside Google and email.
 - Account deletion is available in Settings > Account & Security > Delete Account.
-- A user who originally signs in with email or Apple can link Google to the same Firebase account in Settings. This preserves the existing profile and points and is used only to verify YouTube channel membership.
+- A user who originally signs in with email or Apple can link Google to the same Firebase account in Settings. This preserves the existing profile and points.
+- YouTube membership is a separate, explicit connection after Google is linked. The user authorizes the Google account that controls their YouTube channel; the backend identifies its channel ID and checks active Abu 3meer paid-channel membership. Google sign-in alone never grants member status.
+- User Google access tokens are used transiently for this check and are not retained. The Abu 3meer channel-owner authorization is encrypted and stored only on the backend; no creator credential is present in the app binary or returned to a device.
+- A reviewer may use any non-member Google/YouTube account to exercise this flow; the expected result is a clear "not an active member" status and all non-member app functionality remains available.
 
 XP and rankings:
 - The app is completely free. It has no purchases, paid entry, betting, wagering, prizes, rewards, or leaderboard winners.
