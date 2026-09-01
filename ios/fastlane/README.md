@@ -55,6 +55,14 @@ Upload an existing IPA and distribute it to both Abu 3meer TestFlight groups
 
 Select an already processed build for App Store version 1.1.0 without submitting for review
 
+### ios submit_app_store_review
+
+```sh
+[bundle exec] fastlane ios submit_app_store_review
+```
+
+Submit App Store version 1.1.0 build 8 for review and release after approval
+
 ----
 
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.
