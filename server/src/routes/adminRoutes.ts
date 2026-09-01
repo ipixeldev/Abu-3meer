@@ -18,6 +18,7 @@ import {
   saveManualLeaderboardSeason,
 } from '../services/leaderboardService.js';
 import { youtubeMembershipRefreshIntervalSeconds } from '../services/youtubeOAuthService.js';
+import { getAdminDashboardStats } from '../services/adminStatsService.js';
 
 const manageableRoles = ['fan', 'member', 'moderator', 'admin', 'super_admin'] as const;
 const adminAssignableRoles = ['fan', 'moderator', 'admin', 'super_admin'] as const;
@@ -53,6 +54,12 @@ function primaryRole(roles: string[]): string {
 }
 
 export async function adminRoutes(fastify: FastifyInstance) {
+  fastify.get(
+    '/admin/dashboard/stats',
+    { preHandler: [requirePermission('admin_dashboard.view')] },
+    async () => getAdminDashboardStats(),
+  );
+
   // PostgreSQL is the account source of truth. Returning both the database ID
   // and Firebase UID lets migrated clients move to the stable database ID
   // without hiding users that never had a Firestore profile document.

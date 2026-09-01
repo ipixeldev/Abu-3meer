@@ -159,7 +159,7 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
   fastify.get(
     '/admin/youtube/membership/snapshot',
     {
-      preHandler: [requirePermission('settings.manage')],
+      preHandler: [requirePermission('membership_snapshots.manage')],
       config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
     },
     async (_request, reply) => {
@@ -174,7 +174,7 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
   fastify.post(
     '/admin/youtube/membership/snapshot',
     {
-      preHandler: [requirePermission('settings.manage')],
+      preHandler: [requirePermission('membership_snapshots.manage')],
       config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
     },
     async (request, reply) => {
