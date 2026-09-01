@@ -3,8 +3,6 @@ import { OAuth2Client } from 'google-auth-library';
 
 export const youtubeReadonlyScope =
   'https://www.googleapis.com/auth/youtube.readonly';
-export const youtubeCreatorMembershipScope =
-  'https://www.googleapis.com/auth/youtube.channel-memberships.creator';
 export const googleOpenIdScope = 'openid';
 
 const googleAuthorizationEndpoint =

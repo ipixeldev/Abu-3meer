@@ -637,7 +637,16 @@ async function rankedRows(
               u.display_name,
               u.avatar_url,
               u.supported_team,
-              (yl.is_member = TRUE) AS is_youtube_member,
+              COALESCE(
+                yl.is_member = TRUE
+                AND yl.verification_source = 'admin_snapshot'
+                AND yl.snapshot_import_id = (
+                  SELECT active_import_id
+                  FROM youtube_membership_snapshot_state
+                  WHERE singleton = TRUE
+                ),
+                FALSE
+              ) AS is_youtube_member,
               u.created_at AS account_created_at,
               SUM(pt.final_points)::bigint AS points
        FROM point_transactions pt

@@ -23,7 +23,7 @@ YouTube Data API v3 is enabled.
   `https://www.googleapis.com/auth/youtube.channel-memberships.creator`.
 
 The read-only user authorization is used once to call
-`channels.list(part=id,snippet&mine=true)`. This proves which channel ID is
+`channels.list(part=id&mine=true)`. This proves which channel ID is
 owned by the Google identity already linked to the app account. The short-lived
 Google access token is not stored.
 

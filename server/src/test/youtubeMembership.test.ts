@@ -735,6 +735,8 @@ describe('membership freshness enforcement', () => {
     assert.match(routes, /'\/youtube\/oauth\/callback'/);
     assert.doesNotMatch(predictions, /yl\.last_verified_at >=/);
     assert.match(predictions, /yl\.is_member = TRUE/);
+    assert.match(predictions, /yl\.verification_source = 'admin_snapshot'/);
+    assert.match(predictions, /yl\.snapshot_import_id = \(/);
     assert.match(predictions, /refreshStaleYouTubeMembershipsForUsers\(/);
     assert.match(predictions, /membershipRefresh\.unavailable > 0/);
     assert.match(
@@ -790,6 +792,45 @@ describe('membership freshness enforcement', () => {
     assert.doesNotMatch(auth, /refreshStaleLinkedYouTubeMembership/);
     assert.doesNotMatch(auth, /yl\.last_verified_at >=/);
     assert.match(auth, /yl\.is_member = TRUE/);
+    assert.match(auth, /yl\.verification_source = 'admin_snapshot'/);
+    assert.match(auth, /yl\.snapshot_import_id = \(/);
+  });
+
+  it('rejects legacy member flags unless the current CSV snapshot supports them', async () => {
+    const migration = await readFile(
+      path.resolve(
+        process.cwd(),
+        'migrations/036_enforce_current_snapshot_membership.sql',
+      ),
+      'utf8',
+    );
+    assert.match(migration, /verification_source = 'admin_snapshot'/);
+    assert.match(migration, /snapshot_import_id = \([\s\S]*active_import_id/);
+    assert.match(migration, /SET is_member = FALSE/);
+    assert.match(migration, /DELETE FROM user_roles/);
+    assert.match(migration, /DELETE FROM youtube_creator_credentials/);
+
+    for (const relativePath of [
+      'src/middleware/auth.ts',
+      'src/routes/profileRoutes.ts',
+      'src/routes/adminRoutes.ts',
+      'src/services/leaderboardService.ts',
+      'src/services/predictionService.ts',
+      'src/services/challengeMembershipService.ts',
+      'src/services/notificationService.ts',
+    ]) {
+      const source = await readFile(path.resolve(process.cwd(), relativePath), 'utf8');
+      assert.match(
+        source,
+        /verification_source = 'admin_snapshot'/,
+        `${relativePath} must reject legacy membership flags`,
+      );
+      assert.match(
+        source,
+        /snapshot_import_id = \([\s\S]*active_import_id/,
+        `${relativePath} must require the active snapshot import`,
+      );
+    }
   });
 
   it('uses a PostgreSQL advisory lock in the production store path', async () => {

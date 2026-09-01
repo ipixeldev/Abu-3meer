@@ -11458,8 +11458,8 @@ class _ProductionSettings extends StatelessWidget {
                       Text(
                         abuText(
                           context,
-                          'Link Google, then authorize YouTube only to prove which channel ID belongs to you. Membership status comes exclusively from the latest complete UTF-8 CSV/TSV uploaded by admins; linking Google or YouTube does not itself prove membership. Matched members receive 2× XP on correct predictions and video questions. XP cannot be bought, transferred, redeemed, or used to unlock anything.',
-                          'اربط Google، ثم فوّض YouTube فقط لإثبات معرّف القناة التابعة لك. تأتي حالة العضوية حصرياً من أحدث ملف CSV/TSV كامل بترميز UTF-8 رفعه المسؤولون؛ ربط Google أو YouTube لا يثبت العضوية بمفرده. يحصل الأعضاء المطابقون على XP مضاعف للتوقعات وأسئلة الفيديو الصحيحة. لا يمكن شراء XP أو نقلها أو استبدالها ولا تفتح أي مزايا.',
+                          'Link Google, then authorize YouTube only to prove which channel ID belongs to you. Membership status comes exclusively from the latest complete UTF-8 CSV/TSV uploaded by authorized staff; linking Google or YouTube does not itself prove membership. Matched members receive 2× XP on correct predictions and video questions. XP cannot be bought, transferred, redeemed, or used to unlock anything.',
+                          'اربط Google، ثم فوّض YouTube فقط لإثبات معرّف القناة التابعة لك. تأتي حالة العضوية حصرياً من أحدث ملف CSV/TSV كامل بترميز UTF-8 رفعه الموظفون المخولون؛ ربط Google أو YouTube لا يثبت العضوية بمفرده. يحصل الأعضاء المطابقون على XP مضاعف للتوقعات وأسئلة الفيديو الصحيحة. لا يمكن شراء XP أو نقلها أو استبدالها ولا تفتح أي مزايا.',
                         ),
                         style: TextStyle(color: _muted, height: 1.45),
                       ),
@@ -11925,7 +11925,7 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Sharing', 'المشاركة'),
       abuText(
         context,
-        'We use service providers such as Firebase, Google sign-in, Apple sign-in, YouTube Data API, push-notification delivery, hosting, and football data providers. A temporary user Google authorization is used only to prove ownership of a YouTube channel ID and is not retained. Membership is determined by matching that ID against a complete CSV/TSV snapshot uploaded by administrators. We do not sell personal data.',
+        'We use service providers such as Firebase, Google sign-in, Apple sign-in, YouTube Data API, push-notification delivery, hosting, and football data providers. A temporary user Google authorization is used only to prove ownership of a YouTube channel ID and is not retained. Membership is determined by matching that ID against a complete CSV/TSV snapshot uploaded by authorized staff. We do not sell personal data.',
         'نستخدم مزودي خدمات مثل Firebase وتسجيل الدخول عبر Google وApple وواجهة YouTube Data API وتسليم الإشعارات والاستضافة ومزودي بيانات كرة القدم. يُستخدم تفويض Google المؤقت للمستخدم فقط لإثبات ملكية معرّف قناة يوتيوب ولا نحتفظ به. تُحدد العضوية بمطابقة هذا المعرّف مع لقطة CSV/TSV كاملة يرفعها المسؤولون. لا نبيع البيانات الشخصية.',
       ),
     ),

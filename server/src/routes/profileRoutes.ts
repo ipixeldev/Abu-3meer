@@ -180,7 +180,16 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const res = await query(
       `SELECT u.username, u.display_name, u.avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
-              (yl.is_member = TRUE) AS is_youtube_member,
+              COALESCE(
+                yl.is_member = TRUE
+                AND yl.verification_source = 'admin_snapshot'
+                AND yl.snapshot_import_id = (
+                  SELECT active_import_id
+                  FROM youtube_membership_snapshot_state
+                  WHERE singleton = TRUE
+                ),
+                FALSE
+              ) AS is_youtube_member,
               COALESCE(xp.total_points, 0)::integer AS total_points,
               COALESCE(xp.monthly_points, 0)::integer AS monthly_points,
               COALESCE(xp.season_points, 0)::integer AS season_points,

@@ -80,7 +80,16 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
     const userLookupSql =
       `SELECT u.id, u.firebase_uid, u.email, u.username, u.display_name, u.avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
-              (yl.is_member = TRUE) AS is_youtube_member,
+              COALESCE(
+                yl.is_member = TRUE
+                AND yl.verification_source = 'admin_snapshot'
+                AND yl.snapshot_import_id = (
+                  SELECT active_import_id
+                  FROM youtube_membership_snapshot_state
+                  WHERE singleton = TRUE
+                ),
+                FALSE
+              ) AS is_youtube_member,
               u.account_status, u.onboarding_completed,
               p.is_guest,
               COALESCE(
@@ -97,13 +106,22 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
        LEFT JOIN user_roles ur ON ur.user_id = u.id
          AND (
            ur.role_id <> 'member'
-           OR yl.is_member = TRUE
+           OR COALESCE(
+             yl.is_member = TRUE
+             AND yl.verification_source = 'admin_snapshot'
+             AND yl.snapshot_import_id = (
+               SELECT active_import_id
+               FROM youtube_membership_snapshot_state
+               WHERE singleton = TRUE
+             ),
+             FALSE
+           )
          )
        LEFT JOIN role_permissions rp ON rp.role_id = ur.role_id
        WHERE u.firebase_uid = $1
        GROUP BY u.id, u.firebase_uid, u.email, u.username, u.display_name, u.avatar_url,
                 u.supported_team, u.supported_team_logo, u.country, u.country_code,
-                yl.is_member,
+                yl.is_member, yl.verification_source, yl.snapshot_import_id,
                 u.account_status, u.onboarding_completed,
                 p.is_guest`;
     let res = await query(userLookupSql, [firebaseUid]);

@@ -253,7 +253,16 @@ async function settleMatchPredictionsUnlocked(
   const predictionsRes = await query(
     `SELECT p.id, p.user_id, p.home_score, p.away_score, p.first_scorer,
             p.rewarded,
-            (yl.is_member = TRUE) AS is_youtube_member
+            COALESCE(
+              yl.is_member = TRUE
+              AND yl.verification_source = 'admin_snapshot'
+              AND yl.snapshot_import_id = (
+                SELECT active_import_id
+                FROM youtube_membership_snapshot_state
+                WHERE singleton = TRUE
+              ),
+              FALSE
+            ) AS is_youtube_member
      FROM predictions p
      LEFT JOIN youtube_account_links yl ON yl.user_id = p.user_id
      WHERE p.match_id = $1 AND NOT p.rewarded`,

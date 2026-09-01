@@ -47,13 +47,21 @@ export async function getAdminDashboardStats(
      role_flags AS (
        SELECT
          u.id AS user_id,
-         COALESCE(bool_or(ur.role_id = 'member'), FALSE) AS is_member,
+         COALESCE(
+           yl.is_member = TRUE
+           AND yl.verification_source = 'admin_snapshot'
+           AND yl.snapshot_import_id = snapshot_state.active_import_id,
+           FALSE
+         ) AS is_member,
          COALESCE(bool_or(ur.role_id = 'moderator'), FALSE) AS is_moderator,
          COALESCE(bool_or(ur.role_id = 'admin'), FALSE) AS is_admin,
          COALESCE(bool_or(ur.role_id = 'super_admin'), FALSE) AS is_super_admin
        FROM users u
        LEFT JOIN user_roles ur ON ur.user_id = u.id
-       GROUP BY u.id
+       LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
+       LEFT JOIN youtube_membership_snapshot_state snapshot_state
+         ON snapshot_state.singleton = TRUE
+       GROUP BY u.id, yl.user_id, snapshot_state.active_import_id
      ),
      role_counts AS (
        SELECT

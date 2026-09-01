@@ -14,7 +14,6 @@ import {
   sha256Hex,
   verifyGoogleAccountBinding,
   youtubeChannelIdPattern,
-  youtubeCreatorMembershipScope,
   youtubeReadonlyScope,
 } from '../services/youtubeOAuthService.js';
 
@@ -111,7 +110,7 @@ describe('YouTube OAuth security primitives', () => {
     assert.match(url.searchParams.get('scope') ?? '', new RegExp(youtubeReadonlyScope));
     assert.doesNotMatch(
       url.searchParams.get('scope') ?? '',
-      new RegExp(youtubeCreatorMembershipScope),
+      /youtube\.channel-memberships\.creator/,
     );
     assert.equal(url.searchParams.has('client_secret'), false);
     assert.equal(url.searchParams.has('code_verifier'), false);
@@ -133,7 +132,7 @@ describe('YouTube OAuth security primitives', () => {
     );
     assert.doesNotMatch(
       creatorUrl.searchParams.get('scope') ?? '',
-      new RegExp(youtubeCreatorMembershipScope),
+      /youtube\.channel-memberships\.creator/,
     );
     assert.equal(creatorUrl.searchParams.has('access_type'), false);
   });

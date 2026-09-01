@@ -81,7 +81,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
       `SELECT u.id, u.firebase_uid, u.email, u.username, u.display_name,
               u.avatar_url, u.country, u.country_code, u.supported_team,
               u.supported_team_logo,
-              (yl.is_member = TRUE) AS is_youtube_member,
+              COALESCE(
+                yl.is_member = TRUE
+                AND yl.verification_source = 'admin_snapshot'
+                AND yl.snapshot_import_id = (
+                  SELECT active_import_id
+                  FROM youtube_membership_snapshot_state
+                  WHERE singleton = TRUE
+                ),
+                FALSE
+              ) AS is_youtube_member,
               yl.youtube_channel_id, yl.membership_level_id,
               yl.last_verified_at AS youtube_membership_verified_at,
               yl.last_attempted_at AS youtube_membership_last_attempted_at,
@@ -102,7 +111,16 @@ export async function adminRoutes(fastify: FastifyInstance) {
        LEFT JOIN user_roles ur ON ur.user_id = u.id
          AND (
            ur.role_id <> 'member'
-           OR yl.is_member = TRUE
+           OR COALESCE(
+             yl.is_member = TRUE
+             AND yl.verification_source = 'admin_snapshot'
+             AND yl.snapshot_import_id = (
+               SELECT active_import_id
+               FROM youtube_membership_snapshot_state
+               WHERE singleton = TRUE
+             ),
+             FALSE
+           )
          )
        WHERE (
          $1::text IS NULL OR
@@ -117,6 +135,12 @@ export async function adminRoutes(fastify: FastifyInstance) {
          OR (
            $2 = 'member'
            AND yl.is_member = TRUE
+           AND yl.verification_source = 'admin_snapshot'
+           AND yl.snapshot_import_id = (
+             SELECT active_import_id
+             FROM youtube_membership_snapshot_state
+             WHERE singleton = TRUE
+           )
          )
          OR (
            $2 <> 'member'

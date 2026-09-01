@@ -304,7 +304,18 @@ export class PostgresYouTubeMembershipStore implements YouTubeMembershipStore {
     userId: string,
   ): Promise<StoredYouTubeAccountLink | null> {
     const result = await query(
-      `SELECT youtube_channel_id, is_member, membership_level_id,
+      `SELECT youtube_channel_id,
+              COALESCE(
+                is_member = TRUE
+                AND verification_source = 'admin_snapshot'
+                AND snapshot_import_id = (
+                  SELECT active_import_id
+                  FROM youtube_membership_snapshot_state
+                  WHERE singleton = TRUE
+                ),
+                FALSE
+              ) AS is_member,
+              membership_level_id,
               member_since, last_verified_at
        FROM youtube_account_links
        WHERE user_id = $1`,
@@ -328,7 +339,18 @@ export class PostgresYouTubeMembershipStore implements YouTubeMembershipStore {
     const uniqueUserIds = [...new Set(userIds)];
     if (uniqueUserIds.length === 0) return [];
     const result = await query(
-      `SELECT user_id, youtube_channel_id, is_member, membership_level_id,
+      `SELECT user_id, youtube_channel_id,
+              COALESCE(
+                is_member = TRUE
+                AND verification_source = 'admin_snapshot'
+                AND snapshot_import_id = (
+                  SELECT active_import_id
+                  FROM youtube_membership_snapshot_state
+                  WHERE singleton = TRUE
+                ),
+                FALSE
+              ) AS is_member,
+              membership_level_id,
               member_since, last_verified_at
        FROM youtube_account_links
        WHERE user_id = ANY($1::uuid[])

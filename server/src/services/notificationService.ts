@@ -548,6 +548,12 @@ export async function processNotificationCampaign(campaignId: string) {
         FROM youtube_account_links member_link
         WHERE member_link.user_id = u.id
           AND member_link.is_member = TRUE
+          AND member_link.verification_source = 'admin_snapshot'
+          AND member_link.snapshot_import_id = (
+            SELECT active_import_id
+            FROM youtube_membership_snapshot_state
+            WHERE singleton = TRUE
+          )
       )`,
       team_specific: 'AND LOWER(u.supported_team) = LOWER($2)',
       inactive_users: "AND d.last_seen_at < CURRENT_TIMESTAMP - INTERVAL '14 days'",

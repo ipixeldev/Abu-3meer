@@ -26,7 +26,16 @@ export async function resolveChallengeMembership(
     refreshLinkedYouTubeMembership;
   const read = () => queryMembership(
     `SELECT (yl.user_id IS NOT NULL) AS linked,
-            (yl.is_member = TRUE) AS current_member
+            COALESCE(
+              yl.is_member = TRUE
+              AND yl.verification_source = 'admin_snapshot'
+              AND yl.snapshot_import_id = (
+                SELECT active_import_id
+                FROM youtube_membership_snapshot_state
+                WHERE singleton = TRUE
+              ),
+              FALSE
+            ) AS current_member
      FROM users u
      LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
      WHERE u.id = $1`,
