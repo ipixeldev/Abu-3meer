@@ -17,6 +17,7 @@ import 'package:glass_liquid_navbar/glass_liquid_navbar.dart' as glass_nav;
 
 import '../production/brand.dart';
 import '../production/api_client.dart';
+import '../production/admin_dashboard_stats.dart';
 import '../production/api_production_repository.dart';
 import '../production/app_preferences.dart';
 import '../production/external_content_service.dart';
@@ -35,6 +36,7 @@ part 'production_ui.dart';
 part 'production_features.dart';
 part 'phase3_admin_points.dart';
 part 'youtube_membership_snapshot_admin.dart';
+part 'admin_dashboard_stats.dart';
 
 const _ink = Color(0xFF080B10);
 const _surface = Color(0xFF11161E);

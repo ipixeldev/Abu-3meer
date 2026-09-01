@@ -100,7 +100,9 @@ class AbuUserProfile {
   bool get canManageContent =>
       isAdmin || role == 'editor' || role == 'contentManager';
   bool get canModerate => isAdmin || role == 'moderator';
-  bool get canManageRoles => isAdmin;
+  bool get canUploadMembershipSnapshot =>
+      role == 'moderator' || role == 'admin' || role == 'superAdmin';
+  bool get canManageRoles => !isGuest && role == 'superAdmin';
   bool get isYouTubeMember => membershipMultiplier > 1;
   String get countryFlag {
     final c = countryCode.trim().isNotEmpty

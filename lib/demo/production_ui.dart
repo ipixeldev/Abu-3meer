@@ -10543,6 +10543,10 @@ class _ProductionProfileState extends State<_ProductionProfile> {
             seasonRank: userRanks?.season,
             accuracy: userAccuracy,
           ),
+          if (profile.canUploadMembershipSnapshot) ...[
+            const SizedBox(height: 24),
+            MembershipSnapshotProfilePanel(repository: widget.repository),
+          ],
           const SizedBox(height: 24),
           _ProfilePointsCard(repository: widget.repository, profile: profile),
           const SizedBox(height: 24),
@@ -12236,6 +12240,8 @@ class _ProductionAdmin extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        AdminDashboardStatsPanel(repository: repository),
+        const SizedBox(height: 18),
         _ProductionAdminTools(repository: repository, profile: profile),
         const SizedBox(height: 18),
         Wrap(

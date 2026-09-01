@@ -197,7 +197,7 @@ class AbuApiClient {
       return decoded;
     } catch (e) {
       if (e is AbuApiException) rethrow;
-      throw AbuApiException(statusCode: 0, message: 'Image upload failed: $e');
+      throw AbuApiException(statusCode: 0, message: 'File upload failed: $e');
     }
   }
 

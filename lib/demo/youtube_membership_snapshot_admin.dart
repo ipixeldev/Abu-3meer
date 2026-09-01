@@ -9,6 +9,64 @@ typedef YouTubeMembershipSnapshotImporter =
     );
 typedef YouTubeMembershipSnapshotPicker = Future<XFile?> Function();
 
+/// Profile-accessible upload surface for moderators and administrators.
+///
+/// Role visibility is enforced by the profile screen and authorization is
+/// enforced again by the backend. The selected source file is streamed to the
+/// API; this client never stores a second local copy.
+class MembershipSnapshotProfilePanel extends StatelessWidget {
+  const MembershipSnapshotProfilePanel({super.key, required this.repository});
+
+  final ProductionRepository repository;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    key: const Key('profile-membership-snapshot-upload'),
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: _surface,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: _gold.withValues(alpha: .4)),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.admin_panel_settings_rounded, color: _gold),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                abuText(
+                  context,
+                  'MEMBERSHIP LIST ACCESS',
+                  'إدارة قائمة العضويات',
+                ),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: .6,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          abuText(
+            context,
+            'Upload the complete current YouTube members CSV/TSV here. The app sends it directly to the ABU 3MEER server over encrypted HTTPS; it does not save another copy on this device.',
+            'ارفع هنا ملف CSV/TSV الكامل والحالي لأعضاء يوتيوب. يرسله التطبيق مباشرة إلى خادم ABU 3MEER عبر اتصال HTTPS مشفّر، ولا يحفظ نسخة أخرى على هذا الجهاز.',
+          ),
+          style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
+        ),
+        const SizedBox(height: 12),
+        AdminYouTubeMembershipSnapshotCard(repository: repository),
+      ],
+    ),
+  );
+}
+
 /// Admin-managed source of truth for active YouTube channel memberships.
 class AdminYouTubeMembershipSnapshotCard extends StatefulWidget {
   const AdminYouTubeMembershipSnapshotCard({
