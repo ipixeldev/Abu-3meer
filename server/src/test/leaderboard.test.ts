@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 import {
   discoverFutureLeaderboardSeasons,
   eligibleLeaderboardSourceTypes,
+  initialLeaderboardSeasonStart,
   isTrackedLeaderboardClubName,
   leaderboardSeasonWindowsOverlap,
   utcMonthWindow,
@@ -58,6 +59,31 @@ describe('XP-only leaderboard periods', () => {
     assert.equal(period.displayName, 'December 2026');
     assert.equal(period.startsAt.toISOString(), '2026-12-01T00:00:00.000Z');
     assert.equal(period.endsAt?.toISOString(), '2027-01-01T00:00:00.000Z');
+  });
+
+  it('keeps lifetime XP distinct from the configured season window', () => {
+    const seasonStart = new Date(initialLeaderboardSeasonStart);
+    assert.equal(
+      seasonStart.toISOString(),
+      '2026-08-30T15:00:00.000Z',
+    );
+
+    // This mirrors the reported production totals: 60 XP was earned before
+    // the season boundary, 65 later in August, and 5 in September. Lifetime XP
+    // intentionally keeps all three awards while season XP includes only the
+    // awards inside the administrator-configured season window.
+    const ledger = [
+      { points: 60, createdAt: new Date('2026-08-30T14:59:59.999Z') },
+      { points: 65, createdAt: new Date('2026-08-31T12:00:00.000Z') },
+      { points: 5, createdAt: new Date('2026-09-01T12:00:00.000Z') },
+    ];
+    const lifetimePoints = ledger.reduce((sum, award) => sum + award.points, 0);
+    const seasonPoints = ledger
+      .filter((award) => award.createdAt >= seasonStart)
+      .reduce((sum, award) => sum + award.points, 0);
+
+    assert.equal(lifetimePoints, 130);
+    assert.equal(seasonPoints, 70);
   });
 
   it('rejects an invalid clock value', () => {

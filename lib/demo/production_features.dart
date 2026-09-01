@@ -4569,7 +4569,7 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                                       Expanded(
                                         child: _FanCardStat(
                                           value: '${profile.totalPoints}',
-                                          label: 'TOTAL XP',
+                                          label: 'LIFETIME XP',
                                         ),
                                       ),
                                       const SizedBox(width: 12),

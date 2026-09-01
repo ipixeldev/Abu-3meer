@@ -4097,7 +4097,7 @@ class _ProductionPointsHero extends StatelessWidget {
         Row(
           children: [
             Text(
-              abuText(context, 'CURRENT POINTS', 'النقاط الحالية'),
+              abuText(context, 'LIFETIME XP', 'إجمالي XP مدى الحياة'),
               style: TextStyle(
                 color: _productionPrimary(context),
                 fontWeight: FontWeight.w900,
@@ -7909,11 +7909,7 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
 
   @override
   Widget build(BuildContext context) => _PageFrame(
-    kicker: abuText(
-      context,
-      'XP ranking · no prizes or rewards',
-      'ترتيب XP · بلا جوائز أو مكافآت',
-    ),
+    kicker: abuText(context, 'XP ranking', 'ترتيب XP'),
     title: abuText(context, 'Leaderboard', 'لوحة المتصدرين'),
     child: StreamBuilder<LeaderboardSnapshot>(
       stream: widget.repository.watchLeaderboardView(
@@ -8699,8 +8695,8 @@ void _showOtherUserProfileDialog(
                             value: '${userProfile.totalPoints} XP',
                             label: abuText(
                               context,
-                              'TOTAL XP',
-                              'إجمالي النقاط',
+                              'LIFETIME XP',
+                              'إجمالي XP مدى الحياة',
                             ),
                             color: _productionPrimary(context),
                           ),
@@ -10651,7 +10647,12 @@ class _ProductionProfileSummary extends StatelessWidget {
           items: [
             _StatItem(
               value: '${profile.totalPoints} XP',
-              label: abuText(context, 'TOTAL XP', 'إجمالي XP'),
+              label: abuText(context, 'LIFETIME XP', 'إجمالي XP مدى الحياة'),
+              color: _productionPrimary(context),
+            ),
+            _StatItem(
+              value: '${profile.seasonPoints} XP',
+              label: abuText(context, 'SEASON XP', 'XP الموسم'),
               color: _productionPrimary(context),
             ),
             _StatItem(
