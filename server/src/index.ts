@@ -24,20 +24,14 @@ import { adminContentRoutes } from './routes/adminContentRoutes.js';
 import { healthRoutes } from './routes/healthRoutes.js';
 import { videoRoutes } from './routes/videoRoutes.js';
 import { publicMediaRoutes, uploadRoutes } from './routes/uploadRoutes.js';
+import { serializeRequestForLog } from './security/logRedaction.js';
 
 const fastify = Fastify({
   genReqId: () => crypto.randomUUID(),
   logger: {
     level: config.env === 'production' ? 'info' : 'debug',
     serializers: {
-      req(req) {
-        return {
-          id: req.id,
-          method: req.method,
-          url: req.url,
-          ip: req.ip,
-        };
-      },
+      req: serializeRequestForLog,
     },
   },
   trustProxy: true,

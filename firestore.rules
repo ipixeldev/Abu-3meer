@@ -53,7 +53,13 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if signedIn();
+      // A user document contains private account data (including email and
+      // moderation state). Public profile cards are served by the API as a
+      // deliberately reduced projection, so Firestore only exposes the full
+      // document to its owner or an administrator. Splitting get/list makes
+      // it explicit that ordinary users can never enumerate this collection.
+      allow get: if own(uid) || admin();
+      allow list: if admin();
       allow create: if (
         own(uid)
         && (!('role' in request.resource.data) || request.resource.data.role == 'user')
@@ -80,8 +86,11 @@ service cloud.firestore {
     }
 
     match /usernames/{username} {
-      allow read: if signedIn();
-      allow create, update, delete: if signedIn();
+      // Username reservations expose account handles and used to be both
+      // enumerable and forgeable by any authenticated client. Production
+      // reserves names through PostgreSQL; legacy Firebase Functions use the
+      // Admin SDK, which bypasses these rules.
+      allow read, write: if false;
     }
 
     match /matches/{matchId} {
@@ -91,21 +100,31 @@ service cloud.firestore {
     }
 
     match /predictions/{predictionId} {
-      allow read: if signedIn();
-      allow create, update: if signedIn();
+      // Prediction history is private. An owner-scoped query must include
+      // `where('userId', isEqualTo: request.auth.uid)` so Firestore can prove
+      // that every returned document belongs to the caller.
+      allow get, list: if admin()
+        || (signedIn() && resource.data.userId == request.auth.uid);
+      // The production app submits predictions through the authenticated API;
+      // only trusted backend code may create or mutate the Firestore mirror.
+      allow create, update: if false;
       allow delete: if false;
     }
 
     match /pointTransactions/{transactionId} {
-      allow read: if signedIn();
+      // Ledger entries can reveal another fan's activity and adjustments.
+      // Users may read their own history; administrators retain full access.
+      allow get, list: if admin()
+        || (signedIn() && resource.data.userId == request.auth.uid);
       allow create, update: if false;
       allow delete: if false;
     }
 
     match /leaderboardEntries/{uid} {
-      allow read: if true;
-      allow create, update: if false;
-      allow delete: if false;
+      // The document key is the user's Firebase UID. Public rankings are a
+      // reduced projection returned by the API, so clients must not enumerate
+      // this legacy mirror even though only the backend can write it.
+      allow read, write: if false;
     }
 
     match /platformSettings/{settingId} {
@@ -146,10 +165,10 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if contentManager();
       match /entries/{uid} {
-        allow read: if signedIn();
-        // Rankings are point-ledger output and may only be archived by trusted
-        // backend code using the Admin SDK.
-        allow write: if false;
+        // Season metadata may be displayed to signed-in users, but an entry's
+        // document key is still a Firebase UID. Rankings are served by the API
+        // and archived through trusted backend code using the Admin SDK.
+        allow read, write: if false;
       }
     }
 

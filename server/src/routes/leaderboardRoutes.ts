@@ -73,6 +73,7 @@ export async function leaderboardRoutes(fastify: FastifyInstance) {
       listLeaderboardSeasons(),
     ]);
     return {
+      publicId: user.username,
       monthlyRank: monthly.rank,
       monthlyPoints: monthly.points,
       previousMonthRank: previousMonth.rank,

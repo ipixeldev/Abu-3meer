@@ -1921,21 +1921,14 @@ export const cacheLatestYouTubeVideo = onSchedule("0 * * * *", async (event) => 
 });
 
 export const deleteAccountData = onCall(phase3CallableOptions(region), async (request) => {
-  const auth = requireAuth(request.auth);
-  // Optional: check if auth.uid is deleted in Firebase Auth already, or delete user data.
-  // Actually, usually it's cleaner to use auth trigger (functions.auth.user().onDelete), but since we are doing a callable:
-  const uid = auth.uid;
-  await db.runTransaction(async (t) => {
-     t.update(db.collection("users").doc(uid), {
-         suspended: true,
-         deleted: true,
-         updatedAt: FieldValue.serverTimestamp(),
-         username: `deleted_${uid.slice(0,8)}`,
-         displayName: "Deleted User"
-     });
-     t.delete(db.collection("leaderboardEntries").doc(uid));
-  });
-  return {ok: true};
+  requireAuth(request.auth);
+  // Account data is authoritative in PostgreSQL. This legacy Firebase-only
+  // callable cannot prove that the self-hosted deletion succeeded, so it must
+  // never remove Firestore, Storage, or Firebase Auth on its own.
+  throw new HttpsError(
+    "failed-precondition",
+    "Account deletion has moved to the current app. Update ABU 3MEER and delete your account from Settings.",
+  );
 });
 
 export const verifyYouTubeMembership = onCall(phase3CallableOptions(region), async (request) => {

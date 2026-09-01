@@ -149,7 +149,10 @@ export async function challengeRoutes(fastify: FastifyInstance) {
              VALUES ($1, 'challenge_brute_force', $2, 'warning')`,
             [
               user.id,
-              JSON.stringify({ challengeId: id, totalFailures: failedRes.rows[0].failed_attempts, ip: request.ip }),
+              JSON.stringify({
+                challengeId: id,
+                totalFailures: failedRes.rows[0].failed_attempts,
+              }),
             ]
           ).catch(() => {});
         }

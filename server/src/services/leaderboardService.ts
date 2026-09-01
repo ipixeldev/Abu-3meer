@@ -14,11 +14,10 @@ export const eligibleLeaderboardSourceTypes = [
 export type LeaderboardScope = 'current_month' | 'previous_month' | 'season';
 
 export interface LeaderboardEntry {
-  /** Firebase identity used by the Flutter client and public-profile route. */
+  /** Backward-compatible public profile handle used by existing app builds. */
   userId: string;
-  firebaseUid: string;
-  /** Internal PostgreSQL identity retained for diagnostics and migrations. */
-  databaseUserId: string;
+  /** Explicit public profile handle for newer app builds. */
+  publicId: string;
   rank: number;
   points: number;
   username: string;
@@ -76,8 +75,7 @@ interface PeriodWindow {
 }
 
 interface RankedRow {
-  databaseUserId: string;
-  firebaseUid: string;
+  publicId: string;
   username: string;
   displayName: string;
   avatarUrl: string | null;
@@ -611,13 +609,12 @@ function publicPeriod(window: PeriodWindow): LeaderboardPeriod {
   };
 }
 
-function rankedEntry(row: RankedRow): LeaderboardEntry {
+export function mapPublicLeaderboardEntry(row: RankedRow): LeaderboardEntry {
   return {
-    // Existing app versions read `userId`; new versions can use the explicit
-    // Firebase field. Both deliberately identify the same public account.
-    userId: row.firebaseUid,
-    firebaseUid: row.firebaseUid,
-    databaseUserId: row.databaseUserId,
+    // Keep the legacy field name for released clients, but make its value the
+    // already-public username rather than an authentication/database ID.
+    userId: row.publicId,
+    publicId: row.publicId,
     rank: Number(row.rank),
     points: Number(row.points),
     username: row.username,
@@ -636,7 +633,6 @@ async function rankedRows(
   const result = await query<RankedRow>(
     `WITH scored AS (
        SELECT u.id::text AS database_user_id,
-              u.firebase_uid,
               u.username,
               u.display_name,
               u.avatar_url,
@@ -653,8 +649,7 @@ async function rankedRows(
        GROUP BY u.id
        HAVING SUM(pt.final_points) > 0
      ), ranked AS (
-       SELECT database_user_id AS "databaseUserId",
-              firebase_uid AS "firebaseUid",
+       SELECT username AS "publicId",
               username,
               display_name AS "displayName",
               avatar_url AS "avatarUrl",
@@ -674,7 +669,7 @@ async function rankedRows(
     [window.startsAt, window.endsAt, safeLimit],
   );
   return {
-    entries: result.rows.map(rankedEntry),
+    entries: result.rows.map(mapPublicLeaderboardEntry),
     totalPlayers: result.rows.length === 0 ? 0 : Number(result.rows[0].totalPlayers),
   };
 }

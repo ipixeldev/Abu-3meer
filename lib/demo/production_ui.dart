@@ -4154,6 +4154,17 @@ class _ProductionHomeRankingCard extends StatefulWidget {
       _ProductionHomeRankingCardState();
 }
 
+bool _leaderboardEntryBelongsToProfile(
+  LeaderboardEntry entry, {
+  required String uid,
+  required String username,
+}) {
+  if (uid.isNotEmpty && entry.uid == uid) return true;
+  final publicUsername = entry.username.trim().toLowerCase();
+  return publicUsername.isNotEmpty &&
+      publicUsername == username.trim().toLowerCase();
+}
+
 class _ProductionHomeRankingCardState
     extends State<_ProductionHomeRankingCard> {
   LeaderboardPeriod period = LeaderboardPeriod.currentMonth;
@@ -4366,6 +4377,7 @@ class _ProductionHomeRankingCardState
                         _HomeRankingEntryRow(
                           ranked: nearby[index],
                           currentUid: widget.profile.uid,
+                          currentUsername: widget.profile.username,
                         ),
                         if (index != nearby.length - 1)
                           const Divider(height: 1, color: _line),
@@ -4402,15 +4414,24 @@ class _ProductionHomeRankingCardState
 }
 
 class _HomeRankingEntryRow extends StatelessWidget {
-  const _HomeRankingEntryRow({required this.ranked, required this.currentUid});
+  const _HomeRankingEntryRow({
+    required this.ranked,
+    required this.currentUid,
+    required this.currentUsername,
+  });
 
   final RankedLeaderboardEntry ranked;
   final String currentUid;
+  final String currentUsername;
 
   @override
   Widget build(BuildContext context) {
     final entry = ranked.entry;
-    final mine = entry.uid == currentUid;
+    final mine = _leaderboardEntryBelongsToProfile(
+      entry,
+      uid: currentUid,
+      username: currentUsername,
+    );
     final initials = entry.displayName.trim().isEmpty
         ? '?'
         : entry.displayName.trim()[0].toUpperCase();
@@ -7619,6 +7640,7 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
           _LeaderboardPodium(
             top3: top3,
             currentUid: widget.profile.uid,
+            currentUsername: widget.profile.username,
             onTapUser: (ranked) => _showOtherUserProfileDialog(
               context,
               ranked.entry.uid,
@@ -7651,7 +7673,11 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
             itemBuilder: (context, i) {
               final ranked = remaining[i];
               final entry = ranked.entry;
-              final mine = entry.uid == widget.profile.uid;
+              final mine = _leaderboardEntryBelongsToProfile(
+                entry,
+                uid: widget.profile.uid,
+                username: widget.profile.username,
+              );
               return _LeaderboardRowCard(
                 rank: ranked.rank,
                 username: entry.username,
@@ -7761,6 +7787,7 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                       _LeaderboardPodium(
                         top3: top3,
                         currentUid: widget.profile.uid,
+                        currentUsername: widget.profile.username,
                         onTapUser: (ranked) => _showOtherUserProfileDialog(
                           context,
                           ranked.entry.uid,
@@ -7774,6 +7801,7 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                       _ProductionLeaderboardTable(
                         entries: remaining,
                         profileUid: widget.profile.uid,
+                        profileUsername: widget.profile.username,
                         repository: widget.repository,
                       ),
                   ],
@@ -7967,11 +7995,13 @@ class _LeaderboardPodium extends StatelessWidget {
   const _LeaderboardPodium({
     required this.top3,
     required this.currentUid,
+    required this.currentUsername,
     this.onTapUser,
   });
 
   final List<RankedLeaderboardEntry> top3;
   final String currentUid;
+  final String currentUsername;
   final ValueChanged<RankedLeaderboardEntry>? onTapUser;
 
   @override
@@ -8009,7 +8039,11 @@ class _LeaderboardPodium extends StatelessWidget {
                     medalColor: const Color(0xFFC0C0C0),
                     medalIcon: '🥈',
                     height: 100,
-                    isMine: second.entry.uid == currentUid,
+                    isMine: _leaderboardEntryBelongsToProfile(
+                      second.entry,
+                      uid: currentUid,
+                      username: currentUsername,
+                    ),
                     onTap: () => onTapUser?.call(second),
                   ),
           ),
@@ -8024,7 +8058,11 @@ class _LeaderboardPodium extends StatelessWidget {
                     medalColor: _gold,
                     medalIcon: '🥇',
                     height: 128,
-                    isMine: first.entry.uid == currentUid,
+                    isMine: _leaderboardEntryBelongsToProfile(
+                      first.entry,
+                      uid: currentUid,
+                      username: currentUsername,
+                    ),
                     onTap: () => onTapUser?.call(first),
                   ),
           ),
@@ -8039,7 +8077,11 @@ class _LeaderboardPodium extends StatelessWidget {
                     medalColor: const Color(0xFFCD7F32),
                     medalIcon: '🥉',
                     height: 88,
-                    isMine: third.entry.uid == currentUid,
+                    isMine: _leaderboardEntryBelongsToProfile(
+                      third.entry,
+                      uid: currentUid,
+                      username: currentUsername,
+                    ),
                     onTap: () => onTapUser?.call(third),
                   ),
           ),
@@ -8690,11 +8732,13 @@ class _ProductionLeaderboardTable extends StatelessWidget {
   const _ProductionLeaderboardTable({
     required this.entries,
     required this.profileUid,
+    required this.profileUsername,
     this.repository,
   });
 
   final List<RankedLeaderboardEntry> entries;
   final String profileUid;
+  final String profileUsername;
   final ProductionRepository? repository;
 
   @override
@@ -8768,7 +8812,11 @@ class _ProductionLeaderboardTable extends StatelessWidget {
         for (var index = 0; index < entries.length; index++)
           _ProductionLeaderboardDesktopRow(
             ranked: entries[index],
-            mine: entries[index].entry.uid == profileUid,
+            mine: _leaderboardEntryBelongsToProfile(
+              entries[index].entry,
+              uid: profileUid,
+              username: profileUsername,
+            ),
             onTap: repository != null
                 ? () => _showOtherUserProfileDialog(
                     context,

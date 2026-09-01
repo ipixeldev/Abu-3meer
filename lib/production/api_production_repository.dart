@@ -991,7 +991,8 @@ class ApiProductionRepository {
         : const <String, dynamic>{};
     final points = parseApiInt(item['points']);
     return LeaderboardEntry(
-      uid: (item['userId'] ?? item['firebaseUid'] ?? '').toString(),
+      uid: (item['publicId'] ?? item['userId'] ?? item['firebaseUid'] ?? '')
+          .toString(),
       username: (item['username'] ?? '').toString(),
       displayName: (item['displayName'] ?? item['username'] ?? '').toString(),
       avatarUrl: (item['avatarUrl'] ?? '').toString(),
@@ -1070,8 +1071,13 @@ class ApiProductionRepository {
               if (rank > 0) {
                 currentUser = RankedLeaderboardEntry(
                   entry: LeaderboardEntry(
-                    uid: firebaseUser.uid,
-                    username: firebaseUser.displayName ?? 'Fan',
+                    uid: (rankResponse['publicId'] ?? firebaseUser.uid)
+                        .toString(),
+                    username:
+                        (rankResponse['publicId'] ??
+                                firebaseUser.displayName ??
+                                'Fan')
+                            .toString(),
                     displayName: firebaseUser.displayName ?? 'Fan',
                     avatarUrl: firebaseUser.photoURL ?? '',
                     supportedTeam: '',
@@ -1142,7 +1148,7 @@ class ApiProductionRepository {
       final res = await api.get('/profile/$id');
       if (res is Map) {
         return AbuUserProfile(
-          uid: res['firebaseUid'] ?? res['id'] ?? id,
+          uid: res['publicId'] ?? res['firebaseUid'] ?? res['id'] ?? id,
           email: '',
           displayName: res['displayName'] ?? 'Fan',
           username: res['username'] ?? '',

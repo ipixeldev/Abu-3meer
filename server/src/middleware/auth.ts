@@ -7,6 +7,7 @@ import {
   invalidatePointCaches,
   signupBonusIdempotencyKey,
 } from '../services/pointsService.js';
+import { redactRequestUrl } from '../security/logRedaction.js';
 
 export interface AuthenticatedUser {
   id: string;
@@ -27,6 +28,8 @@ export interface AuthenticatedUser {
   isAdmin: boolean;
   isSuperAdmin: boolean;
   isGuest: boolean;
+  /** Firebase's signed-in-at time from the verified ID token (epoch seconds). */
+  authTime: number;
 }
 
 declare module 'fastify' {
@@ -282,6 +285,7 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
       isAdmin: roles.includes('admin') || roles.includes('super_admin'),
       isSuperAdmin: roles.includes('super_admin'),
       isGuest: row.is_guest,
+      authTime: decoded.auth_time,
     };
   } catch (err) {
     request.log.error({ err }, 'Authenticated database operation failed');
@@ -291,6 +295,35 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
       requestId: request.id,
     });
   }
+}
+
+export const SENSITIVE_ACTION_MAX_AUTH_AGE_SECONDS = 5 * 60;
+
+/**
+ * Firebase signs `auth_time` into every ID token. Destructive account actions
+ * must use that value rather than the token's more recent issuance time, since
+ * silently refreshing an old session must not count as reauthentication.
+ */
+export function hasRecentFirebaseAuthentication(
+  authTime: number | undefined,
+  nowEpochSeconds = Math.floor(Date.now() / 1000),
+): boolean {
+  if (!Number.isFinite(authTime) || !Number.isFinite(nowEpochSeconds)) return false;
+  const ageSeconds = nowEpochSeconds - Number(authTime);
+  return ageSeconds >= 0 && ageSeconds <= SENSITIVE_ACTION_MAX_AUTH_AGE_SECONDS;
+}
+
+export async function requireRecentFirebaseAuthentication(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  const authTime = request.user?.authTime;
+  if (hasRecentFirebaseAuthentication(authTime)) return;
+
+  return reply.status(401).send({
+    error: 'RecentAuthenticationRequired',
+    message: 'Sign in again before permanently deleting your account.',
+  });
 }
 
 /**
@@ -320,9 +353,8 @@ export function requirePermission(permission: string) {
         JSON.stringify({
           requiredPermission: permission,
           userRoles: user.roles,
-          path: request.url,
+          path: redactRequestUrl(request.url),
           method: request.method,
-          ip: request.ip,
         }),
       ]
     ).catch(() => {});

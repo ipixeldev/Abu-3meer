@@ -1,14 +1,68 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { authenticateUser, requirePermission } from '../middleware/auth.js';
+import {
+  authenticateUser,
+  requirePermission,
+  requireRecentFirebaseAuthentication,
+} from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { deleteAccountData } from '../services/accountDeletionService.js';
+import { deleteFirebaseMirrorData } from '../services/firebaseMirrorDeletionService.js';
 import {
   eligibleLeaderboardSourceTypes,
   listLeaderboardSeasons,
 } from '../services/leaderboardService.js';
 
 const eligibleXpSources = [...eligibleLeaderboardSourceTypes];
+
+interface PublicFanProfileRow {
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  supported_team: string;
+  supported_team_logo: string | null;
+  country: string | null;
+  country_code: string | null;
+  is_youtube_member: boolean;
+  total_points: string | number;
+  monthly_points: string | number;
+  season_points: string | number;
+  loyalty_points: string | number;
+  streak_count: string | number;
+  streak_best: string | number;
+  level: string | number;
+  exact_predictions_count: string | number;
+  challenges_completed_count: string | number;
+  player_cards_collected_count: string | number;
+}
+
+export function mapPublicFanProfile(row: PublicFanProfileRow) {
+  const publicId = row.username;
+  return {
+    // `id` remains for released clients, but now contains the public username
+    // handle rather than the internal PostgreSQL UUID.
+    id: publicId,
+    publicId,
+    username: row.username,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    supportedTeam: row.supported_team,
+    supportedTeamLogo: row.supported_team_logo,
+    country: row.country,
+    countryCode: row.country_code,
+    isYouTubeMember: row.is_youtube_member,
+    totalPoints: Number(row.total_points || 0),
+    monthlyPoints: Number(row.monthly_points || 0),
+    seasonPoints: Number(row.season_points || 0),
+    loyaltyPoints: Number(row.loyalty_points || 0),
+    streakCount: Number(row.streak_count || 0),
+    streakBest: Number(row.streak_best || 0),
+    level: Number(row.level || 1),
+    exactPredictionsCount: Number(row.exact_predictions_count || 0),
+    challengesCompletedCount: Number(row.challenges_completed_count || 0),
+    playerCardsCollectedCount: Number(row.player_cards_collected_count || 0),
+  };
+}
 
 const updateProfileSchema = z.object({
   displayName: z.string().trim().min(2).max(50).optional(),
@@ -125,7 +179,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const { id } = request.params as { id: string };
     await listLeaderboardSeasons();
     const res = await query(
-      `SELECT u.id, u.firebase_uid, u.username, u.display_name, u.avatar_url,
+      `SELECT u.username, u.display_name, u.avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
               u.is_youtube_member,
               COALESCE(xp.total_points, 0)::integer AS total_points,
@@ -138,12 +192,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
                 THEN 0
                 ELSE p.streak_count
               END::integer AS streak_count,
-              p.streak_best, p.streak_last_checkin,
-              p.streak_last_checkin + INTERVAL '24 hours' AS streak_expires_at,
-              (
-                p.streak_last_checkin IS NOT NULL
-                AND CURRENT_TIMESTAMP >= p.streak_last_checkin + INTERVAL '24 hours'
-              ) AS streak_expired,
+              p.streak_best,
               p.level, p.exact_predictions_count,
               p.challenges_completed_count, p.player_cards_collected_count
        FROM users u
@@ -179,32 +228,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: 'NotFound', message: 'Fan profile not found' });
     }
 
-    const row = res.rows[0];
-    return {
-      id: row.id,
-      firebaseUid: row.firebase_uid,
-      username: row.username,
-      displayName: row.display_name,
-      avatarUrl: row.avatar_url,
-      supportedTeam: row.supported_team,
-      supportedTeamLogo: row.supported_team_logo,
-      country: row.country,
-      countryCode: row.country_code,
-      isYouTubeMember: row.is_youtube_member,
-      totalPoints: Number(row.total_points || 0),
-      monthlyPoints: Number(row.monthly_points || 0),
-      seasonPoints: Number(row.season_points || 0),
-      loyaltyPoints: Number(row.loyalty_points || 0),
-      streakCount: Number(row.streak_count || 0),
-      streakBest: Number(row.streak_best || 0),
-      streakLastCheckIn: row.streak_last_checkin,
-      streakExpiresAt: row.streak_expires_at,
-      streakExpired: row.streak_expired === true,
-      level: Number(row.level || 1),
-      exactPredictionsCount: Number(row.exact_predictions_count || 0),
-      challengesCompletedCount: Number(row.challenges_completed_count || 0),
-      playerCardsCollectedCount: Number(row.player_cards_collected_count || 0),
-    };
+    return mapPublicFanProfile(res.rows[0] as PublicFanProfileRow);
   });
 
   // GET /api/v1/profile/point-history - Fetch user's verified point ledger history
@@ -350,10 +374,14 @@ export async function profileRoutes(fastify: FastifyInstance) {
   fastify.delete(
     '/profile/me',
     {
-      preHandler: [authenticateUser],
+      preHandler: [authenticateUser, requireRecentFirebaseAuthentication],
       config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
     },
     async (request, reply) => {
+      // Remove legacy Firestore/Storage data first. If Firebase is unavailable,
+      // PostgreSQL remains intact and the authenticated user can safely retry.
+      // Firebase Auth itself is deleted by Flutter after this endpoint returns.
+      await deleteFirebaseMirrorData(request.user!.firebaseUid);
       const deleted = await deleteAccountData(
         request.user!.id,
         request.id,
