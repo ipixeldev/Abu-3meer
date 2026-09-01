@@ -27,6 +27,11 @@ import {
   youtubeCreatorMembershipScope,
   youtubeReadonlyScope,
 } from '../services/youtubeOAuthService.js';
+import {
+  ParsedYouTubeMembershipSnapshotRow,
+  YouTubeMembershipSnapshotMetadata,
+  YouTubeMembershipSnapshotStore,
+} from '../services/youtubeMembershipSnapshotService.js';
 
 const creatorChannelId = `UC${'c'.repeat(22)}`;
 const memberChannelId = `UC${'m'.repeat(22)}`;
@@ -174,6 +179,29 @@ class FakeStore implements YouTubeMembershipStore {
       attemptedAt,
       expectedLastVerifiedAt,
     });
+  }
+}
+
+class FakeSnapshotStore implements YouTubeMembershipSnapshotStore {
+  constructor(
+    readonly metadata: YouTubeMembershipSnapshotMetadata | null,
+    readonly members: ParsedYouTubeMembershipSnapshotRow[] = [],
+  ) {}
+
+  async replaceSnapshot(
+    _input: Parameters<YouTubeMembershipSnapshotStore['replaceSnapshot']>[0],
+  ): Promise<YouTubeMembershipSnapshotMetadata> {
+    throw new Error('not used');
+  }
+
+  async getActiveMetadata() {
+    return this.metadata;
+  }
+
+  async getMembers(_importId: string, channelIds: string[]) {
+    const requested = new Set(channelIds);
+    return this.members.filter((member) =>
+      requested.has(member.youtubeChannelId));
   }
 }
 
@@ -385,6 +413,71 @@ describe('YouTube account-link OAuth orchestration', () => {
     assert.doesNotMatch(
       JSON.stringify({ applied: store.applied, completions: store.completions }),
       /short-lived-user-token|signed-id-token|one-time-code/,
+    );
+  });
+
+  it('links the OAuth-owned channel through an active snapshot while creator OAuth is disconnected', async () => {
+    const store = new FakeStore();
+    const flow = storedFlow('member_link', 'linked-google-subject');
+    store.consumed = flow.stored;
+    // Intentionally leave store.credential null: creator OAuth is disconnected.
+    const snapshotStore = new FakeSnapshotStore(
+      {
+        importId: '94f5ff5f-e5c7-4540-a557-609641631008',
+        sourceFilename: 'members.csv',
+        sourceFormat: 'csv',
+        sourceSha256: 'a'.repeat(64),
+        memberCount: 1,
+        matchedUserCount: 0,
+        activatedAt: now,
+      },
+      [{
+        youtubeChannelId: memberChannelId,
+        membershipLevel: 'المستوى الذهبي',
+        totalTimeOnLevelMonths: 2,
+        totalTimeAsMemberMonths: 8,
+        sourceLastUpdate: null,
+        sourceLastUpdateAt: null,
+      }],
+    );
+    const nonce = new URL(flow.generated.authorizationUrl)
+      .searchParams.get('nonce')!;
+    const fetchImpl: FetchLike = async (input, init) => {
+      const url = new URL(input.toString());
+      if (url.hostname === 'oauth2.googleapis.com') {
+        const body = new URLSearchParams(String(init?.body ?? ''));
+        assert.equal(body.get('grant_type'), 'authorization_code');
+        return jsonResponse({
+          access_token: 'short-lived-user-token',
+          id_token: 'signed-id-token',
+          scope: `${googleOpenIdScope} ${youtubeReadonlyScope}`,
+        });
+      }
+      if (url.pathname.endsWith('/channels')) {
+        return jsonResponse({ items: [{ id: memberChannelId }] });
+      }
+      throw new Error('creator members API must not be called');
+    };
+
+    const result = await handleYouTubeOAuthCallback(
+      { state: flow.generated.state, code: 'one-time-code' },
+      {
+        store,
+        snapshotStore,
+        config: config(),
+        now,
+        fetchImpl,
+        idTokenVerifier: idTokenVerifier('linked-google-subject', nonce),
+      },
+    );
+
+    assert.deepEqual(result, { status: 'verified' });
+    assert.equal(store.applied.length, 1);
+    assert.equal(store.applied[0].lookup.isMember, true);
+    assert.equal(store.applied[0].verificationSource, 'admin_snapshot');
+    assert.equal(
+      store.applied[0].snapshotImportId,
+      '94f5ff5f-e5c7-4540-a557-609641631008',
     );
   });
 
@@ -704,6 +797,8 @@ describe('membership freshness enforcement', () => {
     assert.match(routes, /'\/admin\/youtube\/creator\/status'/);
     assert.match(routes, /'\/admin\/youtube\/creator\/connect\/start'/);
     assert.match(routes, /'\/admin\/youtube\/creator\/connect\/:flowId\/status'/);
+    assert.match(routes, /'\/admin\/youtube\/membership\/snapshot'/);
+    assert.match(routes, /requirePermission\('settings\.manage'\)/);
     assert.match(routes, /'\/youtube\/oauth\/callback'/);
     assert.match(predictions, /yl\.last_verified_at >=/);
     assert.match(predictions, /refreshStaleYouTubeMembershipsForUsers\(/);

@@ -7768,11 +7768,16 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
         children: [
           _creatorConnectionCard(),
           const SizedBox(height: 12),
+          AdminYouTubeMembershipSnapshotCard(
+            repository: widget.repository,
+            onImported: _refresh,
+          ),
+          const SizedBox(height: 12),
           Text(
             abuText(
               context,
-              'User membership below is read-only and comes from secure server verification with YouTube. Administrators cannot grant or revoke it manually.',
-              'حالة العضوية أدناه للقراءة فقط وتأتي من تحقق الخادم الآمن مع يوتيوب. لا يمكن للمسؤولين منحها أو إلغاؤها يدوياً.',
+              'User membership below is read-only and comes from secure server verification with YouTube. Matching uses the linked channel ID; the live API is primary and a current complete admin snapshot is used only when that API is unavailable.',
+              'حالة العضوية أدناه للقراءة فقط وتأتي من تحقق الخادم الآمن مع يوتيوب. تتم المطابقة بمعرّف القناة المرتبطة؛ الواجهة المباشرة هي المصدر الأساسي وتُستخدم لقطة إدارية كاملة وحديثة فقط عند تعذرها.',
             ),
             style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
           ),

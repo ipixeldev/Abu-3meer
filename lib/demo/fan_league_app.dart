@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:glass_liquid_navbar/glass_liquid_navbar.dart' as glass_nav;
 
@@ -24,6 +25,7 @@ import '../production/models.dart';
 import '../production/production_repository.dart';
 import '../production/location_service.dart';
 import '../production/notification_service.dart';
+import '../production/youtube_membership_snapshot.dart';
 import '../features/match/screens/match_facts_screen.dart';
 import '../features/videos/exclusive_videos_view.dart';
 
@@ -32,6 +34,7 @@ part 'trivia_arena.dart';
 part 'production_ui.dart';
 part 'production_features.dart';
 part 'phase3_admin_points.dart';
+part 'youtube_membership_snapshot_admin.dart';
 
 const _ink = Color(0xFF080B10);
 const _surface = Color(0xFF11161E);

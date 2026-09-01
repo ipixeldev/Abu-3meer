@@ -12,6 +12,12 @@ import {
   startYouTubeOAuthFlow,
 } from '../services/youtubeMembershipService.js';
 import { YouTubeIntegrationError } from '../services/youtubeOAuthService.js';
+import {
+  YouTubeMembershipSnapshotError,
+  getYouTubeMembershipSnapshotStatus,
+  importYouTubeMembershipSnapshot,
+  youtubeMembershipSnapshotMaxBytes,
+} from '../services/youtubeMembershipSnapshotService.js';
 
 const flowIdSchema = z.string().uuid();
 const callbackSchema = z.object({
@@ -30,6 +36,16 @@ function sendYouTubeError(reply: FastifyReply, error: unknown) {
     });
   }
   throw error;
+}
+
+function sendSnapshotError(reply: FastifyReply, error: unknown) {
+  if (error instanceof YouTubeMembershipSnapshotError) {
+    return reply.status(error.httpStatus).send({
+      error: error.code,
+      message: error.message,
+    });
+  }
+  return sendYouTubeError(reply, error);
 }
 
 function callbackPage(success: boolean): string {
@@ -146,6 +162,67 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
         });
       } catch (error) {
         return sendYouTubeError(reply, error);
+      }
+    },
+  );
+
+  fastify.get(
+    '/admin/youtube/membership/snapshot',
+    {
+      preHandler: [requirePermission('settings.manage')],
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    },
+    async (_request, reply) => {
+      try {
+        return await getYouTubeMembershipSnapshotStatus();
+      } catch (error) {
+        return sendSnapshotError(reply, error);
+      }
+    },
+  );
+
+  fastify.post(
+    '/admin/youtube/membership/snapshot',
+    {
+      preHandler: [requirePermission('settings.manage')],
+      config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    },
+    async (request, reply) => {
+      try {
+        const part = await request.file({
+          limits: { files: 1, fileSize: youtubeMembershipSnapshotMaxBytes },
+        });
+        if (!part || part.fieldname !== 'file') {
+          throw new YouTubeMembershipSnapshotError(
+            'youtube_snapshot_file_required',
+            400,
+            'Attach one .csv or .tsv membership export using the “file” field.',
+          );
+        }
+        const bytes = await part.toBuffer();
+        if (part.file.truncated || bytes.length > youtubeMembershipSnapshotMaxBytes) {
+          throw new YouTubeMembershipSnapshotError(
+            'youtube_snapshot_too_large',
+            413,
+            'The membership snapshot must be 5 MB or smaller.',
+          );
+        }
+        const status = await importYouTubeMembershipSnapshot({
+          bytes,
+          fileName: part.filename,
+          importedByUserId: request.user!.id,
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'] ?? null,
+        });
+        return reply.status(201).send(status);
+      } catch (error: any) {
+        if (error?.code === 'FST_REQ_FILE_TOO_LARGE') {
+          return reply.status(413).send({
+            error: 'youtube_snapshot_too_large',
+            message: 'The membership snapshot must be 5 MB or smaller.',
+          });
+        }
+        return sendSnapshotError(reply, error);
       }
     },
   );
