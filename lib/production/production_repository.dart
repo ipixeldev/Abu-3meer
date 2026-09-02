@@ -710,36 +710,14 @@ class ProductionRepository {
 
   Future<LatestVideo> latestVideo({bool refresh = false}) async {
     try {
-      final doc = await firestore
-          .collection('platformSettings')
-          .doc('latestVideo')
-          .get()
-          .timeout(const Duration(seconds: 3));
-      if (doc.exists && doc.data() != null) {
-        final data = doc.data()!;
-        final rawDate = data['publishedAt'];
-        final DateTime publishedDate;
-        if (rawDate is Timestamp) {
-          publishedDate = rawDate.toDate();
-        } else if (rawDate is int) {
-          publishedDate = DateTime.fromMillisecondsSinceEpoch(rawDate);
-        } else if (rawDate is String) {
-          publishedDate = DateTime.tryParse(rawDate) ?? DateTime.now();
-        } else {
-          publishedDate = DateTime.now();
-        }
-        return LatestVideo(
-          id: data['id'] as String? ?? '',
-          title: data['title'] as String? ?? '',
-          url: data['url'] as String? ?? '',
-          thumbnailUrl: data['thumbnailUrl'] as String? ?? '',
-          publishedAt: publishedDate,
-        );
-      }
-    } catch (_) {}
-    try {
-      return await externalContent.latestVideo(refresh: refresh);
+      return await apiRepo.fetchLatestPublicVideo(forceRefresh: refresh);
     } catch (_) {
+      try {
+        // During a server rollout or a temporary API outage, fall back to the
+        // public channel feed. The legacy Firestore override is intentionally
+        // ignored because it could pin Home to an old hard-coded upload.
+        return await externalContent.latestVideo(refresh: refresh);
+      } catch (_) {}
       return LatestVideo(
         id: 'dQw4w9WgXcQ',
         title: 'Abu 3meer Official Channel',
@@ -3001,7 +2979,7 @@ String productionErrorMessage(Object error) {
         'This sign-in method is not enabled yet. Contact support.',
       'account-deletion-password-required' =>
         'Enter your current password to delete this account.',
-      'requires-recent-login' => 'For your security, sign out and sign in again before deleting your account.',
+      'requires-recent-login' => 'For your security, sign out and sign in again before changing account security details or deleting your account.',
       'network-request-failed' =>
         'Check your internet connection and try again.',
       _ => error.message ?? 'Authentication failed. Please try again.',
@@ -3035,7 +3013,7 @@ String productionErrorMessage(Object error) {
   }
   if (error is ArgumentError || error is StateError) {
     return error.toString().replaceFirst(
-      RegExp(r'^(Invalid argument|Bad state): '),
+      RegExp(r'^(Invalid argument(?:\(s\))?|Bad state): '),
       '',
     );
   }

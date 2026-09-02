@@ -164,8 +164,8 @@ async function main() {
   // error instead of silent profile/prediction write failures.
   await runMigrations();
 
-  // Public channel uploads are discovered independently of creator-membership
-  // OAuth. Admin Studio remains the manual fallback and can edit synced rows.
+  // Public channel uploads are discovered independently of membership and are
+  // stored separately from the manually curated Exclusive-video catalogue.
   stopYouTubeVideoSync = startYouTubeVideoSynchronization(fastify.log);
 
   // Start BullMQ background workers

@@ -53,16 +53,29 @@ describe('YouTube latest-video synchronization', () => {
     );
   });
 
-  it('runs every 12 hours across restarts and preserves manual video edits', async () => {
+  it('runs every 12 hours and keeps public uploads out of Exclusive videos', async () => {
     const service = await readFile(
       path.resolve(process.cwd(), 'src/services/youtubeVideoSyncService.ts'),
       'utf8',
     );
     const index = await readFile(path.resolve(process.cwd(), 'src/index.ts'), 'utf8');
+    const videoDomain = await readFile(
+      path.resolve(process.cwd(), 'src/services/videoDomain.ts'),
+      'utf8',
+    );
+    const videoRoutes = await readFile(
+      path.resolve(process.cwd(), 'src/routes/videoRoutes.ts'),
+      'utf8',
+    );
     assert.match(service, /const twelveHoursMs = 12 \* 60 \* 60 \* 1000/);
     assert.match(service, /last_succeeded_at/);
-    assert.match(service, /ON CONFLICT \(youtube_id\) DO NOTHING/);
+    assert.match(service, /has_public_video/);
+    assert.match(service, /INSERT INTO youtube_latest_public_video/);
+    assert.match(service, /ON CONFLICT \(singleton\) DO UPDATE/);
+    assert.doesNotMatch(service, /INSERT INTO videos/);
     assert.doesNotMatch(service, /refresh_token|Authorization: `Bearer/);
+    assert.match(videoRoutes, /fastify\.get\('\/videos\/latest'/);
+    assert.match(videoDomain, /is_unlisted = TRUE OR member_only = TRUE/);
     assert.match(index, /startYouTubeVideoSynchronization/);
     assert.match(index, /stopYouTubeVideoSync\?\.\(\)/);
   });

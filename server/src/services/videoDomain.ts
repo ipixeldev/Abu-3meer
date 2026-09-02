@@ -47,12 +47,13 @@ export async function listExclusiveVideos(
 ): Promise<Array<Record<string, unknown>>> {
   const publicationFilter = options.includeScheduled
     ? ''
-    : `WHERE published_at <= CURRENT_TIMESTAMP
+    : `AND published_at <= CURRENT_TIMESTAMP
          AND youtube_id ~ '^[A-Za-z0-9_-]{11}$'`;
   const result = await execute(
     `SELECT id, youtube_id, title, description, thumbnail_url, video_url,
             published_at, is_unlisted, member_only, view_count
      FROM videos
+     WHERE (is_unlisted = TRUE OR member_only = TRUE)
      ${publicationFilter}
      ORDER BY published_at DESC
      LIMIT 200`,

@@ -1,6 +1,9 @@
-import { config } from '../config.js';
 import { getDirectClient } from '../db/pool.js';
-import { FetchLike } from './youtubeOAuthService.js';
+
+type FetchLike = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
 
 const twelveHoursMs = 12 * 60 * 60 * 1000;
 const schedulerTickMs = 60 * 60 * 1000;
@@ -14,7 +17,7 @@ export interface SyncedYouTubeVideo {
 }
 
 function configuredCreatorChannelId(): string | null {
-  const channelId = config.youtubeOAuth.creatorChannelId;
+  const channelId = (process.env.YOUTUBE_CREATOR_CHANNEL_ID ?? '').trim();
   return /^UC[A-Za-z0-9_-]{22}$/.test(channelId) ? channelId : null;
 }
 
@@ -80,12 +83,23 @@ export async function synchronizeLatestYouTubeVideo(
     locked = lock.rows[0]?.acquired === true;
     if (!locked) return 'not_due';
     const state = await client.query(
-      `SELECT last_succeeded_at FROM youtube_video_sync_state WHERE singleton = TRUE`,
+      `SELECT sync_state.last_succeeded_at,
+              EXISTS (
+                SELECT 1
+                FROM youtube_latest_public_video public_video
+                WHERE public_video.singleton = TRUE
+              ) AS has_public_video
+       FROM youtube_video_sync_state sync_state
+       WHERE sync_state.singleton = TRUE`,
     );
     const lastSuccess = state.rows[0]?.last_succeeded_at
       ? new Date(state.rows[0].last_succeeded_at)
       : null;
-    if (lastSuccess && now.getTime() - lastSuccess.getTime() < twelveHoursMs) {
+    if (
+      state.rows[0]?.has_public_video === true &&
+      lastSuccess &&
+      now.getTime() - lastSuccess.getTime() < twelveHoursMs
+    ) {
       return 'not_due';
     }
     await client.query(
@@ -97,22 +111,29 @@ export async function synchronizeLatestYouTubeVideo(
       fetchImpl,
     );
     if (video) {
-      // Never overwrite Admin Studio edits: automatic discovery only fills a
-      // missing public row; admins retain full manual scheduling/control.
+      // A normal channel upload is public Home content. It must never enter
+      // the manually curated Exclusive-video catalogue.
       await client.query(
-        `INSERT INTO videos
-           (id, youtube_id, title, description, thumbnail_url, video_url,
-            published_at, is_unlisted, member_only)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, FALSE)
-         ON CONFLICT (youtube_id) DO NOTHING`,
+        `INSERT INTO youtube_latest_public_video
+           (singleton, youtube_id, title, description, thumbnail_url,
+            video_url, published_at, fetched_at)
+         VALUES (TRUE, $1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (singleton) DO UPDATE SET
+           youtube_id = EXCLUDED.youtube_id,
+           title = EXCLUDED.title,
+           description = EXCLUDED.description,
+           thumbnail_url = EXCLUDED.thumbnail_url,
+           video_url = EXCLUDED.video_url,
+           published_at = EXCLUDED.published_at,
+           fetched_at = EXCLUDED.fetched_at`,
         [
-          `vid_${video.youtubeId}`,
           video.youtubeId,
           video.title,
           video.description,
           video.thumbnailUrl,
           `https://www.youtube.com/watch?v=${video.youtubeId}`,
           video.publishedAt,
+          now,
         ],
       );
     }

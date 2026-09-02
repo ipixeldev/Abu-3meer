@@ -18,6 +18,32 @@ import {
 import { resolveChallengeMembership } from '../services/challengeMembershipService.js';
 
 export async function videoRoutes(fastify: FastifyInstance) {
+  // GET /api/v1/videos/latest - Latest normal public channel upload for Home.
+  // This record is deliberately separate from the Exclusive catalogue.
+  fastify.get('/videos/latest', async (_request, reply) => {
+    const result = await query(
+      `SELECT youtube_id, title, thumbnail_url, video_url, published_at
+       FROM youtube_latest_public_video
+       WHERE singleton = TRUE
+       LIMIT 1`,
+    );
+    const video = result.rows[0];
+    if (!video) {
+      return reply.status(404).send({
+        error: 'LatestVideoUnavailable',
+        message: 'The latest public YouTube video has not been synchronized yet.',
+      });
+    }
+    reply.header('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600');
+    return {
+      id: video.youtube_id,
+      title: video.title,
+      url: video.video_url,
+      thumbnailUrl: video.thumbnail_url,
+      publishedAt: video.published_at,
+    };
+  });
+
   // GET /api/v1/videos/exclusive - List published exclusive videos for app users
   fastify.get(
     '/videos/exclusive',

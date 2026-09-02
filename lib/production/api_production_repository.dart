@@ -1857,6 +1857,52 @@ class ApiProductionRepository {
     );
   }
 
+  Future<LatestVideo> fetchLatestPublicVideo({
+    bool forceRefresh = false,
+  }) async {
+    final result = await api.get(
+      '/videos/latest',
+      requireAuth: false,
+      bypassCache: forceRefresh,
+    );
+    if (result is! Map) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned invalid latest-video data.',
+        details: result,
+      );
+    }
+    final data = Map<String, dynamic>.from(result);
+    final id = (data['id'] ?? '').toString().trim();
+    final url = (data['url'] ?? '').toString().trim();
+    final title = (data['title'] ?? '').toString().trim();
+    final thumbnailUrl = (data['thumbnailUrl'] ?? '').toString().trim();
+    final publishedAt = DateTime.tryParse(
+      (data['publishedAt'] ?? '').toString(),
+    );
+    final youtubeIdPattern = RegExp(r'^[A-Za-z0-9_-]{11}$');
+    final videoUrl = Uri.tryParse(url);
+    if (!youtubeIdPattern.hasMatch(id) ||
+        videoUrl == null ||
+        videoUrl.host.isEmpty ||
+        title.isEmpty ||
+        thumbnailUrl.isEmpty ||
+        publishedAt == null) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned invalid latest-video data.',
+        details: result,
+      );
+    }
+    return LatestVideo(
+      id: id,
+      title: title,
+      url: url,
+      thumbnailUrl: thumbnailUrl,
+      publishedAt: publishedAt,
+    );
+  }
+
   Future<void> createExclusiveVideo({
     required String youtubeId,
     required String title,

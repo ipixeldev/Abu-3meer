@@ -9854,13 +9854,8 @@ class _ProductionProfileState extends State<_ProductionProfile> {
 
   Future<void> editProfile() async {
     final profile = widget.profile;
-    final user = widget.repository.auth.currentUser;
     final usernameController = TextEditingController(text: profile.username);
     final nameController = TextEditingController(text: profile.displayName);
-    final emailController = TextEditingController(
-      text: user?.email ?? profile.email,
-    );
-    final passwordController = TextEditingController();
     var selectedCountryName = profile.country.isNotEmpty
         ? profile.country
         : 'Saudi Arabia';
@@ -9927,11 +9922,7 @@ class _ProductionProfileState extends State<_ProductionProfile> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  abuText(
-                    context,
-                    'Edit Profile & Account',
-                    'تعديل الملف والحساب',
-                  ),
+                  abuText(context, 'Edit Profile', 'تعديل الملف'),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
@@ -10219,53 +10210,6 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                   onSelectionChanged: (value) =>
                       setDialogState(() => team = value.first),
                 ),
-                const SizedBox(height: 18),
-
-                // 5. Account Security (Email & Password)
-                Text(
-                  abuText(
-                    context,
-                    'ACCOUNT CREDENTIALS',
-                    'بيانات الحساب وكلمة المرور',
-                  ),
-                  style: TextStyle(
-                    color: _muted,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: InputDecoration(
-                    labelText: abuText(
-                      context,
-                      'Account Email',
-                      'البريد الإلكتروني',
-                    ),
-                    prefixIcon: Icon(Icons.email_rounded),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: passwordController,
-                  obscureText: true,
-                  decoration: InputDecoration(
-                    labelText: abuText(
-                      context,
-                      'New Password (optional)',
-                      'كلمة مرور جديدة (اختياري)',
-                    ),
-                    hintText: abuText(
-                      context,
-                      'Leave blank to keep current',
-                      'اترك فارغاً للاحتفاظ بالحالية',
-                    ),
-                    prefixIcon: Icon(Icons.lock_rounded),
-                  ),
-                ),
               ],
             ),
           ),
@@ -10286,23 +10230,8 @@ class _ProductionProfileState extends State<_ProductionProfile> {
     if (save != true || !mounted) return;
 
     try {
-      // 1. Update Password if provided
-      if (passwordController.text.trim().isNotEmpty && user != null) {
-        if (passwordController.text.trim().length < 6) {
-          throw ArgumentError('Password must be at least 6 characters.');
-        }
-        await user.updatePassword(passwordController.text.trim());
-      }
-
-      // 2. Update Email if changed
-      if (emailController.text.trim().isNotEmpty &&
-          user != null &&
-          emailController.text.trim().toLowerCase() !=
-              (user.email ?? '').toLowerCase()) {
-        await user.verifyBeforeUpdateEmail(emailController.text.trim());
-      }
-
-      // 3. Update Profile & Sync
+      // Account credentials live in Settings > Account. This editor only
+      // changes public fan-card/profile information.
       final key = team.toLowerCase().trim();
       final teamLogo = _ProductionTeamBadge._knownLogos[key] ?? '';
       await widget.repository.updateProfile(
@@ -11245,6 +11174,177 @@ class _YouTubeOAuthStatusDialogState extends State<_YouTubeOAuthStatusDialog>
   }
 }
 
+Future<void> _showChangeAccountEmailDialog(
+  BuildContext context,
+  ProductionRepository repository,
+) async {
+  final user = repository.auth.currentUser;
+  if (user == null) return;
+  final email = TextEditingController(text: user.email ?? '');
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(
+        abuText(dialogContext, 'Change account email', 'تغيير بريد الحساب'),
+      ),
+      content: TextField(
+        controller: email,
+        autofocus: true,
+        keyboardType: TextInputType.emailAddress,
+        autofillHints: const [AutofillHints.email],
+        decoration: InputDecoration(
+          labelText: abuText(dialogContext, 'New email', 'البريد الجديد'),
+          prefixIcon: const Icon(Icons.alternate_email_rounded),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: Text(abuText(dialogContext, 'CANCEL', 'إلغاء')),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: Text(
+            abuText(dialogContext, 'SEND VERIFICATION', 'إرسال التحقق'),
+          ),
+        ),
+      ],
+    ),
+  );
+  final nextEmail = email.text.trim();
+  email.dispose();
+  if (confirmed != true || nextEmail.isEmpty || !context.mounted) return;
+  try {
+    if (nextEmail.toLowerCase() == (user.email ?? '').toLowerCase()) {
+      throw ArgumentError(
+        abuText(
+          context,
+          'Enter a different email address.',
+          'أدخل بريداً إلكترونياً مختلفاً.',
+        ),
+      );
+    }
+    await user.verifyBeforeUpdateEmail(nextEmail);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          abuText(
+            context,
+            'Verification sent to $nextEmail. Open that email to finish the change.',
+            'تم إرسال التحقق إلى $nextEmail. افتح الرسالة لإكمال التغيير.',
+          ),
+        ),
+      ),
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(productionErrorMessage(error))));
+  }
+}
+
+Future<void> _showChangeAccountPasswordDialog(
+  BuildContext context,
+  ProductionRepository repository,
+) async {
+  final user = repository.auth.currentUser;
+  if (user == null) return;
+  final password = TextEditingController();
+  final confirmation = TextEditingController();
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: Text(
+        abuText(dialogContext, 'Change password', 'تغيير كلمة المرور'),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: password,
+            autofocus: true,
+            obscureText: true,
+            autofillHints: const [AutofillHints.newPassword],
+            decoration: InputDecoration(
+              labelText: abuText(
+                dialogContext,
+                'New password',
+                'كلمة المرور الجديدة',
+              ),
+              prefixIcon: const Icon(Icons.password_rounded),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: confirmation,
+            obscureText: true,
+            autofillHints: const [AutofillHints.newPassword],
+            decoration: InputDecoration(
+              labelText: abuText(
+                dialogContext,
+                'Confirm password',
+                'تأكيد كلمة المرور',
+              ),
+              prefixIcon: const Icon(Icons.lock_reset_rounded),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(dialogContext, false),
+          child: Text(abuText(dialogContext, 'CANCEL', 'إلغاء')),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext, true),
+          child: Text(
+            abuText(dialogContext, 'CHANGE PASSWORD', 'تغيير كلمة المرور'),
+          ),
+        ),
+      ],
+    ),
+  );
+  final nextPassword = password.text;
+  final repeatedPassword = confirmation.text;
+  password.dispose();
+  confirmation.dispose();
+  if (confirmed != true || !context.mounted) return;
+  try {
+    if (nextPassword.length < 8) {
+      throw ArgumentError(
+        abuText(
+          context,
+          'Use at least 8 characters.',
+          'استخدم 8 أحرف على الأقل.',
+        ),
+      );
+    }
+    if (nextPassword != repeatedPassword) {
+      throw ArgumentError(
+        abuText(
+          context,
+          'Passwords do not match.',
+          'كلمتا المرور غير متطابقتين.',
+        ),
+      );
+    }
+    await user.updatePassword(nextPassword);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          abuText(context, 'Password changed.', 'تم تغيير كلمة المرور.'),
+        ),
+      ),
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(productionErrorMessage(error))));
+  }
+}
+
 class _ProductionSettings extends StatelessWidget {
   const _ProductionSettings({required this.repository, required this.profile});
   final ProductionRepository repository;
@@ -11255,6 +11355,12 @@ class _ProductionSettings extends StatelessWidget {
     final preferences = AbuAppPreferences.instance;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primary = isDark ? _productionPrimary(context) : _lightPrimary;
+    final authUser = repository.auth.currentUser;
+    final passwordAccount =
+        authUser?.providerData.any(
+          (provider) => provider.providerId == 'password',
+        ) ==
+        true;
     return AnimatedBuilder(
       animation: preferences,
       builder: (context, _) => _PageFrame(
@@ -11304,6 +11410,57 @@ class _ProductionSettings extends StatelessWidget {
                       : null,
                 ),
                 if (!profile.isGuest) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: Icon(
+                      Icons.alternate_email_rounded,
+                      color: primary,
+                    ),
+                    title: Text(
+                      abuText(context, 'Account email', 'بريد الحساب'),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      passwordAccount
+                          ? (authUser?.email ?? profile.email)
+                          : abuText(
+                              context,
+                              '${authUser?.email ?? profile.email} · Managed by Google',
+                              '${authUser?.email ?? profile.email} · يديره Google',
+                            ),
+                    ),
+                    trailing: passwordAccount
+                        ? const Icon(Icons.chevron_right_rounded)
+                        : const Icon(Icons.lock_outline_rounded),
+                    onTap: passwordAccount
+                        ? () =>
+                              _showChangeAccountEmailDialog(context, repository)
+                        : null,
+                  ),
+                  if (passwordAccount) ...[
+                    const Divider(height: 1),
+                    ListTile(
+                      leading: Icon(Icons.password_rounded, color: primary),
+                      title: Text(
+                        abuText(
+                          context,
+                          'Change password',
+                          'تغيير كلمة المرور',
+                        ),
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                      subtitle: Text(
+                        abuText(
+                          context,
+                          'Update the password used for email sign-in.',
+                          'تحديث كلمة مرور تسجيل الدخول بالبريد.',
+                        ),
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () =>
+                          _showChangeAccountPasswordDialog(context, repository),
+                    ),
+                  ],
                   if (repository.canLinkGoogleAccount) ...[
                     const Divider(height: 1),
                     ListTile(
