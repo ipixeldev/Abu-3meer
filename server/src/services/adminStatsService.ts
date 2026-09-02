@@ -99,7 +99,9 @@ export async function getAdminDashboardStats(
        SELECT
          (SELECT COUNT(*) FROM matches) AS matches,
          (SELECT COUNT(*) FROM challenges) AS challenges,
-         (SELECT COUNT(*) FROM exclusive_videos) AS exclusive_videos
+         (SELECT COUNT(*)
+          FROM videos
+          WHERE is_unlisted = TRUE OR member_only = TRUE) AS exclusive_videos
      )
      SELECT *
      FROM user_counts, role_counts, membership_counts,

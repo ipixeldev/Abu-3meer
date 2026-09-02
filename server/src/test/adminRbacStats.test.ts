@@ -130,6 +130,11 @@ describe('admin dashboard statistics', () => {
     assert.match(sql, /verification_source = 'admin_snapshot'/);
     assert.match(sql, /snapshot_import_id = snapshot_state\.active_import_id/);
     assert.match(sql, /youtube_membership_snapshot_members[\s\S]*status = 'active'/);
+    assert.match(
+      sql,
+      /FROM videos[\s\S]*is_unlisted = TRUE OR member_only = TRUE/,
+    );
+    assert.doesNotMatch(sql, /FROM exclusive_videos/);
     assert.equal(stats.activeUserDefinition.primaryWindowDays, 30);
     assert.equal(stats.users.total, 120);
     assert.equal(stats.users.active30d, 88);
