@@ -16,8 +16,12 @@ import 'api_production_repository.dart';
 import 'api_client.dart';
 import 'external_content_service.dart';
 import 'models.dart';
-import 'youtube_channel_claim.dart';
+import 'youtube_membership_check.dart';
 import 'notification_service.dart';
+
+const List<String> youtubeMembershipGoogleScopes = <String>[
+  'https://www.googleapis.com/auth/youtube.readonly',
+];
 
 @visibleForTesting
 String footballTeamKeyForMatching(String value) {
@@ -2839,39 +2843,82 @@ class ProductionRepository {
     return result;
   }
 
-  // ── Staff-approved YouTube channel claims ───────────────────────────────
+  // ── YouTube membership check ────────────────────────────────────────────
 
-  Future<YouTubeChannelClaim?> fetchMyYouTubeChannelClaim() =>
-      apiRepo.fetchMyYouTubeChannelClaim();
-
-  Future<YouTubeChannelClaim> submitYouTubeChannelClaim(String channel) async {
-    if (auth.currentUser == null) {
+  /// Verifies the selected Google account's own YouTube channel against the
+  /// current server-side membership CSV. The Google access token is used for
+  /// this request only and is never stored by the client.
+  Future<YouTubeMembershipCheckResult> checkYouTubeMembership() async {
+    final user = auth.currentUser;
+    if (user == null) {
       throw FirebaseAuthException(
         code: 'unauthenticated',
-        message: 'Sign in before submitting a YouTube channel claim.',
+        message: 'Sign in before checking YouTube membership.',
       );
     }
-    final claim = await apiRepo.submitYouTubeChannelClaim(channel);
-    await refreshProfile(auth.currentUser!.uid, force: true);
-    return claim;
+    if (kIsWeb) {
+      throw UnsupportedError(
+        'YouTube membership checking is currently available in the mobile app.',
+      );
+    }
+    if (!_googleInitialized) {
+      await GoogleSignIn.instance.initialize();
+      _googleInitialized = true;
+    }
+
+    final googleAccount = await GoogleSignIn.instance.authenticate(
+      scopeHint: youtubeMembershipGoogleScopes,
+    );
+    final linkedGoogleProviders = user.providerData.where(
+      (provider) => provider.providerId == GoogleAuthProvider.PROVIDER_ID,
+    );
+    var linkedGoogleForThisCheck = false;
+    if (linkedGoogleProviders.isEmpty) {
+      final idToken = googleAccount.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw FirebaseAuthException(
+          code: 'missing-google-token',
+          message: 'Google did not return a valid identity token.',
+        );
+      }
+      await user.linkWithCredential(
+        GoogleAuthProvider.credential(idToken: idToken),
+      );
+      linkedGoogleForThisCheck = true;
+    } else if (linkedGoogleProviders.first.uid != googleAccount.id) {
+      // Clear only the transient Google Sign-In selection. The Firebase
+      // account stays signed in and its linked identity is unchanged.
+      await GoogleSignIn.instance.signOut();
+      throw FirebaseAuthException(
+        code: 'youtube-google-account-mismatch',
+        message: 'Choose the Google account already linked to this Abu 3meer account.',
+      );
+    }
+
+    var authorization = await googleAccount.authorizationClient
+        .authorizationForScopes(youtubeMembershipGoogleScopes);
+    authorization ??= await googleAccount.authorizationClient.authorizeScopes(
+      youtubeMembershipGoogleScopes,
+    );
+    final accessToken = authorization.accessToken.trim();
+    if (accessToken.isEmpty) {
+      throw FirebaseAuthException(
+        code: 'missing-youtube-access-token',
+        message: 'Google did not authorize YouTube membership checking.',
+      );
+    }
+
+    await user.reload();
+    if (linkedGoogleForThisCheck) {
+      // Refresh once so the authenticated API can bind the Google access-token
+      // subject to the newly linked Firebase identity. Already-linked accounts
+      // keep their cached token and stable server rate-limit bucket.
+      await user.getIdToken(true);
+    }
+    final result = await apiRepo.checkYouTubeMembership(accessToken);
+    await refreshProfile(user.uid, force: true);
+    return result;
   }
-
-  Future<List<YouTubeChannelClaim>> fetchPendingYouTubeChannelClaims() =>
-      apiRepo.fetchYouTubeChannelClaims();
-
-  Future<List<YouTubeChannelClaim>> fetchYouTubeChannelClaims({
-    String status = 'pending',
-  }) => apiRepo.fetchYouTubeChannelClaims(status: status);
-
-  Future<YouTubeChannelClaim> decideYouTubeChannelClaim({
-    required String claimId,
-    required YouTubeChannelClaimDecision decision,
-    required String reason,
-  }) => apiRepo.decideYouTubeChannelClaim(
-    claimId: claimId,
-    decision: decision,
-    reason: reason,
-  );
 
   // ── Games Arena Visibility Toggle ───────────────────────────────────────
 
@@ -2901,8 +2948,20 @@ String productionErrorMessage(Object error) {
       0 =>
         'Cannot reach the Abu 3meer server (${AbuApiClient.defaultBaseUrl}). Check the Cloudflare Tunnel and try again.',
       400 => error.message,
-      401 => 'Your session expired. Sign in again and retry.',
-      403 => 'Your account is not allowed to perform this action.',
+      401 =>
+        RegExp(
+              r'google|youtube|access token',
+              caseSensitive: false,
+            ).hasMatch(error.message)
+            ? error.message
+            : 'Your session expired. Sign in again and retry.',
+      403 =>
+        RegExp(
+              r'google|youtube|scope|identity',
+              caseSensitive: false,
+            ).hasMatch(error.message)
+            ? error.message
+            : 'Your account is not allowed to perform this action.',
       404 => error.message,
       409 => error.message,
       413 => 'That image is too large. Choose an image smaller than 8 MB.',
@@ -2921,6 +2980,10 @@ String productionErrorMessage(Object error) {
       'account-exists-with-different-credential' => 'An account already uses this email. Sign in with the method you used before.',
       'credential-already-in-use' => 'That Google account is linked to another Abu 3meer account. Sign out of that account first, then link Google here.',
       'provider-already-linked' => 'Google is already linked to this account.',
+      'youtube-google-account-mismatch' =>
+        'Choose the Google account already linked to this Abu 3meer account.',
+      'missing-youtube-access-token' =>
+        'Allow read-only YouTube access so membership can be checked.',
       'operation-not-allowed' =>
         'This sign-in method is not enabled yet. Contact support.',
       'account-deletion-password-required' =>

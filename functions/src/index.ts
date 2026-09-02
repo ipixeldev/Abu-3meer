@@ -15,7 +15,6 @@ import {
   LoyaltyRedemptionError,
   PointSource,
   RedemptionStatus,
-  adminMembershipState,
   achievementClaimId,
   achievementProgressValue,
   calculateLoyaltyRefund,
@@ -162,8 +161,11 @@ function storedTimestamp(value: unknown, field: string): Timestamp {
 }
 
 function hasVerifiedMembership(user: Record<string, unknown>): boolean {
-  const multiplier = Number(user.membershipMultiplier ?? 1);
-  return Number.isFinite(multiplier) && multiplier > 1;
+  // Membership authority moved to the PostgreSQL API's Google-owned-channel
+  // check against the latest staff CSV. Legacy Firestore fields must never
+  // grant member-only access or points.
+  void user;
+  return false;
 }
 
 function millis(value: unknown, field: string): Timestamp {
@@ -263,7 +265,7 @@ function archivePreviousSeason(
     monthlyPoints: params.user.monthlyPoints ?? leaderboard.monthlyPoints ?? 0,
     seasonPoints: params.user.seasonPoints ?? leaderboard.seasonPoints ?? 0,
     totalPoints: params.user.totalPoints ?? leaderboard.totalPoints ?? 0,
-    isMember: Number(params.user.membershipMultiplier ?? 1) > 1,
+    isMember: false,
     monthlyPeriod: params.user.monthlyPeriod ?? leaderboard.monthlyPeriod ?? "",
     seasonId: previousSeasonId,
     archivedAt,
@@ -308,7 +310,9 @@ async function awardPoints(params: {
     if (user.suspended === true) {
       throw new HttpsError("permission-denied", "This account is suspended.");
     }
-    const membershipMultiplier = Number(user.membershipMultiplier ?? 1);
+    // The active PostgreSQL API owns membership and XP. This legacy callable
+    // must stay fail-closed instead of trusting an old Firestore multiplier.
+    const membershipMultiplier = 1;
     const multiplier = memberMultiplierForSource(
       params.sourceType,
       membershipMultiplier,
@@ -444,7 +448,7 @@ export const completeOnboarding = onCall(phase3CallableOptions(region), async (r
       supportedTeam,
       avatarUrl,
       role: existing.data()?.role ?? "user",
-      membershipMultiplier: existing.data()?.membershipMultiplier ?? 1,
+      membershipMultiplier: 1,
       suspended: existing.data()?.suspended ?? false,
       totalPoints,
       monthlyPoints: existing.data()?.monthlyPoints ?? 0,
@@ -466,7 +470,7 @@ export const completeOnboarding = onCall(phase3CallableOptions(region), async (r
       monthlyPoints: existing.data()?.monthlyPoints ?? 0,
       seasonPoints,
       totalPoints,
-      isMember: Number(existing.data()?.membershipMultiplier ?? 1) > 1,
+      isMember: false,
       monthlyPeriod: existing.data()?.monthlyPeriod ?? periodId(),
       seasonId: currentSeason,
       updatedAt: now,
@@ -1935,50 +1939,14 @@ export const verifyYouTubeMembership = onCall(phase3CallableOptions(region), asy
   requireAuth(request.auth);
   throw new HttpsError(
     "failed-precondition",
-    "Automatic YouTube channel-member verification is not configured. Membership must be verified independently and assigned by an administrator.",
+    "YouTube membership verification has moved to the current app. Update ABU 3MEER and use Check membership in your profile.",
   );
 });
 
-/**
- * Manual compatibility path for Firebase-backed challenge rewards. The
- * PostgreSQL API has its own audited admin endpoint; this callable keeps the
- * legacy Firebase user mirror aligned without allowing user self-promotion.
- */
 export const adminSetYouTubeMembership = onCall(phase3CallableOptions(region), async (request) => {
-  const auth = requireAuth(request.auth);
-  await requireAdmin(auth.uid);
-  const targetUserId = documentId(request.data?.targetUserId, "Target user", 128);
-  if (typeof request.data?.isMember !== "boolean") {
-    throw new HttpsError("invalid-argument", "Membership status is required.");
-  }
-  const reason = text(request.data?.reason, "Reason", 240);
-  if (reason.length < 3) {
-    throw new HttpsError("invalid-argument", "Reason must contain at least 3 characters.");
-  }
-
-  const membership = adminMembershipState(request.data.isMember);
-  const targetRef = db.collection("users").doc(targetUserId);
-  const auditRef = db.collection("adminAuditLogs").doc();
-  await db.runTransaction(async (transaction) => {
-    const target = await transaction.get(targetRef);
-    if (!target.exists) {
-      throw new HttpsError("not-found", "User profile is missing.");
-    }
-    const changedAt = FieldValue.serverTimestamp();
-    transaction.update(targetRef, {
-      ...membership,
-      youtubeMembershipVerifiedAt: membership.isYouTubeMember ? changedAt : null,
-      youtubeVerifiedAt: membership.isYouTubeMember ? changedAt : null,
-      updatedAt: changedAt,
-    });
-    transaction.create(auditRef, {
-      adminId: auth.uid,
-      action: membership.isYouTubeMember ? "GRANT_YOUTUBE_MEMBERSHIP" : "REVOKE_YOUTUBE_MEMBERSHIP",
-      targetUserId,
-      reason,
-      changes: membership,
-      createdAt: changedAt,
-    });
-  });
-  return {ok: true, ...membership};
+  requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "Manual YouTube membership assignment is disabled. Membership is verified by the current app against the latest staff CSV.",
+  );
 });

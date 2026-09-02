@@ -3,6 +3,100 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum AbuLanguage { english, arabic }
 
+/// Bundled typography choices. Each language keeps an independent selection,
+/// so switching languages also restores the user's font for that script.
+enum AbuFontPreset {
+  classicEnglish(
+    id: 'classic_english',
+    language: AbuLanguage.english,
+    englishLabel: 'Classic · Inter + Barlow',
+    arabicLabel: 'كلاسيكي · إنتر + بارلو',
+    bodyFontFamily: 'Inter',
+    displayFontFamily: 'Barlow Condensed',
+    fallbackFontFamilies: ['Noto Sans Arabic'],
+  ),
+  montserrat(
+    id: 'montserrat',
+    language: AbuLanguage.english,
+    englishLabel: 'Montserrat',
+    arabicLabel: 'مونتسيرات',
+    bodyFontFamily: 'Montserrat',
+    displayFontFamily: 'Montserrat',
+    fallbackFontFamilies: ['Noto Sans Arabic'],
+  ),
+  nunitoSans(
+    id: 'nunito_sans',
+    language: AbuLanguage.english,
+    englishLabel: 'Nunito Sans',
+    arabicLabel: 'نونيتو سانس',
+    bodyFontFamily: 'Nunito Sans',
+    displayFontFamily: 'Nunito Sans',
+    fallbackFontFamilies: ['Noto Sans Arabic'],
+  ),
+  cairo(
+    id: 'cairo',
+    language: AbuLanguage.arabic,
+    englishLabel: 'Cairo',
+    arabicLabel: 'كايرو',
+    bodyFontFamily: 'Cairo',
+    displayFontFamily: 'Cairo',
+    fallbackFontFamilies: ['Inter'],
+  ),
+  tajawal(
+    id: 'tajawal',
+    language: AbuLanguage.arabic,
+    englishLabel: 'Tajawal',
+    arabicLabel: 'تجوال',
+    bodyFontFamily: 'Tajawal',
+    displayFontFamily: 'Tajawal',
+    fallbackFontFamilies: ['Inter'],
+  ),
+  notoSansArabic(
+    id: 'noto_sans_arabic',
+    language: AbuLanguage.arabic,
+    englishLabel: 'Noto Sans Arabic',
+    arabicLabel: 'نوتو سانس عربي',
+    bodyFontFamily: 'Noto Sans Arabic',
+    displayFontFamily: 'Noto Sans Arabic',
+    fallbackFontFamilies: ['Inter'],
+  );
+
+  const AbuFontPreset({
+    required this.id,
+    required this.language,
+    required this.englishLabel,
+    required this.arabicLabel,
+    required this.bodyFontFamily,
+    required this.displayFontFamily,
+    required this.fallbackFontFamilies,
+  });
+
+  final String id;
+  final AbuLanguage language;
+  final String englishLabel;
+  final String arabicLabel;
+  final String bodyFontFamily;
+  final String displayFontFamily;
+  final List<String> fallbackFontFamilies;
+
+  String labelFor(AbuLanguage interfaceLanguage) =>
+      interfaceLanguage == AbuLanguage.arabic ? arabicLabel : englishLabel;
+
+  static List<AbuFontPreset> optionsFor(AbuLanguage language) => values
+      .where((preset) => preset.language == language)
+      .toList(growable: false);
+
+  static AbuFontPreset fromStoredId(
+    String? id, {
+    required AbuLanguage language,
+  }) => values.firstWhere(
+    (preset) => preset.id == id && preset.language == language,
+    orElse: () => language == AbuLanguage.arabic
+        ? AbuFontPreset.cairo
+        : AbuFontPreset.classicEnglish,
+  );
+}
+
 class AbuAppPreferences extends ChangeNotifier {
   AbuAppPreferences._();
 
@@ -10,12 +104,16 @@ class AbuAppPreferences extends ChangeNotifier {
 
   static const _themeKey = 'abu_theme_mode';
   static const _languageKey = 'abu_language';
+  static const _englishFontKey = 'abu_font_english';
+  static const _arabicFontKey = 'abu_font_arabic';
   static const _matchNotificationsKey = 'abu_notifications_matches';
   static const _challengeNotificationsKey = 'abu_notifications_challenges';
   static const _newsNotificationsKey = 'abu_notifications_news';
 
   ThemeMode themeMode = ThemeMode.dark;
   AbuLanguage language = AbuLanguage.english;
+  AbuFontPreset englishFontPreset = AbuFontPreset.classicEnglish;
+  AbuFontPreset arabicFontPreset = AbuFontPreset.cairo;
   bool matchNotifications = true;
   bool challengeNotifications = true;
   bool newsNotifications = false;
@@ -23,6 +121,10 @@ class AbuAppPreferences extends ChangeNotifier {
 
   Locale get locale => Locale(language == AbuLanguage.arabic ? 'ar' : 'en');
   bool get isArabic => language == AbuLanguage.arabic;
+  AbuFontPreset get activeFontPreset =>
+      isArabic ? arabicFontPreset : englishFontPreset;
+  List<AbuFontPreset> get availableFontPresets =>
+      AbuFontPreset.optionsFor(language);
 
   Future<void> load() async {
     if (_loaded) return;
@@ -34,6 +136,14 @@ class AbuAppPreferences extends ChangeNotifier {
     language = preferences.getString(_languageKey) == 'ar'
         ? AbuLanguage.arabic
         : AbuLanguage.english;
+    englishFontPreset = AbuFontPreset.fromStoredId(
+      preferences.getString(_englishFontKey),
+      language: AbuLanguage.english,
+    );
+    arabicFontPreset = AbuFontPreset.fromStoredId(
+      preferences.getString(_arabicFontKey),
+      language: AbuLanguage.arabic,
+    );
     matchNotifications = preferences.getBool(_matchNotificationsKey) ?? true;
     challengeNotifications =
         preferences.getBool(_challengeNotificationsKey) ?? true;
@@ -59,6 +169,28 @@ class AbuAppPreferences extends ChangeNotifier {
     await preferences.setString(
       _languageKey,
       value == AbuLanguage.arabic ? 'ar' : 'en',
+    );
+  }
+
+  Future<void> setFontPreset(AbuFontPreset value) async {
+    if (value.language != language) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Font preset must match the currently selected language.',
+      );
+    }
+    if (activeFontPreset == value) return;
+    if (language == AbuLanguage.arabic) {
+      arabicFontPreset = value;
+    } else {
+      englishFontPreset = value;
+    }
+    notifyListeners();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      language == AbuLanguage.arabic ? _arabicFontKey : _englishFontKey,
+      value.id,
     );
   }
 

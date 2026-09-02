@@ -33,7 +33,11 @@ describe('staff RBAC', () => {
     const permissionUses = membershipRoutes.match(
       /requirePermission\('membership_snapshots\.manage'\)/g,
     );
-    assert.equal(permissionUses?.length, 4);
+    // Moderators can read/replace the CSV snapshot. Channel ownership is now
+    // proven automatically by Google, so there is no staff claim queue or
+    // decision endpoint to authorize.
+    assert.equal(permissionUses?.length, 2);
+    assert.doesNotMatch(membershipRoutes, /claims\/:claimId\/decision/);
   });
 
   it('keeps role assignment restricted to super administrators', async () => {

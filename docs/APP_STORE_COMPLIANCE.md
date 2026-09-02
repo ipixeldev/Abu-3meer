@@ -32,7 +32,7 @@ App Store Connect's privacy declaration must cover both first-party collection a
 - Data collected: yes.
 - Tracking: no.
 - No third-party advertising or developer advertising/marketing use.
-- Contact information, YouTube membership status, location used for country suggestion, selected media, gameplay/user/search content, user/device identifiers, product interaction, usage data, diagnostics, and other profile/security data are disclosed for app functionality and the applicable analytics or personalization purposes.
+- Contact information, a Google-verified YouTube channel ID and membership status, location used for country suggestion, selected media, gameplay/user/search content, user/device identifiers, product interaction, usage data, diagnostics, and other profile/security data are disclosed for app functionality and the applicable analytics or personalization purposes. The short-lived read-only YouTube token used for the membership check is not retained.
 
 Do not publish a narrower declaration without re-auditing the app, server logs, Google Sign-In, and Firebase privacy manifests.
 

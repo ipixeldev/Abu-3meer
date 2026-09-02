@@ -13,7 +13,10 @@ void main() {
       final preferences = AbuAppPreferences.instance;
 
       await preferences.setThemeMode(ThemeMode.light);
+      await preferences.setLanguage(AbuLanguage.english);
+      await preferences.setFontPreset(AbuFontPreset.montserrat);
       await preferences.setLanguage(AbuLanguage.arabic);
+      await preferences.setFontPreset(AbuFontPreset.tajawal);
       await preferences.setMatchNotifications(false);
       await preferences.setChallengeNotifications(false);
       await preferences.setNewsNotifications(true);
@@ -22,13 +25,42 @@ void main() {
       expect(stored.getString('abu_theme_mode'), 'dark');
       expect(preferences.themeMode, ThemeMode.dark);
       expect(stored.getString('abu_language'), 'ar');
+      expect(stored.getString('abu_font_english'), 'montserrat');
+      expect(stored.getString('abu_font_arabic'), 'tajawal');
       expect(stored.getBool('abu_notifications_matches'), isFalse);
       expect(stored.getBool('abu_notifications_challenges'), isFalse);
       expect(stored.containsKey('abu_notifications_rewards'), isFalse);
       expect(stored.getBool('abu_notifications_news'), isTrue);
       expect(preferences.locale, const Locale('ar'));
+      expect(preferences.activeFontPreset, AbuFontPreset.tajawal);
+
+      await preferences.setLanguage(AbuLanguage.english);
+      expect(preferences.activeFontPreset, AbuFontPreset.montserrat);
+      await preferences.setLanguage(AbuLanguage.arabic);
+      expect(preferences.activeFontPreset, AbuFontPreset.tajawal);
     },
   );
+
+  test('font choices are filtered by language and unknown values are safe', () {
+    final english = AbuFontPreset.optionsFor(AbuLanguage.english);
+    final arabic = AbuFontPreset.optionsFor(AbuLanguage.arabic);
+
+    expect(english, hasLength(3));
+    expect(
+      english.every((font) => font.language == AbuLanguage.english),
+      isTrue,
+    );
+    expect(arabic, hasLength(3));
+    expect(arabic.every((font) => font.language == AbuLanguage.arabic), isTrue);
+    expect(
+      AbuFontPreset.fromStoredId('removed-font', language: AbuLanguage.english),
+      AbuFontPreset.classicEnglish,
+    );
+    expect(
+      AbuFontPreset.fromStoredId('montserrat', language: AbuLanguage.arabic),
+      AbuFontPreset.cairo,
+    );
+  });
 
   group('point transaction localization', () {
     test('canonicalizes legacy mixed-language signup bonuses', () {

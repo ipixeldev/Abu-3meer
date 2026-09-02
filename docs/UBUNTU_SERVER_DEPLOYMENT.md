@@ -134,10 +134,13 @@ test "$(stat -c %a .env)" = 600
 docker compose --profile production config --quiet
 ```
 
-YouTube membership does not use Google OAuth credentials. Configure only the
-public creator channel ID for latest-video discovery and the CSV snapshot age.
-Follow [YOUTUBE_MEMBERSHIP_CSV_CLAIMS.md](YOUTUBE_MEMBERSHIP_CSV_CLAIMS.md) for
-the staff-approved claim and complete-export workflow.
+YouTube membership does not store Google OAuth credentials on the server.
+Configure only the public creator channel ID for latest-video discovery and the
+CSV snapshot age. The iOS app obtains a short-lived `youtube.readonly` token
+when the user taps Check membership; the API uses it once to discover the
+user's channel and never persists it. Follow
+[YOUTUBE_MEMBERSHIP_CSV_CLAIMS.md](YOUTUBE_MEMBERSHIP_CSV_CLAIMS.md) for the
+verified-channel and complete-export workflow.
 
 ## 5. Make the existing tunnel Linux-compatible
 

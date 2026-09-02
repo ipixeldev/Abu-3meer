@@ -1,1 +1,1 @@
-This update keeps leaderboard XP in sync, replaces blocked YouTube verification with staff-reviewed CSV channel claims, restores Admin Studio statistics, and separates the latest public YouTube upload from Exclusive videos. Email and password controls now live in Settings under Account.
+Check YouTube membership with one tap—no channel ID to enter. Google securely identifies your channel, then the server compares it with the latest staff-uploaded membership list. Settings now offers three English and three Arabic fonts, with a separate choice remembered for each language.

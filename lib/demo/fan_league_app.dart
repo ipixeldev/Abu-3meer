@@ -4,7 +4,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lottie/lottie.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -27,7 +26,7 @@ import '../production/shell_navigation.dart';
 import '../production/location_service.dart';
 import '../production/notification_service.dart';
 import '../production/youtube_membership_snapshot.dart';
-import '../production/youtube_channel_claim.dart';
+import '../production/youtube_membership_check.dart';
 import '../features/match/screens/match_facts_screen.dart';
 import '../features/videos/exclusive_videos_view.dart';
 
@@ -195,8 +194,14 @@ class FanLeagueApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         themeMode: preferences.themeMode,
-        theme: _abuTheme(brightness: Brightness.light),
-        darkTheme: _abuTheme(brightness: Brightness.dark),
+        theme: _abuTheme(
+          brightness: Brightness.light,
+          fontPreset: preferences.activeFontPreset,
+        ),
+        darkTheme: _abuTheme(
+          brightness: Brightness.dark,
+          fontPreset: preferences.activeFontPreset,
+        ),
         builder: (context, child) => Directionality(
           textDirection: preferences.isArabic
               ? TextDirection.rtl
@@ -209,11 +214,17 @@ class FanLeagueApp extends StatelessWidget {
   }
 }
 
-ThemeData _abuTheme({required Brightness brightness}) {
+ThemeData _abuTheme({
+  required Brightness brightness,
+  required AbuFontPreset fontPreset,
+}) {
   final dark = brightness == Brightness.dark;
-  final base = dark
-      ? ThemeData.dark(useMaterial3: true)
-      : ThemeData.light(useMaterial3: true);
+  final base = ThemeData(
+    brightness: brightness,
+    useMaterial3: true,
+    fontFamily: fontPreset.bodyFontFamily,
+    fontFamilyFallback: fontPreset.fallbackFontFamilies,
+  );
   final surface = dark ? _surface : _lightSurface;
   final surface2 = dark ? _surface2 : _lightSurface2;
   final line = dark ? _line : _lightLine;
@@ -250,7 +261,8 @@ ThemeData _abuTheme({required Brightness brightness}) {
     canvasColor: dark ? base.canvasColor : _lightCanvas,
     colorScheme: scheme,
     dividerColor: dark ? base.dividerColor : line,
-    textTheme: GoogleFonts.interTextTheme(base.textTheme).apply(
+    textTheme: base.textTheme.apply(
+      fontFamily: fontPreset.bodyFontFamily,
       bodyColor: dark ? Colors.white : _lightInk,
       displayColor: dark ? Colors.white : _lightInk,
     ),
@@ -4114,10 +4126,15 @@ TextStyle _display(
   Color? color,
   double height = 1,
   double spacing = -.4,
-}) => GoogleFonts.barlowCondensed(
-  fontSize: size,
-  fontWeight: FontWeight.w800,
-  color: color,
-  height: height,
-  letterSpacing: spacing,
-);
+}) {
+  final preferences = AbuAppPreferences.instance;
+  return TextStyle(
+    fontFamily: preferences.activeFontPreset.displayFontFamily,
+    fontFamilyFallback: preferences.activeFontPreset.fallbackFontFamilies,
+    fontSize: size,
+    fontWeight: FontWeight.w800,
+    color: color,
+    height: height,
+    letterSpacing: preferences.isArabic ? 0 : spacing,
+  );
+}

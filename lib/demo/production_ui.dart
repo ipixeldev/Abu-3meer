@@ -10322,28 +10322,16 @@ class _ProductionProfileState extends State<_ProductionProfile> {
   Future<void> _verifyMember() async {
     setState(() => verifyingMember = true);
     try {
-      final claim = await _openYouTubeChannelClaim(
+      final result = await _openYouTubeMembershipCheck(
         context,
         repository: widget.repository,
       );
-      if (mounted && claim != null) {
+      if (mounted && result != null) {
         await widget.repository.refreshProfile(widget.profile.uid, force: true);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              claim.isActive
-                  ? abuText(
-                      context,
-                      'Your staff-approved channel is active in the current membership list.',
-                      'قناتك المعتمدة من الموظفين نشطة في قائمة العضويات الحالية.',
-                    )
-                  : abuText(
-                      context,
-                      'Your channel claim was submitted for staff review.',
-                      'تم إرسال طلب قناتك لمراجعة الموظفين.',
-                    ),
-            ),
+            content: Text(_youtubeMembershipResultMessage(context, result)),
           ),
         );
       }
@@ -10439,11 +10427,11 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                         : Icon(Icons.workspace_premium_rounded, size: 18),
                     label: Text(
                       verifyingMember
-                          ? abuText(context, 'OPENING…', 'جارٍ الفتح…')
+                          ? abuText(context, 'CHECKING…', 'جارٍ التحقق…')
                           : abuText(
                               context,
-                              'SUBMIT CHANNEL CLAIM',
-                              'إرسال طلب القناة',
+                              'CHECK MEMBERSHIP',
+                              'تحقق من العضوية',
                             ),
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
@@ -10866,241 +10854,106 @@ class _ProductionRecentActivity extends StatelessWidget {
   );
 }
 
-Future<YouTubeChannelClaim?> _openYouTubeChannelClaim(
+Future<YouTubeMembershipCheckResult?> _openYouTubeMembershipCheck(
   BuildContext context, {
   required ProductionRepository repository,
-}) => showDialog<YouTubeChannelClaim>(
-  context: context,
-  builder: (_) => _YouTubeChannelClaimDialog(repository: repository),
-);
-
-class _YouTubeChannelClaimDialog extends StatefulWidget {
-  const _YouTubeChannelClaimDialog({required this.repository});
-
-  final ProductionRepository repository;
-
-  @override
-  State<_YouTubeChannelClaimDialog> createState() =>
-      _YouTubeChannelClaimDialogState();
+}) async {
+  // Start Google authorization directly from the user's button tap. Presenting
+  // a Flutter dialog first can race the native iOS account picker.
+  final result = await repository.checkYouTubeMembership();
+  if (!context.mounted) return result;
+  await showDialog<void>(
+    context: context,
+    builder: (_) => _YouTubeMembershipCheckDialog(result: result),
+  );
+  return result;
 }
 
-class _YouTubeChannelClaimDialogState
-    extends State<_YouTubeChannelClaimDialog> {
-  final _channel = TextEditingController();
-  YouTubeChannelClaim? _claim;
-  bool _loading = true;
-  bool _submitting = false;
-  String? _error;
+String _youtubeMembershipResultMessage(
+  BuildContext context,
+  YouTubeMembershipCheckResult result,
+) => switch (result.status) {
+  YouTubeMembershipCheckStatus.active => abuText(
+    context,
+    'Membership verified. Member bonuses are now active.',
+    'تم التحقق من العضوية. مزايا الأعضاء مفعلة الآن.',
+  ),
+  YouTubeMembershipCheckStatus.notInSnapshot => abuText(
+    context,
+    result.youtubeChannelId == null
+        ? 'None of the channels owned by this Google account are in the latest membership list.'
+        : 'Your channel was found, but it is not in the latest membership list.',
+    result.youtubeChannelId == null
+        ? 'لا توجد أي قناة يملكها حساب Google هذا في أحدث قائمة عضويات.'
+        : 'تم العثور على قناتك، لكنها غير موجودة في أحدث قائمة عضويات.',
+  ),
+  YouTubeMembershipCheckStatus.snapshotUnavailable => abuText(
+    context,
+    'A current membership list has not been uploaded yet.',
+    'لم يتم رفع قائمة عضويات حالية بعد.',
+  ),
+  YouTubeMembershipCheckStatus.noYouTubeChannel => abuText(
+    context,
+    'No YouTube channel was found for the selected Google account.',
+    'لم يتم العثور على قناة يوتيوب للحساب المحدد.',
+  ),
+};
 
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
+class _YouTubeMembershipCheckDialog extends StatelessWidget {
+  const _YouTubeMembershipCheckDialog({required this.result});
 
-  @override
-  void dispose() {
-    _channel.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    try {
-      final claim = await widget.repository.fetchMyYouTubeChannelClaim();
-      if (!mounted) return;
-      setState(() {
-        _claim = claim;
-        _loading = false;
-        _error = null;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-        _error = productionErrorMessage(error);
-      });
-    }
-  }
-
-  Future<void> _submit() async {
-    if (_submitting) return;
-    final value = _channel.text.trim();
-    if (value.isEmpty) {
-      setState(() {
-        _error = abuText(
-          context,
-          'Enter your YouTube UC channel ID or full /channel/ URL.',
-          'أدخل معرّف قناة يوتيوب الذي يبدأ بـ UC أو رابط /channel/ الكامل.',
-        );
-      });
-      return;
-    }
-    setState(() {
-      _submitting = true;
-      _error = null;
-    });
-    try {
-      final claim = await widget.repository.submitYouTubeChannelClaim(value);
-      if (!mounted) return;
-      setState(() {
-        _claim = claim;
-        _submitting = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _submitting = false;
-        _error = productionErrorMessage(error);
-      });
-    }
-  }
+  final YouTubeMembershipCheckResult result;
 
   @override
   Widget build(BuildContext context) {
-    final claim = _claim;
-    final status = claim?.status;
-    final canSubmit =
-        claim == null ||
-        status == YouTubeChannelClaimStatus.rejected ||
-        status == YouTubeChannelClaimStatus.revoked ||
-        status == YouTubeChannelClaimStatus.superseded;
-    final icon = switch (status) {
-      YouTubeChannelClaimStatus.active => Icons.verified_rounded,
-      YouTubeChannelClaimStatus.pending => Icons.hourglass_top_rounded,
-      YouTubeChannelClaimStatus.lapsed => Icons.event_busy_rounded,
-      YouTubeChannelClaimStatus.rejected => Icons.cancel_outlined,
-      YouTubeChannelClaimStatus.revoked => Icons.link_off_rounded,
-      YouTubeChannelClaimStatus.superseded => Icons.swap_horiz_rounded,
-      null => Icons.add_link_rounded,
-    };
-    final color = switch (status) {
-      YouTubeChannelClaimStatus.active => _productionPrimary(context),
-      YouTubeChannelClaimStatus.pending => _gold,
-      YouTubeChannelClaimStatus.lapsed => _gold,
-      YouTubeChannelClaimStatus.rejected => _red,
-      YouTubeChannelClaimStatus.revoked => _red,
-      YouTubeChannelClaimStatus.superseded => _muted,
-      null => _productionPrimary(context),
-    };
-    final statusBody = switch (status) {
-      YouTubeChannelClaimStatus.active => abuText(
+    final isMember = result.isYouTubeMember;
+    final statusBody = switch (result.status) {
+      YouTubeMembershipCheckStatus.active => abuText(
         context,
-        'Staff approved this channel and it is active in the latest membership CSV. Member bonuses are enabled.',
-        'اعتمد الموظفون هذه القناة وهي نشطة في أحدث ملف CSV للعضويات. مزايا العضوية مفعلة.',
+        'Membership verified. Your channel is active in the latest membership list and member bonuses are enabled.',
+        'تم التحقق من العضوية. قناتك نشطة في أحدث قائمة عضويات وتم تفعيل مزايا الأعضاء.',
       ),
-      YouTubeChannelClaimStatus.pending => abuText(
+      YouTubeMembershipCheckStatus.notInSnapshot => abuText(
         context,
-        'Waiting for a moderator or administrator to verify this claim. Submitting a URL alone never grants membership.',
-        'بانتظار مشرف أو مسؤول للتحقق من الطلب. إرسال الرابط وحده لا يمنح العضوية أبداً.',
+        result.youtubeChannelId == null
+            ? 'None of the channels owned by this Google account are in the latest membership list.'
+            : 'We found your YouTube channel, but it is not in the latest membership list. If you recently joined, try again after staff uploads a new list.',
+        result.youtubeChannelId == null
+            ? 'لا توجد أي قناة يملكها حساب Google هذا في أحدث قائمة عضويات.'
+            : 'عثرنا على قناتك في يوتيوب، لكنها غير موجودة في أحدث قائمة عضويات. إذا انضممت مؤخراً، حاول مجدداً بعد رفع قائمة جديدة.',
       ),
-      YouTubeChannelClaimStatus.lapsed => abuText(
+      YouTubeMembershipCheckStatus.snapshotUnavailable => abuText(
         context,
-        'The approval is retained, but this channel is absent from the latest CSV or that snapshot expired. Bonuses stay off until staff uploads a current complete export containing it.',
-        'يبقى الاعتماد محفوظاً، لكن القناة غير موجودة في أحدث ملف CSV أو انتهت صلاحية اللقطة. تبقى المزايا متوقفة حتى يرفع الموظفون ملفاً كاملاً وحديثاً يتضمنها.',
+        'Membership cannot be checked until staff uploads a current complete membership list.',
+        'لا يمكن التحقق من العضوية حتى يرفع الموظفون قائمة عضويات كاملة وحديثة.',
       ),
-      YouTubeChannelClaimStatus.rejected => abuText(
+      YouTubeMembershipCheckStatus.noYouTubeChannel => abuText(
         context,
-        'Staff rejected this claim. Check the channel ID and submit a corrected claim if needed.',
-        'رفض الموظفون هذا الطلب. تحقق من معرّف القناة وأرسل طلباً مصححاً عند الحاجة.',
-      ),
-      YouTubeChannelClaimStatus.revoked => abuText(
-        context,
-        'Staff revoked this channel approval. Contact support or submit the correct channel.',
-        'ألغى الموظفون اعتماد هذه القناة. تواصل مع الدعم أو أرسل القناة الصحيحة.',
-      ),
-      YouTubeChannelClaimStatus.superseded => abuText(
-        context,
-        'This older claim was replaced. You can submit the current channel below.',
-        'تم استبدال هذا الطلب القديم. يمكنك إرسال القناة الحالية أدناه.',
-      ),
-      null => abuText(
-        context,
-        'Paste your stable UC channel ID or full youtube.com/channel/UC… URL. Staff will verify the claim; membership activates only if that ID is also active in the latest complete CSV.',
-        'الصق معرّف القناة الثابت الذي يبدأ بـ UC أو رابط youtube.com/channel/UC… الكامل. سيتحقق الموظفون من الطلب، ولا تتفعل العضوية إلا إذا كان المعرّف نشطاً أيضاً في أحدث ملف CSV كامل.',
+        'The chosen Google account owns no YouTube channel. Try again and choose the account that owns your channel.',
+        'حساب Google المختار لا يملك قناة يوتيوب. حاول مجدداً واختر الحساب الذي يملك قناتك.',
       ),
     };
 
     return AlertDialog(
-      key: const Key('youtube-channel-claim-dialog'),
-      icon: Icon(icon, color: color, size: 42),
+      key: const Key('youtube-membership-check-dialog'),
+      icon: Icon(
+        isMember ? Icons.verified_rounded : Icons.person_search_rounded,
+        color: isMember ? _productionPrimary(context) : _gold,
+        size: 42,
+      ),
       title: Text(
-        abuText(context, 'YouTube channel claim', 'طلب ربط قناة يوتيوب'),
+        abuText(context, 'YouTube membership', 'عضوية يوتيوب'),
         textAlign: TextAlign.center,
       ),
       content: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 500),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (_loading)
-                const Center(child: CircularProgressIndicator())
-              else ...[
-                Text(statusBody, style: const TextStyle(height: 1.45)),
-                if (claim != null) ...[
-                  const SizedBox(height: 12),
-                  SelectableText(
-                    claim.youtubeChannelId,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  if (claim.reviewReason?.isNotEmpty == true) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      claim.reviewReason!,
-                      style: const TextStyle(color: _muted, fontSize: 12),
-                    ),
-                  ],
-                ],
-                if (canSubmit) ...[
-                  const SizedBox(height: 16),
-                  TextField(
-                    key: const Key('youtube-channel-claim-input'),
-                    controller: _channel,
-                    enabled: !_submitting,
-                    autocorrect: false,
-                    textCapitalization: TextCapitalization.none,
-                    decoration: InputDecoration(
-                      labelText: abuText(
-                        context,
-                        'UC channel ID or /channel/ URL',
-                        'معرّف UC أو رابط /channel/',
-                      ),
-                      prefixIcon: const Icon(Icons.link_rounded),
-                    ),
-                  ),
-                ],
-              ],
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!, style: const TextStyle(color: _red, height: 1.4)),
-              ],
-            ],
-          ),
-        ),
+        child: Text(statusBody, style: const TextStyle(height: 1.45)),
       ),
       actions: [
         TextButton(
-          onPressed: _submitting ? null : () => Navigator.pop(context, _claim),
-          child: Text(abuText(context, 'CLOSE', 'إغلاق')),
+          onPressed: () => Navigator.pop(context),
+          child: Text(abuText(context, 'DONE', 'تم')),
         ),
-        if (!_loading && canSubmit)
-          FilledButton.icon(
-            key: const Key('submit-youtube-channel-claim'),
-            onPressed: _submitting ? null : _submit,
-            icon: _submitting
-                ? const SizedBox.square(
-                    dimension: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.send_rounded),
-            label: Text(
-              _submitting
-                  ? abuText(context, 'SUBMITTING…', 'جارٍ الإرسال…')
-                  : abuText(context, 'SUBMIT FOR REVIEW', 'إرسال للمراجعة'),
-            ),
-          ),
       ],
     );
   }
@@ -11513,6 +11366,72 @@ class _ProductionSettings extends StatelessWidget {
                     ),
                   ),
                 ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: Icon(Icons.font_download_rounded, color: primary),
+                  title: Text(abuText(context, 'App font', 'خط التطبيق')),
+                  subtitle: Text(
+                    abuText(
+                      context,
+                      'Font choices follow the selected language.',
+                      'تظهر الخطوط المناسبة للغة المحددة.',
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                  child: DropdownButtonFormField<AbuFontPreset>(
+                    key: ValueKey(
+                      'font-${preferences.language.name}-${preferences.activeFontPreset.id}',
+                    ),
+                    initialValue: preferences.activeFontPreset,
+                    decoration: InputDecoration(
+                      labelText: abuText(context, 'Choose font', 'اختر الخط'),
+                      prefixIcon: const Icon(Icons.text_fields_rounded),
+                    ),
+                    isExpanded: true,
+                    items: preferences.availableFontPresets
+                        .map(
+                          (font) => DropdownMenuItem<AbuFontPreset>(
+                            value: font,
+                            child: Text(
+                              font.labelFor(preferences.language),
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontFamily: font.bodyFontFamily,
+                                fontFamilyFallback: font.fallbackFontFamilies,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+                    onChanged: (font) {
+                      if (font != null) preferences.setFontPreset(font);
+                    },
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: Text(
+                      preferences.isArabic
+                          ? 'أبو عمير · يوم المباراة'
+                          : 'Abu 3meer · Matchday',
+                      style: TextStyle(
+                        fontFamily:
+                            preferences.activeFontPreset.displayFontFamily,
+                        fontFamilyFallback:
+                            preferences.activeFontPreset.fallbackFontFamilies,
+                        color: primary,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             );
             final notifications = _SettingsPanel(
@@ -11571,8 +11490,8 @@ class _ProductionSettings extends StatelessWidget {
                       Text(
                         abuText(
                           context,
-                          'Submit your stable YouTube UC channel ID or /channel/ URL for staff review. A typed URL never proves ownership or grants membership. A moderator or administrator must approve it, and the same ID must be active in the latest unexpired complete CSV/TSV. Approved current members receive 2× XP on eligible correct answers.',
-                          'أرسل معرّف قناة يوتيوب الثابت الذي يبدأ بـ UC أو رابط /channel/ لمراجعة الموظفين. كتابة الرابط لا تثبت الملكية ولا تمنح العضوية. يجب أن يعتمد الطلب مشرف أو مسؤول، وأن يكون المعرّف نفسه نشطاً في أحدث ملف CSV/TSV كامل وغير منتهي الصلاحية. يحصل الأعضاء الحاليون المعتمدون على XP مضاعف للإجابات الصحيحة المؤهلة.',
+                          'Choose the Google account that owns your YouTube channel. The server securely finds its channel and compares it with the latest membership list. We request read-only YouTube access and never ask you to type a channel ID.',
+                          'اختر حساب Google الذي يملك قناة يوتيوب الخاصة بك. يعثر الخادم على القناة بأمان ويقارنها بأحدث قائمة عضويات. نطلب صلاحية قراءة فقط ولا نطلب منك كتابة معرّف القناة.',
                         ),
                         style: TextStyle(color: _muted, height: 1.45),
                       ),
@@ -11582,22 +11501,18 @@ class _ProductionSettings extends StatelessWidget {
                             ? null
                             : () async {
                                 try {
-                                  final claim = await _openYouTubeChannelClaim(
-                                    context,
-                                    repository: repository,
-                                  );
-                                  if (claim != null && context.mounted) {
+                                  final result =
+                                      await _openYouTubeMembershipCheck(
+                                        context,
+                                        repository: repository,
+                                      );
+                                  if (result != null && context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(
-                                          abuText(
+                                          _youtubeMembershipResultMessage(
                                             context,
-                                            claim.isActive
-                                                ? 'This approved channel is active in the current membership list.'
-                                                : 'Your channel claim is waiting for staff review.',
-                                            claim.isActive
-                                                ? 'القناة المعتمدة نشطة في قائمة العضويات الحالية.'
-                                                : 'طلب القناة بانتظار مراجعة الموظفين.',
+                                            result,
                                           ),
                                         ),
                                       ),
@@ -11618,12 +11533,8 @@ class _ProductionSettings extends StatelessWidget {
                         label: Text(
                           abuText(
                             context,
-                            profile.isYouTubeMember
-                                ? 'VIEW CHANNEL APPROVAL'
-                                : 'SUBMIT / VIEW CHANNEL CLAIM',
-                            profile.isYouTubeMember
-                                ? 'عرض اعتماد القناة'
-                                : 'إرسال / عرض طلب القناة',
+                            'CHECK MEMBERSHIP',
+                            'تحقق من العضوية',
                           ),
                         ),
                       ),
@@ -11991,8 +11902,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
   title: abuText(context, 'Privacy Policy', 'سياسة الخصوصية'),
   updated: abuText(
     context,
-    'Updated 1 September 2026',
-    'آخر تحديث 1 سبتمبر 2026',
+    'Updated 2 September 2026',
+    'آخر تحديث 2 سبتمبر 2026',
   ),
   webUrl: AbuBrand.privacyUrl,
   sections: [
@@ -12016,8 +11927,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Sharing', 'المشاركة'),
       abuText(
         context,
-        'We use service providers such as Firebase, Google sign-in, Apple sign-in, public YouTube feeds, push-notification delivery, hosting, and football data providers. A submitted YouTube channel ID is an untrusted claim reviewed by authorized staff. Membership requires both staff approval and a match in the latest unexpired complete CSV/TSV. We do not request or retain a YouTube OAuth token, and we do not sell personal data.',
-        'نستخدم مزودي خدمات مثل Firebase وتسجيل الدخول عبر Google وApple وخلاصات يوتيوب العامة وتسليم الإشعارات والاستضافة ومزودي بيانات كرة القدم. معرّف قناة يوتيوب المرسل هو طلب غير موثوق يراجعه الموظفون المخولون. تتطلب العضوية اعتماد الموظفين والتطابق مع أحدث ملف CSV/TSV كامل وغير منتهي الصلاحية. لا نطلب رمز OAuth ليوتيوب ولا نحتفظ به، ولا نبيع البيانات الشخصية.',
+        'We use service providers such as Firebase, Google sign-in, Apple sign-in, public YouTube feeds, push-notification delivery, hosting, and football data providers. When you choose Check Membership, Google provides a short-lived read-only YouTube access token so our server can identify your own channel and compare it with the latest unexpired complete CSV/TSV. The token is never stored. We do not sell personal data.',
+        'نستخدم مزودي خدمات مثل Firebase وتسجيل الدخول عبر Google وApple وخلاصات يوتيوب العامة وتسليم الإشعارات والاستضافة ومزودي بيانات كرة القدم. عند اختيار التحقق من العضوية، توفر Google رمز وصول قصير المدة وبصلاحية قراءة فقط كي يتعرف خادمنا على قناتك ويقارنها بأحدث ملف CSV/TSV كامل وغير منتهي الصلاحية. لا نخزن الرمز ولا نبيع البيانات الشخصية.',
       ),
     ),
     (
@@ -12032,8 +11943,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Your Controls', 'خياراتك'),
       abuText(
         context,
-        'You can change notification preferences in Settings, submit a YouTube channel ID for staff review, and delete your account from Settings. Account deletion removes the profile and personal account data handled by Abu 3meer, subject to fraud prevention and legal retention requirements.',
-        'يمكنك تغيير تفضيلات الإشعارات في الإعدادات وإرسال معرّف قناة يوتيوب لمراجعة الموظفين وحذف حسابك من الإعدادات. حذف الحساب يزيل الملف والبيانات الشخصية التي يديرها أبو عمير مع مراعاة متطلبات منع الاحتيال والاحتفاظ القانوني.',
+        'You can change notification preferences, choose whether to check YouTube membership, and delete your account from Settings. Account deletion removes the profile and personal account data handled by Abu 3meer, subject to fraud prevention and legal retention requirements.',
+        'يمكنك تغيير تفضيلات الإشعارات واختيار ما إذا كنت تريد التحقق من عضوية يوتيوب وحذف حسابك من الإعدادات. حذف الحساب يزيل الملف والبيانات الشخصية التي يديرها أبو عمير مع مراعاة متطلبات منع الاحتيال والاحتفاظ القانوني.',
       ),
     ),
     (
@@ -12108,8 +12019,8 @@ _LegalDocument _termsLegalDocument(BuildContext context) => _LegalDocument(
   title: abuText(context, 'Terms of Use', 'شروط الاستخدام'),
   updated: abuText(
     context,
-    'Updated 31 August 2026',
-    'آخر تحديث 31 أغسطس 2026',
+    'Updated 2 September 2026',
+    'آخر تحديث 2 سبتمبر 2026',
   ),
   webUrl: AbuBrand.termsUrl,
   sections: [
@@ -12117,8 +12028,8 @@ _LegalDocument _termsLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Accounts', 'الحسابات'),
       abuText(
         context,
-        'Use accurate account information and keep your sign-in secure. You may sign in with email, Google, or Apple where available. A YouTube channel ID submitted for membership is only a claim; authorized staff must approve it before it can be matched against the current membership snapshot.',
-        'استخدم معلومات حساب صحيحة وحافظ على أمان تسجيل الدخول. يمكنك تسجيل الدخول بالبريد الإلكتروني أو Google أو Apple حيثما توفر ذلك. معرّف قناة يوتيوب المرسل للعضوية هو مجرد طلب؛ يجب أن يعتمده الموظفون المخولون قبل مطابقته مع لقطة العضويات الحالية.',
+        'Use accurate account information and keep your sign-in secure. You may sign in with email, Google, or Apple where available. To check YouTube membership, choose the Google account that owns your channel and grant read-only YouTube access for the one-time server check against the current membership snapshot.',
+        'استخدم معلومات حساب صحيحة وحافظ على أمان تسجيل الدخول. يمكنك تسجيل الدخول بالبريد الإلكتروني أو Google أو Apple حيثما توفر ذلك. للتحقق من عضوية يوتيوب، اختر حساب Google الذي يملك قناتك وامنح صلاحية قراءة فقط لإجراء فحص واحد على الخادم مقابل لقطة العضويات الحالية.',
       ),
     ),
     (

@@ -6,7 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'api_client.dart';
 import 'external_content_service.dart';
 import 'models.dart';
-import 'youtube_channel_claim.dart';
+import 'youtube_membership_check.dart';
 
 @visibleForTesting
 int parseApiInt(dynamic value, [int fallback = 0]) {
@@ -1315,62 +1315,15 @@ class ApiProductionRepository {
     );
   }
 
-  Future<YouTubeChannelClaim?> fetchMyYouTubeChannelClaim() async {
-    final response = await api.get(
-      '/profile/youtube/claim',
-      requireAuth: true,
-      bypassCache: true,
-    );
-    return parseYouTubeChannelClaimEnvelope(response);
-  }
-
-  Future<YouTubeChannelClaim> submitYouTubeChannelClaim(String channel) async {
+  Future<YouTubeMembershipCheckResult> checkYouTubeMembership(
+    String accessToken,
+  ) async {
     final response = await api.post(
-      '/profile/youtube/claim',
-      body: <String, dynamic>{'channel': channel.trim()},
+      '/profile/youtube/membership/check',
+      body: <String, dynamic>{'accessToken': accessToken},
       requireAuth: true,
     );
-    final claim = parseYouTubeChannelClaimEnvelope(response);
-    if (claim == null) {
-      throw const FormatException('Missing YouTube channel claim.');
-    }
-    return claim;
-  }
-
-  Future<List<YouTubeChannelClaim>> fetchYouTubeChannelClaims({
-    String status = 'pending',
-  }) async {
-    final response = await api.get(
-      '/admin/youtube/membership/claims?status=${Uri.encodeQueryComponent(status)}',
-      requireAuth: true,
-      bypassCache: true,
-    );
-    if (response is! Map || response['claims'] is! List) {
-      throw const FormatException('Invalid YouTube claims response.');
-    }
-    return (response['claims'] as List)
-        .map(YouTubeChannelClaim.fromJson)
-        .toList(growable: false);
-  }
-
-  Future<YouTubeChannelClaim> decideYouTubeChannelClaim({
-    required String claimId,
-    required YouTubeChannelClaimDecision decision,
-    required String reason,
-  }) async {
-    final response = await api.post(
-      '/admin/youtube/membership/claims/${Uri.encodeComponent(claimId)}/decision',
-      body: <String, dynamic>{
-        'decision': decision.name,
-        'reason': reason.trim(),
-      },
-      requireAuth: true,
-    );
-    final claim = parseYouTubeChannelClaimEnvelope(response);
-    if (claim == null) {
-      throw const FormatException('Missing YouTube channel claim.');
-    }
-    return claim;
+    return parseYouTubeMembershipCheckEnvelope(response);
   }
 
   Future<List<PointLedgerEntry>> fetchPointHistory() async {

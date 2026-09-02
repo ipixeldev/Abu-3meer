@@ -2,12 +2,12 @@ import { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { authenticateUser, requirePermission } from '../middleware/auth.js';
 import {
-  YouTubeChannelClaimError,
-  decideYouTubeChannelClaim,
   getMyYouTubeChannelClaim,
-  listYouTubeChannelClaims,
-  submitYouTubeChannelClaim,
 } from '../services/youtubeChannelClaimService.js';
+import {
+  YouTubeMembershipVerificationError,
+  checkYouTubeMembership,
+} from '../services/youtubeMembershipVerificationService.js';
 import {
   YouTubeMembershipSnapshotError,
   getYouTubeMembershipSnapshotStatus,
@@ -18,26 +18,15 @@ import {
 const snapshotImportQuerySchema = z.object({
   confirmLargeDecrease: z.enum(['true']).optional(),
 });
-const channelClaimSchema = z.object({
-  channel: z.string().trim().min(1).max(300),
-}).strict();
-const claimListSchema = z.object({
-  status: z.enum([
-    'pending',
-    'approved',
-    'rejected',
-    'revoked',
-    'superseded',
-  ]).optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
-});
-const claimDecisionSchema = z.object({
-  decision: z.enum(['approve', 'reject', 'revoke']),
-  reason: z.string().trim().min(3).max(500),
+const membershipCheckSchema = z.object({
+  accessToken: z.string()
+    .min(20)
+    .max(4096)
+    .regex(/^[\x21-\x7e]+$/),
 }).strict();
 
-function sendClaimError(reply: FastifyReply, error: unknown) {
-  if (error instanceof YouTubeChannelClaimError) {
+function sendVerificationError(reply: FastifyReply, error: unknown) {
+  if (error instanceof YouTubeMembershipVerificationError) {
     return reply.status(error.httpStatus).send({
       error: error.code,
       message: error.message,
@@ -69,78 +58,37 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
   );
 
   fastify.post(
-    '/profile/youtube/claim',
+    '/profile/youtube/membership/check',
     {
       preHandler: [authenticateUser],
-      config: { rateLimit: { max: 4, timeWindow: '1 hour' } },
+      config: {
+        rateLimit: {
+          max: 6,
+          timeWindow: '1 hour',
+          // Run after authentication so refreshed Firebase bearer tokens still
+          // share one stable per-user quota bucket.
+          hook: 'preHandler',
+          keyGenerator: (request) =>
+            `youtube-membership-check:user:${request.user?.id ?? request.ip}`,
+        },
+      },
     },
     async (request, reply) => {
-      const parsed = channelClaimSchema.safeParse(request.body);
+      const parsed = membershipCheckSchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({
           error: 'ValidationError',
-          message: 'Enter a valid YouTube channel ID or /channel/ URL.',
+          message: 'A valid short-lived Google access token is required.',
         });
       }
       try {
-        const claim = await submitYouTubeChannelClaim({
+        return await checkYouTubeMembership({
           userId: request.user!.id,
-          channel: parsed.data.channel,
+          expectedGoogleSubject: request.user!.googleProviderUid,
+          accessToken: parsed.data.accessToken,
         });
-        return reply.status(201).send({ claim });
       } catch (error) {
-        return sendClaimError(reply, error);
-      }
-    },
-  );
-
-  fastify.get(
-    '/admin/youtube/membership/claims',
-    {
-      preHandler: [requirePermission('membership_snapshots.manage')],
-      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
-    },
-    async (request, reply) => {
-      const parsed = claimListSchema.safeParse(request.query);
-      if (!parsed.success) {
-        return reply.status(400).send({
-          error: 'ValidationError',
-          message: 'The claim filter is invalid.',
-        });
-      }
-      return { claims: await listYouTubeChannelClaims(parsed.data) };
-    },
-  );
-
-  fastify.post(
-    '/admin/youtube/membership/claims/:claimId/decision',
-    {
-      preHandler: [requirePermission('membership_snapshots.manage')],
-      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
-    },
-    async (request, reply) => {
-      const claimId = z.string().uuid().safeParse(
-        (request.params as { claimId?: string }).claimId,
-      );
-      const decision = claimDecisionSchema.safeParse(request.body);
-      if (!claimId.success || !decision.success) {
-        return reply.status(400).send({
-          error: 'ValidationError',
-          message: 'The claim decision or audit reason is invalid.',
-        });
-      }
-      try {
-        const claim = await decideYouTubeChannelClaim({
-          claimId: claimId.data,
-          decision: decision.data.decision,
-          reason: decision.data.reason,
-          reviewedByUserId: request.user!.id,
-          ipAddress: request.ip,
-          userAgent: request.headers['user-agent'] ?? null,
-        });
-        return { claim };
-      } catch (error) {
-        return sendClaimError(reply, error);
+        return sendVerificationError(reply, error);
       }
     },
   );
