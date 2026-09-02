@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:abu_3meer/demo/fan_league_app.dart';
 import 'package:abu_3meer/production/admin_dashboard_stats.dart';
 import 'package:flutter/material.dart';
@@ -96,10 +98,16 @@ void main() {
     expect(find.text('COMMUNITY STATISTICS'), findsOneWidget);
     expect(find.text('TOTAL USERS'), findsOneWidget);
     expect(find.text('240'), findsOneWidget);
-    expect(find.text('ACTIVE USERS'), findsOneWidget);
+    expect(find.text('ACTIVE 30D'), findsOneWidget);
     expect(find.text('180'), findsOneWidget);
-    expect(find.text('ACTIVE MEMBERS'), findsOneWidget);
+    expect(find.text('VERIFIED MEMBERS'), findsOneWidget);
     expect(find.text('35'), findsOneWidget);
+    expect(find.text('MEMBER ROLE'), findsNothing);
+    expect(find.byKey(const Key('admin-stats-primary-strip')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin-stats-secondary-scroll')),
+      findsOneWidget,
+    );
     expect(calls, 1);
 
     await tester.tap(
@@ -107,5 +115,47 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(calls, 2);
+  });
+
+  testWidgets('statistics stay compact on a narrow phone viewport', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(320, 760));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData.dark(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(8),
+            child: AdminDashboardStatsPanel(loadStats: () async => _stats),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const Key('admin-stats-primary-strip')), findsOneWidget);
+    expect(find.text('VERIFIED MEMBERS'), findsOneWidget);
+    expect(find.text('MEMBER ROLE'), findsNothing);
+  });
+
+  test('admin statistics appear below the mobile action controls', () {
+    final source = File('lib/demo/production_ui.dart').readAsStringSync();
+    final tools = source.indexOf('_ProductionAdminTools(');
+    final primaryActions = source.indexOf(
+      "Key('admin-primary-action-grid')",
+      tools,
+    );
+    final statistics = source.indexOf(
+      'AdminDashboardStatsPanel(repository: repository)',
+      primaryActions,
+    );
+
+    expect(tools, greaterThanOrEqualTo(0));
+    expect(primaryActions, greaterThan(tools));
+    expect(statistics, greaterThan(primaryActions));
   });
 }

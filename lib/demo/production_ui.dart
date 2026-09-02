@@ -12242,8 +12242,6 @@ class _ProductionAdmin extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AdminDashboardStatsPanel(repository: repository),
-        const SizedBox(height: 18),
         _ProductionAdminTools(repository: repository, profile: profile),
         const SizedBox(height: 18),
         LayoutBuilder(
@@ -12309,6 +12307,8 @@ class _ProductionAdmin extends StatelessWidget {
             );
           },
         ),
+        const SizedBox(height: 18),
+        AdminDashboardStatsPanel(repository: repository),
         const SizedBox(height: 18),
         StreamBuilder<List<MatchEvent>>(
           stream: repository.watchManagedMatches(),

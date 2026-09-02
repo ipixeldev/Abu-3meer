@@ -1,1 +1,1 @@
-Check YouTube membership with one tap—no channel ID to enter. Google securely identifies your channel, then the server compares it with the latest staff-uploaded membership list. Settings now offers three English and three Arabic fonts, with a separate choice remembered for each language.
+The Admin Dashboard now puts actions first and presents community statistics in a compact, swipeable mobile layout. The confusing duplicate Member Role metric has been removed; Verified Members now clearly shows successful CSV-backed membership checks.

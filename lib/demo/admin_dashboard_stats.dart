@@ -35,18 +35,18 @@ class _AdminDashboardStatsPanelState extends State<AdminDashboardStatsPanel> {
   Widget build(BuildContext context) => Card(
     key: const Key('admin-dashboard-statistics'),
     child: Padding(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
                   color: _productionPrimary(context).withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(11),
                 ),
                 child: Icon(
                   Icons.insights_rounded,
@@ -65,7 +65,7 @@ class _AdminDashboardStatsPanelState extends State<AdminDashboardStatsPanel> {
                         'إحصاءات المجتمع',
                       ),
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.w900,
                         letterSpacing: .4,
                       ),
@@ -73,8 +73,8 @@ class _AdminDashboardStatsPanelState extends State<AdminDashboardStatsPanel> {
                     Text(
                       abuText(
                         context,
-                        'Live server totals · active users = last 30 days',
-                        'إجماليات مباشرة من الخادم · النشطون خلال آخر 30 يوماً',
+                        'Server totals · active = last 30 days',
+                        'إجماليات الخادم · النشطون خلال آخر 30 يوماً',
                       ),
                       style: const TextStyle(color: _muted, fontSize: 11),
                     ),
@@ -93,7 +93,7 @@ class _AdminDashboardStatsPanelState extends State<AdminDashboardStatsPanel> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           FutureBuilder<AdminDashboardStats>(
             future: _stats,
             builder: (context, snapshot) {
@@ -110,7 +110,7 @@ class _AdminDashboardStatsPanelState extends State<AdminDashboardStatsPanel> {
                 );
               }
               final stats = snapshot.requireData;
-              final metrics = <_AdminStatMetric>[
+              final primaryMetrics = <_AdminStatMetric>[
                 _AdminStatMetric(
                   label: abuText(context, 'TOTAL USERS', 'إجمالي المستخدمين'),
                   value: stats.totalUsers,
@@ -118,7 +118,7 @@ class _AdminDashboardStatsPanelState extends State<AdminDashboardStatsPanel> {
                   color: _productionPrimary(context),
                 ),
                 _AdminStatMetric(
-                  label: abuText(context, 'ACTIVE USERS', 'المستخدمون النشطون'),
+                  label: abuText(context, 'ACTIVE 30D', 'نشطون 30 يوماً'),
                   value: stats.activeUsers,
                   icon: Icons.person_search_rounded,
                   color: _blue,
@@ -129,8 +129,14 @@ class _AdminDashboardStatsPanelState extends State<AdminDashboardStatsPanel> {
                   icon: Icons.bolt_rounded,
                   color: _gold,
                 ),
+              ];
+              final secondaryMetrics = <_AdminStatMetric>[
                 _AdminStatMetric(
-                  label: abuText(context, 'ACTIVE MEMBERS', 'الأعضاء النشطون'),
+                  label: abuText(
+                    context,
+                    'VERIFIED MEMBERS',
+                    'الأعضاء الموثقون',
+                  ),
                   value: stats.activeMemberships,
                   icon: Icons.workspace_premium_rounded,
                   color: _gold,
@@ -142,10 +148,10 @@ class _AdminDashboardStatsPanelState extends State<AdminDashboardStatsPanel> {
                   color: _productionPrimary(context),
                 ),
                 _AdminStatMetric(
-                  label: abuText(context, 'MEMBER ROLE', 'دور العضو'),
-                  value: stats.members,
-                  icon: Icons.star_rounded,
-                  color: _gold,
+                  label: abuText(context, 'YOUTUBE LINKED', 'يوتيوب مرتبط'),
+                  value: stats.linkedYouTubeChannels,
+                  icon: Icons.link_rounded,
+                  color: _red,
                 ),
                 _AdminStatMetric(
                   label: abuText(context, 'MODERATORS', 'المشرفون'),
@@ -160,12 +166,6 @@ class _AdminDashboardStatsPanelState extends State<AdminDashboardStatsPanel> {
                   color: _red,
                 ),
                 _AdminStatMetric(
-                  label: abuText(context, 'YOUTUBE LINKED', 'يوتيوب مرتبط'),
-                  value: stats.linkedYouTubeChannels,
-                  icon: Icons.link_rounded,
-                  color: _red,
-                ),
-                _AdminStatMetric(
                   label: abuText(context, 'SUSPENDED', 'الموقوفون'),
                   value: stats.suspendedUsers,
                   icon: Icons.block_rounded,
@@ -175,30 +175,63 @@ class _AdminDashboardStatsPanelState extends State<AdminDashboardStatsPanel> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final columns = constraints.maxWidth >= 900
-                          ? 5
-                          : constraints.maxWidth >= 540
-                          ? 3
-                          : 2;
-                      final gap = 10.0;
-                      final width =
-                          (constraints.maxWidth - gap * (columns - 1)) /
-                          columns;
-                      return Wrap(
-                        spacing: gap,
-                        runSpacing: gap,
-                        children: metrics
-                            .map(
-                              (metric) => SizedBox(
-                                width: width,
-                                child: _AdminStatMetricTile(metric: metric),
-                              ),
-                            )
-                            .toList(growable: false),
-                      );
-                    },
+                  Container(
+                    key: const Key('admin-stats-primary-strip'),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _surface2,
+                      borderRadius: BorderRadius.circular(15),
+                      border: Border.all(color: _line),
+                    ),
+                    child: Row(
+                      children: [
+                        for (
+                          var index = 0;
+                          index < primaryMetrics.length;
+                          index++
+                        ) ...[
+                          if (index > 0)
+                            Container(width: 1, height: 48, color: _line),
+                          Expanded(
+                            child: _AdminPrimaryStat(
+                              metric: primaryMetrics[index],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Text(
+                        abuText(context, 'BREAKDOWN', 'التفاصيل'),
+                        style: const TextStyle(
+                          color: _muted,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .8,
+                        ),
+                      ),
+                      const Spacer(),
+                      Icon(Icons.swipe_rounded, size: 16, color: _muted),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    key: const Key('admin-stats-secondary-scroll'),
+                    height: 82,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: secondaryMetrics.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 9),
+                      itemBuilder: (context, index) => SizedBox(
+                        width: 124,
+                        child: _AdminStatMetricTile(
+                          metric: secondaryMetrics[index],
+                        ),
+                      ),
+                    ),
                   ),
                   if (stats.generatedAt != null) ...[
                     const SizedBox(height: 10),
@@ -218,6 +251,46 @@ class _AdminDashboardStatsPanelState extends State<AdminDashboardStatsPanel> {
           ),
         ],
       ),
+    ),
+  );
+}
+
+class _AdminPrimaryStat extends StatelessWidget {
+  const _AdminPrimaryStat({required this.metric});
+
+  final _AdminStatMetric metric;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 5),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(metric.icon, size: 17, color: metric.color),
+        const SizedBox(height: 5),
+        Text(
+          metric.value.toString(),
+          style: TextStyle(
+            color: metric.color,
+            fontSize: 23,
+            height: 1,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          metric.label,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: _muted,
+            fontSize: 9,
+            height: 1.1,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -243,34 +316,51 @@ class _AdminStatMetricTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    height: 102,
-    padding: const EdgeInsets.all(12),
+    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
     decoration: BoxDecoration(
       color: _surface2,
       borderRadius: BorderRadius.circular(14),
       border: Border.all(color: _line),
     ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    child: Row(
       children: [
-        Icon(metric.icon, size: 18, color: metric.color),
-        const Spacer(),
-        Text(
-          metric.value.toString(),
-          style: TextStyle(
-            color: metric.color,
-            fontSize: 24,
-            fontWeight: FontWeight.w900,
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: metric.color.withValues(alpha: .11),
+            borderRadius: BorderRadius.circular(9),
           ),
+          child: Icon(metric.icon, size: 16, color: metric.color),
         ),
-        Text(
-          metric.label,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            color: _muted,
-            fontSize: 9,
-            fontWeight: FontWeight.w800,
+        const SizedBox(width: 9),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                metric.value.toString(),
+                style: TextStyle(
+                  color: metric.color,
+                  fontSize: 20,
+                  height: 1,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                metric.label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _muted,
+                  fontSize: 9,
+                  height: 1.05,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
         ),
       ],
