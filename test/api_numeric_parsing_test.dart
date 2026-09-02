@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:abu_3meer/production/api_production_repository.dart';
@@ -30,6 +32,27 @@ void main() {
           parseApiUserLeaderboardRanks(const <String, dynamic>{}).currentMonth,
           0,
         );
+      },
+    );
+
+    test(
+      'authenticated leaderboard uses the server single-snapshot user row',
+      () {
+        final source = File('lib/production/api_production_repository.dart')
+            .readAsStringSync();
+        final methodStart = source.indexOf(
+          'Future<LeaderboardSnapshot> fetchLeaderboardSnapshot',
+        );
+        final methodEnd = source.indexOf(
+          'Future<List<LeaderboardEntry>> fetchTopLeaderboard',
+          methodStart,
+        );
+        final method = source.substring(methodStart, methodEnd);
+
+        expect(method, contains('requireAuth: authenticated'));
+        expect(method, contains('bypassCache: authenticated'));
+        expect(method, contains("response['currentUser'] is Map"));
+        expect(method, contains("!response.containsKey('currentUser')"));
       },
     );
 

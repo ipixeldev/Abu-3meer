@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { authenticateUser } from '../middleware/auth.js';
 import {
@@ -16,37 +16,67 @@ const seasonQuerySchema = z.object({
   seasonId: z.string().trim().min(1).max(50).optional(),
 });
 
+async function authenticateLeaderboardViewer(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  if (request.headers.authorization == null) return;
+  return authenticateUser(request, reply);
+}
+
 export async function leaderboardRoutes(fastify: FastifyInstance) {
-  fastify.get('/leaderboards/monthly', async (request, reply) => {
-    const parsed = monthlyQuerySchema.safeParse(request.query);
-    if (!parsed.success) {
-      return reply.status(400).send({
-        error: 'ValidationError',
-        message: 'The leaderboard month is invalid.',
-        issues: parsed.error.issues,
-      });
-    }
-    return getLeaderboardSnapshot(
-      parsed.data.period === 'previous' ? 'previous_month' : 'current_month',
-    );
-  });
+  fastify.get(
+    '/leaderboards/monthly',
+    { preHandler: [authenticateLeaderboardViewer] },
+    async (request, reply) => {
+      const parsed = monthlyQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'ValidationError',
+          message: 'The leaderboard month is invalid.',
+          issues: parsed.error.issues,
+        });
+      }
+      if (request.user) reply.header('Cache-Control', 'private, no-store');
+      return getLeaderboardSnapshot(
+        parsed.data.period === 'previous' ? 'previous_month' : 'current_month',
+        { databaseUserId: request.user?.id },
+      );
+    },
+  );
 
   // Explicit endpoint used by the current mobile tabs. The query-string form
   // above remains available to older clients during the rollout.
-  fastify.get('/leaderboards/previous-month', async () =>
-    getLeaderboardSnapshot('previous_month'));
-
-  fastify.get('/leaderboards/season', async (request, reply) => {
-    const parsed = seasonQuerySchema.safeParse(request.query);
-    if (!parsed.success) {
-      return reply.status(400).send({
-        error: 'ValidationError',
-        message: 'The leaderboard season is invalid.',
-        issues: parsed.error.issues,
+  fastify.get(
+    '/leaderboards/previous-month',
+    { preHandler: [authenticateLeaderboardViewer] },
+    async (request, reply) => {
+      if (request.user) reply.header('Cache-Control', 'private, no-store');
+      return getLeaderboardSnapshot('previous_month', {
+        databaseUserId: request.user?.id,
       });
-    }
-    return getLeaderboardSnapshot('season', { seasonId: parsed.data.seasonId });
-  });
+    },
+  );
+
+  fastify.get(
+    '/leaderboards/season',
+    { preHandler: [authenticateLeaderboardViewer] },
+    async (request, reply) => {
+      const parsed = seasonQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'ValidationError',
+          message: 'The leaderboard season is invalid.',
+          issues: parsed.error.issues,
+        });
+      }
+      if (request.user) reply.header('Cache-Control', 'private, no-store');
+      return getLeaderboardSnapshot('season', {
+        seasonId: parsed.data.seasonId,
+        databaseUserId: request.user?.id,
+      });
+    },
+  );
 
   fastify.get('/leaderboards/seasons', async () => {
     const seasons = await listLeaderboardSeasons();

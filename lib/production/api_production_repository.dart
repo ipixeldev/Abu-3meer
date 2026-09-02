@@ -1236,11 +1236,15 @@ class ApiProductionRepository {
     String period = 'monthly',
     String? seasonId,
   }) async {
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    final authenticated = firebaseUser != null;
     final res = await api.get(
       '/leaderboards/$period',
       queryParams: seasonId == null || seasonId.isEmpty
           ? null
           : <String, String>{'seasonId': seasonId},
+      requireAuth: authenticated,
+      bypassCache: authenticated,
     );
     if (res is Map && res['leaderboard'] is List) {
       final response = Map<String, dynamic>.from(res);
@@ -1257,8 +1261,11 @@ class ApiProductionRepository {
       RankedLeaderboardEntry? currentUser;
       if (response['currentUser'] is Map) {
         currentUser = _rankedLeaderboardEntry(response['currentUser'], 0);
-      } else {
-        final firebaseUser = FirebaseAuth.instance.currentUser;
+      } else if (!response.containsKey('currentUser')) {
+        // Compatibility only for an older server that did not return the
+        // authenticated fan as part of the same ranked-query snapshot. New
+        // servers always include the key (with null for an unranked fan), so
+        // the podium and personal pill can never mix two points-in-time.
         final uid = firebaseUser?.uid ?? '';
         currentUser = entries
             .where((item) => item.entry.uid == uid)

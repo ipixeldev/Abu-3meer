@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 import {
+  assembleRankedLeaderboardRows,
   discoverFutureLeaderboardSeasons,
   eligibleLeaderboardSourceTypes,
   initialLeaderboardSeasonStart,
@@ -9,8 +12,109 @@ import {
   utcMonthWindow,
   validateManualLeaderboardSeasonWindow,
 } from '../services/leaderboardService.js';
+import type { RankedRow } from '../services/leaderboardService.js';
 
 describe('XP-only leaderboard periods', () => {
+  it('uses one ranked row for both the podium and authenticated user', () => {
+    const rows: RankedRow[] = [
+      {
+        publicId: 'broz',
+        username: 'broz',
+        displayName: 'Omar',
+        avatarUrl: null,
+        supportedTeam: 'Barcelona',
+        isYouTubeMember: false,
+        points: '55',
+        rank: '1',
+        totalPlayers: '3',
+        isCurrentUser: false,
+      },
+      {
+        publicId: 'dev',
+        username: 'dev',
+        displayName: 'dev',
+        avatarUrl: null,
+        supportedTeam: 'Real Madrid',
+        isYouTubeMember: false,
+        points: '10',
+        rank: '2',
+        totalPlayers: '3',
+        isCurrentUser: true,
+      },
+      {
+        publicId: 'brozteamedit',
+        username: 'brozteamedit',
+        displayName: 'Broz Team',
+        avatarUrl: null,
+        supportedTeam: 'Barcelona',
+        isYouTubeMember: false,
+        points: '5',
+        rank: '3',
+        totalPlayers: '3',
+        isCurrentUser: false,
+      },
+    ];
+
+    const snapshot = assembleRankedLeaderboardRows(rows, 100);
+    assert.equal(snapshot.entries[1].points, 10);
+    assert.equal(snapshot.currentUser?.points, 10);
+    assert.strictEqual(snapshot.currentUser, snapshot.entries[1]);
+  });
+
+  it('retains an authenticated user outside the public row limit', () => {
+    const rows: RankedRow[] = [
+      {
+        publicId: 'leader',
+        username: 'leader',
+        displayName: 'Leader',
+        avatarUrl: null,
+        supportedTeam: 'Barcelona',
+        isYouTubeMember: false,
+        points: 100,
+        rank: 1,
+        totalPlayers: 24,
+        isCurrentUser: false,
+      },
+      {
+        publicId: 'fan24',
+        username: 'fan24',
+        displayName: 'Fan 24',
+        avatarUrl: null,
+        supportedTeam: 'Real Madrid',
+        isYouTubeMember: false,
+        points: 1,
+        rank: 24,
+        totalPlayers: 24,
+        isCurrentUser: true,
+      },
+    ];
+
+    const snapshot = assembleRankedLeaderboardRows(rows, 1);
+    assert.deepEqual(snapshot.entries.map(entry => entry.publicId), ['leader']);
+    assert.equal(snapshot.currentUser?.publicId, 'fan24');
+    assert.equal(snapshot.currentUser?.rank, 24);
+    assert.equal(snapshot.totalPlayers, 24);
+  });
+
+  it('queries the public rows and authenticated row in one ranked statement', async () => {
+    const service = await readFile(
+      path.resolve(process.cwd(), 'src/services/leaderboardService.ts'),
+      'utf8',
+    );
+    const routes = await readFile(
+      path.resolve(process.cwd(), 'src/routes/leaderboardRoutes.ts'),
+      'utf8',
+    );
+
+    assert.match(
+      service,
+      /WHERE rank <= \$3\s+OR \(\$4::text IS NOT NULL AND database_user_id = \$4::text\)/,
+    );
+    assert.match(service, /AS "isCurrentUser"/);
+    assert.match(routes, /databaseUserId: request\.user\?\.id/);
+    assert.match(routes, /Cache-Control', 'private, no-store/);
+  });
+
   it('allows activity, prediction, and video-answer ledger sources', () => {
     assert.deepEqual([...eligibleLeaderboardSourceTypes], [
       'signup_bonus',

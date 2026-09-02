@@ -55,6 +55,7 @@ export interface LeaderboardPeriod {
 
 export interface LeaderboardSnapshot {
   leaderboard: LeaderboardEntry[];
+  currentUser: LeaderboardEntry | null;
   totalPlayers: number;
   seasons: LeaderboardSeason[];
   activeSeasonId: string | null;
@@ -74,7 +75,7 @@ interface PeriodWindow {
   endsAt: Date | null;
 }
 
-interface RankedRow {
+export interface RankedRow {
   publicId: string;
   username: string;
   displayName: string;
@@ -84,6 +85,7 @@ interface RankedRow {
   points: string | number;
   rank: string | number;
   totalPlayers: string | number;
+  isCurrentUser?: boolean;
 }
 
 interface SeasonRow {
@@ -625,10 +627,37 @@ export function mapPublicLeaderboardEntry(row: RankedRow): LeaderboardEntry {
   };
 }
 
+export function assembleRankedLeaderboardRows(
+  rows: RankedRow[],
+  limit: number,
+): {
+  entries: LeaderboardEntry[];
+  currentUser: LeaderboardEntry | null;
+  totalPlayers: number;
+} {
+  const mapped = rows.map(row => ({
+    row,
+    entry: mapPublicLeaderboardEntry(row),
+  }));
+  return {
+    entries: mapped
+      .filter(item => Number(item.row.rank) <= limit)
+      .map(item => item.entry),
+    currentUser:
+      mapped.find(item => item.row.isCurrentUser)?.entry ?? null,
+    totalPlayers: rows.length === 0 ? 0 : Number(rows[0].totalPlayers),
+  };
+}
+
 async function rankedRows(
   window: PeriodWindow,
   limit: number,
-): Promise<{ entries: LeaderboardEntry[]; totalPlayers: number }> {
+  databaseUserId?: string,
+): Promise<{
+  entries: LeaderboardEntry[];
+  currentUser: LeaderboardEntry | null;
+  totalPlayers: number;
+}> {
   const safeLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
   const result = await query<RankedRow>(
     `WITH scored AS (
@@ -659,7 +688,8 @@ async function rankedRows(
        GROUP BY u.id, yl.user_id
        HAVING SUM(pt.final_points) > 0
      ), ranked AS (
-       SELECT username AS "publicId",
+       SELECT database_user_id,
+              username AS "publicId",
               username,
               display_name AS "displayName",
               avatar_url AS "avatarUrl",
@@ -672,20 +702,29 @@ async function rankedRows(
               COUNT(*) OVER () AS "totalPlayers"
        FROM scored
      )
-     SELECT *
+     SELECT "publicId",
+            username,
+            "displayName",
+            "avatarUrl",
+            "supportedTeam",
+            "isYouTubeMember",
+            points,
+            rank,
+            "totalPlayers",
+            ($4::text IS NOT NULL AND database_user_id = $4::text) AS "isCurrentUser"
      FROM ranked
+     WHERE rank <= $3
+        OR ($4::text IS NOT NULL AND database_user_id = $4::text)
      ORDER BY rank
-     LIMIT $3`,
+    `,
     [
       window.startsAt,
       window.endsAt,
       safeLimit,
+      databaseUserId ?? null,
     ],
   );
-  return {
-    entries: result.rows.map(mapPublicLeaderboardEntry),
-    totalPlayers: result.rows.length === 0 ? 0 : Number(result.rows[0].totalPlayers),
-  };
+  return assembleRankedLeaderboardRows(result.rows, safeLimit);
 }
 
 async function rankForUser(
@@ -727,15 +766,25 @@ async function rankForUser(
 
 export async function getLeaderboardSnapshot(
   scope: LeaderboardScope,
-  options: { seasonId?: string; limit?: number; now?: Date } = {},
+  options: {
+    seasonId?: string;
+    limit?: number;
+    now?: Date;
+    databaseUserId?: string;
+  } = {},
 ): Promise<LeaderboardSnapshot> {
   const seasons = await listLeaderboardSeasons();
   const window = scope === 'season'
     ? resolveSeasonWindow(seasons, options.seasonId)
     : utcMonthWindow(scope, options.now);
-  const ranked = await rankedRows(window, options.limit ?? 100);
+  const ranked = await rankedRows(
+    window,
+    options.limit ?? 100,
+    options.databaseUserId,
+  );
   return {
     leaderboard: ranked.entries,
+    currentUser: ranked.currentUser,
     totalPlayers: ranked.totalPlayers,
     seasons,
     activeSeasonId: seasons.find(season => season.active)?.id ?? null,
