@@ -1,1 +1,1 @@
-This update fixes membership-import layouts on phones, keeps Admin Studio content clear of the bottom navigation, and makes nested-page navigation return Home correctly. Lifetime and season XP are now labeled separately, and leaderboard wording is simplified.
+This update keeps leaderboard XP in sync, replaces blocked YouTube verification with staff-reviewed CSV channel claims, restores Admin Studio statistics, and separates the latest public YouTube upload from Exclusive videos. Email and password controls now live in Settings under Account.

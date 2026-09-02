@@ -714,14 +714,12 @@ class ProductionRepository {
         // public channel feed. The legacy Firestore override is intentionally
         // ignored because it could pin Home to an old hard-coded upload.
         return await externalContent.latestVideo(refresh: refresh);
-      } catch (_) {}
-      return LatestVideo(
-        id: 'dQw4w9WgXcQ',
-        title: 'Abu 3meer Official Channel',
-        url: 'https://www.youtube.com/@Abu3meer',
-        thumbnailUrl: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
-        publishedAt: DateTime.fromMillisecondsSinceEpoch(0),
-      );
+      } catch (_) {
+        // Never replace a failed live lookup with a fixed video. The Home UI
+        // already has a retry state, which is more honest than showing stale
+        // or unrelated content as the channel's latest upload.
+        throw StateError('The latest public YouTube video is unavailable.');
+      }
     }
   }
 

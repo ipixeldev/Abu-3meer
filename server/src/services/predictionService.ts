@@ -432,6 +432,8 @@ export async function settleMatchPredictions(
   // settlement one owner while point-ledger and notification source keys
   // provide durable idempotency across restarts.
   const lockClient = await getDirectClient();
+  let settlementLockAcquired = false;
+  let membershipLockAcquired = false;
   try {
     const lock = await lockClient.query<{ acquired: boolean }>(
       'SELECT pg_try_advisory_lock(hashtext($1)) AS acquired',
@@ -445,12 +447,34 @@ export async function settleMatchPredictions(
         alreadyProcessing: true,
       };
     }
+    settlementLockAcquired = true;
+
+    // Snapshot replacement and claim decisions take the exclusive form of
+    // this lock. Keep a shared session lock from the membership read through
+    // every point write so an import cannot change x1/x2 eligibility midway
+    // through settlement. The work itself may use pooled connections; the
+    // PostgreSQL advisory lock still protects the database-wide operation.
+    await lockClient.query(
+      `SELECT pg_advisory_lock_shared(
+         hashtextextended('youtube-membership-snapshot-import', 0)
+       )`,
+    );
+    membershipLockAcquired = true;
     return await settleMatchPredictionsUnlocked(matchId);
   } finally {
-    await lockClient.query(
-      'SELECT pg_advisory_unlock(hashtext($1))',
-      [`prediction-settlement:${matchId}`],
-    ).catch(() => undefined);
+    if (membershipLockAcquired) {
+      await lockClient.query(
+        `SELECT pg_advisory_unlock_shared(
+           hashtextextended('youtube-membership-snapshot-import', 0)
+         )`,
+      ).catch(() => undefined);
+    }
+    if (settlementLockAcquired) {
+      await lockClient.query(
+        'SELECT pg_advisory_unlock(hashtext($1))',
+        [`prediction-settlement:${matchId}`],
+      ).catch(() => undefined);
+    }
     lockClient.release();
   }
 }

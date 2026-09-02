@@ -113,6 +113,11 @@ test('every award and leaderboard read rechecks approved unexpired authority', (
   );
   assert.match(prediction, /snapshot_import\.expires_at > CURRENT_TIMESTAMP/);
   assert.match(prediction, /approved_claim\.status = 'approved'/);
+  assert.match(
+    prediction,
+    /pg_advisory_lock_shared\([\s\S]*youtube-membership-snapshot-import[\s\S]*settleMatchPredictionsUnlocked/,
+  );
+  assert.match(prediction, /pg_advisory_unlock_shared/);
   assert.match(challenge, /pg_advisory_xact_lock_shared/);
   assert.match(challenge, /snapshot_import\.expires_at > clock_timestamp\(\)/);
   assert.match(challenge, /approved_claim\.status = 'approved'/);

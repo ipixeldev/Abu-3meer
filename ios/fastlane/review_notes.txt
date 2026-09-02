@@ -2,12 +2,12 @@ Abu 3meer supports Arabic and English.
 
 Authentication and account controls:
 - Sign in with Apple is available on iOS as an equivalent option alongside Google and email.
-- Account deletion is available in Settings > Account & Security > Delete Account.
-- A user who originally signs in with email or Apple can link Google to the same Firebase account in Settings. This preserves the existing profile and points.
-- YouTube membership is a separate, explicit connection after Google is linked. The user authorizes the Google account that controls their YouTube channel only so the backend can prove its channel ID. The server matches that ID against the latest complete membership export uploaded by a moderator, admin, or super admin. Google sign-in alone never grants member status.
-- User Google access tokens are used transiently only to resolve the channel ID and are not retained. The app does not request YouTube's private creator-membership scope, store a channel-owner credential, or call the private Members API.
-- The export is uploaded through the authenticated app API as UTF-8 CSV/TSV. The raw file and YouTube display names are not retained. Present channel IDs are active; IDs missing from the next complete export become lapsed. Because YouTube provides no automatic export or cancellation webhook, the staff screen shows when the latest list is stale.
-- A successfully connected non-member channel receives a clear "not an active member" status, and all non-member app functionality remains available.
+- Account deletion is available in Settings > Account > Delete Account.
+- Email and password changes are available in Settings > Account for accounts using email/password authentication.
+- YouTube membership does not use Google or YouTube OAuth. A user may submit a stable YouTube `UC...` channel ID or `/channel/UC...` URL as an untrusted claim; submitting or typing a channel never grants membership.
+- A moderator, admin, or super admin must review that claim, and approval is accepted only when the exact channel ID is present in the latest unexpired complete YouTube Studio membership export. Staff decisions are audited and one approved channel cannot be attached to multiple app accounts.
+- The export is uploaded through the authenticated app API as UTF-8 CSV/TSV. The raw file and YouTube display names are not retained. Present approved channel IDs are active; IDs missing from the next complete export become lapsed. Because YouTube provides no automatic export or cancellation webhook, the staff screen shows when the latest list is stale.
+- Pending, rejected, lapsed, and non-member accounts retain all normal fan functionality.
 
 XP and rankings:
 - The app is completely free. It has no purchases, paid entry, betting, wagering, prizes, rewards, or leaderboard winners.

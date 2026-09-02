@@ -135,7 +135,7 @@ platform :ios do
         demo_account_required: beta_review.demo_account_required,
         demo_account_name: beta_review.demo_account_name,
         demo_account_password: beta_review.demo_account_password,
-        notes: beta_review.notes
+        notes: abu3meer_review_notes
       },
       distribute_external: true,
       groups: ["Abu 3meer External"],
