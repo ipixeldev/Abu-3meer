@@ -1,5 +1,7 @@
 import { query } from '../db/pool.js';
 
+export const adminDashboardStatsPath = '/admin/dashboard/stats';
+
 type QueryResult = {
   rows: Array<Record<string, unknown>>;
 };

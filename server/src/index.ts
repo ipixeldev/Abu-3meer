@@ -20,6 +20,7 @@ import { leaderboardRoutes } from './routes/leaderboardRoutes.js';
 import { streakRoutes } from './routes/streakRoutes.js';
 import { deviceRoutes } from './routes/deviceRoutes.js';
 import { adminRoutes } from './routes/adminRoutes.js';
+import { adminStatsRoutes } from './routes/adminStatsRoutes.js';
 import { adminContentRoutes } from './routes/adminContentRoutes.js';
 import { healthRoutes } from './routes/healthRoutes.js';
 import { videoRoutes } from './routes/videoRoutes.js';
@@ -150,6 +151,7 @@ async function main() {
     await v1.register(leaderboardRoutes);
     await v1.register(streakRoutes);
     await v1.register(deviceRoutes);
+    await v1.register(adminStatsRoutes);
     await v1.register(adminRoutes);
     await v1.register(adminContentRoutes);
     await v1.register(videoRoutes);

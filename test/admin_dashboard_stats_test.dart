@@ -18,6 +18,10 @@ const _stats = AdminDashboardStats(
 );
 
 void main() {
+  test('admin dashboard uses the registered version-relative endpoint', () {
+    expect(adminDashboardStatsEndpoint, '/admin/dashboard/stats');
+  });
+
   test('admin dashboard statistics parse canonical server response', () {
     final parsed = AdminDashboardStats.fromJson({
       'stats': {

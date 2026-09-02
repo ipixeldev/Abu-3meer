@@ -1,5 +1,7 @@
 import 'production_repository.dart';
 
+const String adminDashboardStatsEndpoint = '/admin/dashboard/stats';
+
 /// Server-computed account totals shown to administrators.
 ///
 /// The backend remains authoritative: the client never derives active-user or
@@ -113,7 +115,7 @@ class AdminDashboardStats {
 extension AdminDashboardStatsRepository on ProductionRepository {
   Future<AdminDashboardStats> fetchAdminDashboardStats() async {
     final response = await apiRepo.api.get(
-      '/admin/dashboard/stats',
+      adminDashboardStatsEndpoint,
       requireAuth: true,
       bypassCache: true,
     );
