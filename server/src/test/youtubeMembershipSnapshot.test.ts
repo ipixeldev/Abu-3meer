@@ -8,6 +8,7 @@ import {
   YouTubeMembershipSnapshotError,
   YouTubeMembershipSnapshotMetadata,
   YouTubeMembershipSnapshotStore,
+  clampYouTubeMembershipSnapshotExpiryToPolicy,
   extractYouTubeChannelIdFromProfileLink,
   getActiveYouTubeMembershipSnapshot,
   getYouTubeMembershipSnapshotStatus,
@@ -16,6 +17,7 @@ import {
   parseYouTubeMembershipSnapshot,
   youtubeMembershipSnapshotHeaders,
   youtubeMembershipSnapshotMaxAgeHours,
+  youtubeSnapshotRequiresLargeDecreaseConfirmation,
 } from '../services/youtubeMembershipSnapshotService.js';
 
 const now = new Date('2026-09-01T12:00:00Z');
@@ -148,6 +150,17 @@ describe('YouTube membership snapshot CSV/TSV parsing', () => {
       ),
       YouTubeMembershipSnapshotError,
     );
+    assert.throws(
+      () => parseYouTubeMembershipSnapshot({
+        fileName: 'members.csv',
+        bytes: csv([
+          `,https://youtube.com/channel/${channelA},Gold,1,1,today,1788264000`,
+        ]),
+      }),
+      (error: unknown) =>
+        error instanceof YouTubeMembershipSnapshotError &&
+        error.code === 'youtube_snapshot_member_label_invalid',
+    );
   });
 });
 
@@ -224,6 +237,14 @@ describe('YouTube membership snapshot lifecycle', () => {
   });
 
   it('requires an explicit confirmation before a replacement lapses many members', async () => {
+    assert.equal(
+      youtubeSnapshotRequiresLargeDecreaseConfirmation(10, 7),
+      true,
+    );
+    assert.equal(
+      youtubeSnapshotRequiresLargeDecreaseConfirmation(10, 8),
+      false,
+    );
     const store = new FakeSnapshotStore();
     store.metadata = {
       importId: '5b3608bb-5bd6-4708-b1ab-ab30d52f3eed',
@@ -258,9 +279,22 @@ describe('YouTube membership snapshot lifecycle', () => {
     );
     assert.equal(result.memberCount, 1);
     assert.equal(store.replaced.length, 1);
+    assert.equal(store.replaced[0].allowLargeDecrease, true);
+
+    const source = await readFile(
+      path.resolve(
+        process.cwd(),
+        'src/services/youtubeMembershipSnapshotService.ts',
+      ),
+      'utf8',
+    );
+    assert.match(
+      source,
+      /pg_advisory_xact_lock[\s\S]*FOR UPDATE OF snapshot_state, snapshot_import[\s\S]*youtubeSnapshotRequiresLargeDecreaseConfirmation/,
+    );
   });
 
-  it('keeps the latest snapshot authoritative while reporting it as expired', async () => {
+  it('fails an expired snapshot closed to non-member', async () => {
     const store = new FakeSnapshotStore();
     store.metadata = {
       importId: '5b3608bb-5bd6-4708-b1ab-ab30d52f3eed',
@@ -285,19 +319,32 @@ describe('YouTube membership snapshot lifecycle', () => {
       now,
       environment,
     });
-    assert.ok(snapshot);
-    assert.equal(snapshot.members.has(channelA), true);
-    assert.equal(
-      membershipLookupFromSnapshot([channelA], snapshot).isMember,
-      true,
-      'staleness is a warning; the latest complete export remains authoritative',
-    );
+    assert.equal(snapshot, null);
     const status = await getYouTubeMembershipSnapshotStatus({
       store,
       now,
       environment,
     });
     assert.equal(status.status, 'expired');
+  });
+
+  it('clamps stored expiry when startup policy becomes stricter', async () => {
+    let sql = '';
+    let params: unknown[] | undefined;
+    await clampYouTubeMembershipSnapshotExpiryToPolicy({
+      environment: { YOUTUBE_MEMBERSHIP_SNAPSHOT_MAX_AGE_HOURS: '24' },
+      runQuery: async (statement, values) => {
+        sql = statement;
+        params = values;
+        return undefined;
+      },
+    });
+    assert.match(sql, /SET expires_at = LEAST/);
+    assert.match(
+      sql,
+      /activated_at \+ \(\$1::integer \* INTERVAL '1 hour'\)/,
+    );
+    assert.deepEqual(params, [24]);
   });
 
   it('maps channel presence to membership and absence to not-member', async () => {

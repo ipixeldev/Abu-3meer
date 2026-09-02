@@ -77,10 +77,20 @@ export async function adminRoutes(fastify: FastifyInstance) {
               COALESCE(
                 yl.is_member = TRUE
                 AND yl.verification_source = 'admin_snapshot'
-                AND yl.snapshot_import_id = (
-                  SELECT active_import_id
-                  FROM youtube_membership_snapshot_state
-                  WHERE singleton = TRUE
+                AND EXISTS (
+                  SELECT 1
+                  FROM youtube_membership_snapshot_state snapshot_state
+                  JOIN youtube_membership_snapshot_imports snapshot_import
+                    ON snapshot_import.id = snapshot_state.active_import_id
+                   AND snapshot_import.expires_at > CURRENT_TIMESTAMP
+                  WHERE snapshot_state.singleton = TRUE
+                    AND snapshot_state.active_import_id = yl.snapshot_import_id
+                )
+                AND EXISTS (
+                  SELECT 1 FROM youtube_channel_claims claim
+                  WHERE claim.user_id = u.id
+                    AND claim.youtube_channel_id = yl.youtube_channel_id
+                    AND claim.status = 'approved'
                 ),
                 FALSE
               ) AS is_youtube_member,
@@ -107,10 +117,20 @@ export async function adminRoutes(fastify: FastifyInstance) {
            OR COALESCE(
              yl.is_member = TRUE
              AND yl.verification_source = 'admin_snapshot'
-             AND yl.snapshot_import_id = (
-               SELECT active_import_id
-               FROM youtube_membership_snapshot_state
-               WHERE singleton = TRUE
+             AND EXISTS (
+               SELECT 1
+               FROM youtube_membership_snapshot_state snapshot_state
+               JOIN youtube_membership_snapshot_imports snapshot_import
+                 ON snapshot_import.id = snapshot_state.active_import_id
+                AND snapshot_import.expires_at > CURRENT_TIMESTAMP
+               WHERE snapshot_state.singleton = TRUE
+                 AND snapshot_state.active_import_id = yl.snapshot_import_id
+             )
+             AND EXISTS (
+               SELECT 1 FROM youtube_channel_claims claim
+               WHERE claim.user_id = u.id
+                 AND claim.youtube_channel_id = yl.youtube_channel_id
+                 AND claim.status = 'approved'
              ),
              FALSE
            )
@@ -129,10 +149,20 @@ export async function adminRoutes(fastify: FastifyInstance) {
            $2 = 'member'
            AND yl.is_member = TRUE
            AND yl.verification_source = 'admin_snapshot'
-           AND yl.snapshot_import_id = (
-             SELECT active_import_id
-             FROM youtube_membership_snapshot_state
-             WHERE singleton = TRUE
+           AND EXISTS (
+             SELECT 1
+             FROM youtube_membership_snapshot_state snapshot_state
+             JOIN youtube_membership_snapshot_imports snapshot_import
+               ON snapshot_import.id = snapshot_state.active_import_id
+              AND snapshot_import.expires_at > CURRENT_TIMESTAMP
+             WHERE snapshot_state.singleton = TRUE
+               AND snapshot_state.active_import_id = yl.snapshot_import_id
+           )
+           AND EXISTS (
+             SELECT 1 FROM youtube_channel_claims claim
+             WHERE claim.user_id = u.id
+               AND claim.youtube_channel_id = yl.youtube_channel_id
+               AND claim.status = 'approved'
            )
          )
          OR (

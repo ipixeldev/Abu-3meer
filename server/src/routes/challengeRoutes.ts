@@ -9,7 +9,6 @@ import { query } from '../db/pool.js';
 import { getCachedJson, setCachedJson } from '../redis/client.js';
 import { listPlayerCardsForUser } from '../services/playerCardService.js';
 import {
-  ChallengeMembershipUnavailableError,
   resolveChallengeMembership,
 } from '../services/challengeMembershipService.js';
 
@@ -115,20 +114,9 @@ export async function challengeRoutes(fastify: FastifyInstance) {
       });
     }
 
-    let isYouTubeMember: boolean;
-    try {
-      // Resolve before any attempt or award write. An outage consumes nothing.
-      isYouTubeMember = await resolveChallengeMembership(user.id);
-    } catch (error) {
-      if (error instanceof ChallengeMembershipUnavailableError) {
-        return reply.status(503).send({
-          error: 'YouTubeMembershipUnavailable',
-          message: error.message,
-          retryable: true,
-        });
-      }
-      throw error;
-    }
+    // Missing, expired, or temporarily unreadable CSV state fails closed to
+    // fan/x1 without preventing an ordinary challenge attempt or base award.
+    await resolveChallengeMembership(user.id);
 
     // Check anti-brute force lock
     const lockRes = await query(
@@ -152,7 +140,6 @@ export async function challengeRoutes(fastify: FastifyInstance) {
         id,
         user.id,
         parsed.data.answer,
-        isYouTubeMember,
       );
 
       if (!result.correct) {

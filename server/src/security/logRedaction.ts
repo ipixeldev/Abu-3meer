@@ -7,18 +7,13 @@
 export function redactRequestUrl(rawUrl: string): string {
   const path = rawUrl.split(/[?#]/, 1)[0] || '/';
 
-  // OAuth polling identifiers are bearer-like correlators. Keep the route
-  // template useful for metrics without retaining an individual flow UUID.
-  const oauthTemplate = path
-    .replace(
-      /^\/api\/v1\/profile\/youtube\/connect\/[^/]+\/status$/i,
-      '/api/v1/profile/youtube/connect/:flowId/status',
-    )
-    .replace(
-      /^\/api\/v1\/admin\/youtube\/creator\/connect\/[^/]+\/status$/i,
-      '/api/v1/admin/youtube/creator/connect/:flowId/status',
-    );
-  if (oauthTemplate !== path) return oauthTemplate;
+  // Claim UUIDs identify a user's review record. Keep route metrics without
+  // retaining an individual claim identifier in ordinary logs.
+  const claimTemplate = path.replace(
+    /^\/api\/v1\/admin\/youtube\/membership\/claims\/[^/]+\/decision$/i,
+    '/api/v1/admin/youtube/membership/claims/:claimId/decision',
+  );
+  if (claimTemplate !== path) return claimTemplate;
 
   // Public profile lookup accepts a PostgreSQL UUID, Firebase UID, username,
   // or (for older clients) another account identifier in the path. Keep the

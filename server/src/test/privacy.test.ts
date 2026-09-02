@@ -98,23 +98,17 @@ describe('Request log privacy', () => {
     }
   });
 
-  it('templates member and creator OAuth polling flow UUIDs', () => {
-    const flowId = '4bff16c1-b990-4a3f-8129-f42eafb120a8';
+  it('templates staff claim-decision UUIDs', () => {
+    const claimId = '4bff16c1-b990-4a3f-8129-f42eafb120a8';
     assert.equal(
       redactRequestUrl(
-        `/api/v1/profile/youtube/connect/${flowId}/status?poll=1`,
+        `/api/v1/admin/youtube/membership/claims/${claimId}/decision?review=1`,
       ),
-      '/api/v1/profile/youtube/connect/:flowId/status',
-    );
-    assert.equal(
-      redactRequestUrl(
-        `/api/v1/admin/youtube/creator/connect/${flowId}/status`,
-      ),
-      '/api/v1/admin/youtube/creator/connect/:flowId/status',
+      '/api/v1/admin/youtube/membership/claims/:claimId/decision',
     );
     assert.doesNotMatch(
       JSON.stringify(serializeRequestForLog({
-        url: `/api/v1/profile/youtube/connect/${flowId}/status`,
+        url: `/api/v1/admin/youtube/membership/claims/${claimId}/decision`,
       })),
       /4bff16c1|b990|f42eafb/i,
     );

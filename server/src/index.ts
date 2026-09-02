@@ -26,6 +26,7 @@ import { healthRoutes } from './routes/healthRoutes.js';
 import { videoRoutes } from './routes/videoRoutes.js';
 import { publicMediaRoutes, uploadRoutes } from './routes/uploadRoutes.js';
 import { youtubeMembershipRoutes } from './routes/youtubeMembershipRoutes.js';
+import { clampYouTubeMembershipSnapshotExpiryToPolicy } from './services/youtubeMembershipSnapshotService.js';
 import { serializeRequestForLog } from './security/logRedaction.js';
 import { startYouTubeVideoSynchronization } from './services/youtubeVideoSyncService.js';
 
@@ -163,6 +164,7 @@ async function main() {
   // startup fail so Docker restarts it and the operator sees the migration
   // error instead of silent profile/prediction write failures.
   await runMigrations();
+  await clampYouTubeMembershipSnapshotExpiryToPolicy();
 
   // Public channel uploads are discovered independently of membership and are
   // stored separately from the manually curated Exclusive-video catalogue.

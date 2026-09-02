@@ -103,12 +103,8 @@ ADMIN_EMAILS
 CLOUDFLARE_TUNNEL_TOKEN
 API_FOOTBALL_API_KEY
 API_FOOTBALL_DAILY_REQUEST_BUDGET=140000
-YOUTUBE_OAUTH_CLIENT_ID
-YOUTUBE_OAUTH_CLIENT_SECRET
-YOUTUBE_OAUTH_REDIRECT_URI=https://api.abu3meer.com/api/v1/youtube/oauth/callback
 YOUTUBE_CREATOR_CHANNEL_ID
-YOUTUBE_TOKEN_ENCRYPTION_KEY
-YOUTUBE_MEMBERSHIP_REFRESH_INTERVAL_SECONDS=21600
+YOUTUBE_MEMBERSHIP_SNAPSHOT_MAX_AGE_HOURS=168
 BACKUP_ENCRYPTION_KEY
 ```
 
@@ -138,12 +134,10 @@ test "$(stat -c %a .env)" = 600
 docker compose --profile production config --quiet
 ```
 
-The YouTube creator token encryption key must be an independent 32-byte base64
-value (`openssl rand -base64 32`), not a reused database, Firebase, Google OAuth,
-or backup secret. Complete the Google Cloud setup and masked authorization smoke
-tests in [YOUTUBE_MEMBERSHIP_OAUTH.md](YOUTUBE_MEMBERSHIP_OAUTH.md). Missing or
-invalid YouTube values leave the rest of the API bootable, but the membership
-integration reports `credentials_required` and fails closed.
+YouTube membership does not use Google OAuth credentials. Configure only the
+public creator channel ID for latest-video discovery and the CSV snapshot age.
+Follow [YOUTUBE_MEMBERSHIP_CSV_CLAIMS.md](YOUTUBE_MEMBERSHIP_CSV_CLAIMS.md) for
+the staff-approved claim and complete-export workflow.
 
 ## 5. Make the existing tunnel Linux-compatible
 

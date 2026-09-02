@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'api_client.dart';
 import 'external_content_service.dart';
 import 'models.dart';
+import 'youtube_channel_claim.dart';
 
 @visibleForTesting
 int parseApiInt(dynamic value, [int fallback = 0]) {
@@ -26,187 +27,6 @@ UserLeaderboardRanks parseApiUserLeaderboardRanks(dynamic value) {
   return UserLeaderboardRanks(
     currentMonth: parseApiInt(ranks['monthlyRank']),
     season: parseApiInt(ranks['seasonRank']),
-  );
-}
-
-enum YouTubeOAuthFlowState {
-  pending,
-  verified,
-  notMember,
-  connected,
-  disconnected,
-  expired,
-  error,
-}
-
-enum YouTubeOAuthErrorCode {
-  none,
-  creatorMembersApiUnavailable,
-  creatorMembershipsDisabled,
-  creatorChannelMismatch,
-  googleAccountMismatch,
-  youtubeChannelAlreadyLinked,
-  authorizationDenied,
-  youtubeChannelMissing,
-  youtubeChannelAmbiguous,
-  googleAccountLinkRequired,
-  creatorNotConnected,
-  creatorReauthorizationRequired,
-  creatorReusableAuthorizationMissing,
-  youtubeScopeMissing,
-  oauthFlowExpired,
-  youtubeApiUnavailable,
-  youtubeNotConfigured,
-  youtubeSnapshotNotImported,
-  youtubeSnapshotExpired,
-  youtubeSnapshotUnavailable,
-  unknown,
-}
-
-class YouTubeOAuthStart {
-  const YouTubeOAuthStart({
-    required this.flowId,
-    required this.authorizationUrl,
-  });
-
-  final String flowId;
-  final Uri authorizationUrl;
-}
-
-class YouTubeOAuthStatus {
-  const YouTubeOAuthStatus({
-    required this.state,
-    this.isYouTubeMember = false,
-    this.channelTitle = '',
-    this.errorCode = YouTubeOAuthErrorCode.none,
-  });
-
-  final YouTubeOAuthFlowState state;
-  final bool isYouTubeMember;
-  final String channelTitle;
-  final YouTubeOAuthErrorCode errorCode;
-
-  bool get isPending => state == YouTubeOAuthFlowState.pending;
-  bool get isSuccessful =>
-      state == YouTubeOAuthFlowState.verified ||
-      state == YouTubeOAuthFlowState.connected;
-  bool get isTerminal => !isPending;
-}
-
-YouTubeOAuthErrorCode _parseYouTubeOAuthErrorCode(dynamic value) {
-  final code = value?.toString().trim().toLowerCase() ?? '';
-  return switch (code) {
-    '' => YouTubeOAuthErrorCode.none,
-    'creator_members_api_unavailable' =>
-      YouTubeOAuthErrorCode.creatorMembersApiUnavailable,
-    'creator_memberships_disabled' =>
-      YouTubeOAuthErrorCode.creatorMembershipsDisabled,
-    'creator_channel_mismatch' => YouTubeOAuthErrorCode.creatorChannelMismatch,
-    'google_account_mismatch' ||
-    'google_identity_invalid' => YouTubeOAuthErrorCode.googleAccountMismatch,
-    'youtube_channel_already_linked' =>
-      YouTubeOAuthErrorCode.youtubeChannelAlreadyLinked,
-    'oauth_authorization_denied' => YouTubeOAuthErrorCode.authorizationDenied,
-    'youtube_channel_missing' => YouTubeOAuthErrorCode.youtubeChannelMissing,
-    'youtube_channel_ambiguous' =>
-      YouTubeOAuthErrorCode.youtubeChannelAmbiguous,
-    'google_account_link_required' =>
-      YouTubeOAuthErrorCode.googleAccountLinkRequired,
-    'creator_not_connected' => YouTubeOAuthErrorCode.creatorNotConnected,
-    'creator_reauthorization_required' ||
-    'creator_token_rejected' ||
-    'creator_token_unavailable' ||
-    'creator_token_incomplete' =>
-      YouTubeOAuthErrorCode.creatorReauthorizationRequired,
-    'creator_refresh_token_missing' =>
-      YouTubeOAuthErrorCode.creatorReusableAuthorizationMissing,
-    'youtube_scope_missing' => YouTubeOAuthErrorCode.youtubeScopeMissing,
-    'oauth_flow_expired' ||
-    'invalid_or_expired_oauth_state' ||
-    'youtube_flow_not_found' => YouTubeOAuthErrorCode.oauthFlowExpired,
-    'youtube_api_unavailable' ||
-    'youtube_api_rejected' ||
-    'youtube_verification_failed' =>
-      YouTubeOAuthErrorCode.youtubeApiUnavailable,
-    'youtube_not_configured' ||
-    'youtube_invalid_encryption_key' ||
-    'youtube_invalid_redirect_uri' ||
-    'youtube_invalid_client_id' ||
-    'youtube_invalid_creator_channel' ||
-    'youtube_secret_encryption_failed' ||
-    'youtube_secret_decryption_failed' =>
-      YouTubeOAuthErrorCode.youtubeNotConfigured,
-    'youtube_snapshot_not_imported' =>
-      YouTubeOAuthErrorCode.youtubeSnapshotNotImported,
-    'youtube_snapshot_expired' => YouTubeOAuthErrorCode.youtubeSnapshotExpired,
-    'youtube_snapshot_unavailable' =>
-      YouTubeOAuthErrorCode.youtubeSnapshotUnavailable,
-    _ => YouTubeOAuthErrorCode.unknown,
-  };
-}
-
-@visibleForTesting
-YouTubeOAuthStart parseYouTubeOAuthStart(dynamic value) {
-  if (value is! Map) {
-    throw const FormatException('Invalid YouTube connection response.');
-  }
-  final response = Map<String, dynamic>.from(value);
-  final flowId = (response['flowId'] ?? response['flow_id'] ?? '')
-      .toString()
-      .trim();
-  final authorizationUrl = Uri.tryParse(
-    (response['authorizationUrl'] ?? response['authorization_url'] ?? '')
-        .toString()
-        .trim(),
-  );
-  final safeFlowId = RegExp(r'^[A-Za-z0-9_-]{8,200}$').hasMatch(flowId);
-  // OAuth must open Google's own authorization host. Neither a creator token
-  // nor a generic server-provided web destination is accepted by the client.
-  final safeAuthorizationUrl =
-      authorizationUrl != null &&
-      authorizationUrl.scheme == 'https' &&
-      authorizationUrl.host == 'accounts.google.com';
-  if (!safeFlowId || !safeAuthorizationUrl) {
-    throw const FormatException('Invalid YouTube connection response.');
-  }
-  return YouTubeOAuthStart(flowId: flowId, authorizationUrl: authorizationUrl);
-}
-
-@visibleForTesting
-YouTubeOAuthStatus parseYouTubeOAuthStatus(dynamic value) {
-  if (value is! Map) {
-    throw const FormatException('Invalid YouTube connection status.');
-  }
-  final response = Map<String, dynamic>.from(value);
-  var rawStatus = (response['status'] ?? '').toString().trim().toLowerCase();
-  rawStatus = rawStatus.replaceAll('-', '_').replaceAll(' ', '_');
-  if (rawStatus.isEmpty && response['connected'] == true) {
-    rawStatus = 'connected';
-  } else if (rawStatus.isEmpty && response['connected'] == false) {
-    rawStatus = 'disconnected';
-  }
-  final state = switch (rawStatus) {
-    'pending' || 'awaiting_authorization' => YouTubeOAuthFlowState.pending,
-    'verified' || 'member' || 'active_member' => YouTubeOAuthFlowState.verified,
-    'not_member' || 'notmember' => YouTubeOAuthFlowState.notMember,
-    'connected' || 'authorized' => YouTubeOAuthFlowState.connected,
-    'disconnected' || 'not_connected' => YouTubeOAuthFlowState.disconnected,
-    'expired' || 'cancelled' || 'canceled' => YouTubeOAuthFlowState.expired,
-    'error' || 'failed' || 'denied' => YouTubeOAuthFlowState.error,
-    _ => throw const FormatException('Invalid YouTube connection status.'),
-  };
-  return YouTubeOAuthStatus(
-    state: state,
-    isYouTubeMember:
-        response['isYouTubeMember'] == true || response['is_member'] == true,
-    channelTitle: (response['channelTitle'] ?? response['channel_title'] ?? '')
-        .toString()
-        .trim(),
-    // Only retain an allowlisted enum. Raw provider/server text is never
-    // carried into UI state where it could disclose OAuth diagnostics.
-    errorCode: _parseYouTubeOAuthErrorCode(
-      response['errorCode'] ?? response['error_code'],
-    ),
   );
 }
 
@@ -1495,55 +1315,62 @@ class ApiProductionRepository {
     );
   }
 
-  Future<YouTubeOAuthStart> startYouTubeMembershipConnection() async {
+  Future<YouTubeChannelClaim?> fetchMyYouTubeChannelClaim() async {
+    final response = await api.get(
+      '/profile/youtube/claim',
+      requireAuth: true,
+      bypassCache: true,
+    );
+    return parseYouTubeChannelClaimEnvelope(response);
+  }
+
+  Future<YouTubeChannelClaim> submitYouTubeChannelClaim(String channel) async {
     final response = await api.post(
-      '/profile/youtube/connect/start',
-      body: const <String, dynamic>{},
+      '/profile/youtube/claim',
+      body: <String, dynamic>{'channel': channel.trim()},
       requireAuth: true,
     );
-    return parseYouTubeOAuthStart(response);
+    final claim = parseYouTubeChannelClaimEnvelope(response);
+    if (claim == null) {
+      throw const FormatException('Missing YouTube channel claim.');
+    }
+    return claim;
   }
 
-  Future<YouTubeOAuthStatus> fetchYouTubeMembershipConnectionStatus(
-    String flowId,
-  ) async {
-    final safeFlowId = Uri.encodeComponent(flowId.trim());
+  Future<List<YouTubeChannelClaim>> fetchYouTubeChannelClaims({
+    String status = 'pending',
+  }) async {
     final response = await api.get(
-      '/profile/youtube/connect/$safeFlowId/status',
+      '/admin/youtube/membership/claims?status=${Uri.encodeQueryComponent(status)}',
       requireAuth: true,
       bypassCache: true,
     );
-    return parseYouTubeOAuthStatus(response);
+    if (response is! Map || response['claims'] is! List) {
+      throw const FormatException('Invalid YouTube claims response.');
+    }
+    return (response['claims'] as List)
+        .map(YouTubeChannelClaim.fromJson)
+        .toList(growable: false);
   }
 
-  Future<YouTubeOAuthStatus> fetchYouTubeCreatorConnectionStatus() async {
-    final response = await api.get(
-      '/admin/youtube/creator/status',
-      requireAuth: true,
-      bypassCache: true,
-    );
-    return parseYouTubeOAuthStatus(response);
-  }
-
-  Future<YouTubeOAuthStart> startYouTubeCreatorConnection() async {
+  Future<YouTubeChannelClaim> decideYouTubeChannelClaim({
+    required String claimId,
+    required YouTubeChannelClaimDecision decision,
+    required String reason,
+  }) async {
     final response = await api.post(
-      '/admin/youtube/creator/connect/start',
-      body: const <String, dynamic>{},
+      '/admin/youtube/membership/claims/${Uri.encodeComponent(claimId)}/decision',
+      body: <String, dynamic>{
+        'decision': decision.name,
+        'reason': reason.trim(),
+      },
       requireAuth: true,
     );
-    return parseYouTubeOAuthStart(response);
-  }
-
-  Future<YouTubeOAuthStatus> fetchYouTubeCreatorFlowStatus(
-    String flowId,
-  ) async {
-    final safeFlowId = Uri.encodeComponent(flowId.trim());
-    final response = await api.get(
-      '/admin/youtube/creator/connect/$safeFlowId/status',
-      requireAuth: true,
-      bypassCache: true,
-    );
-    return parseYouTubeOAuthStatus(response);
+    final claim = parseYouTubeChannelClaimEnvelope(response);
+    if (claim == null) {
+      throw const FormatException('Missing YouTube channel claim.');
+    }
+    return claim;
   }
 
   Future<List<PointLedgerEntry>> fetchPointHistory() async {

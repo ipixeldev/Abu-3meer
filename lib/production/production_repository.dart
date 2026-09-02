@@ -16,6 +16,7 @@ import 'api_production_repository.dart';
 import 'api_client.dart';
 import 'external_content_service.dart';
 import 'models.dart';
+import 'youtube_channel_claim.dart';
 import 'notification_service.dart';
 
 @visibleForTesting
@@ -486,10 +487,6 @@ class ProductionRepository {
       'admin_notification_pending_signature_v1';
   static const String _pendingRewardRedemptionPreferencePrefix =
       'loyalty_redemption_pending_v1:';
-  static const String _pendingYouTubeMembershipFlowPreferencePrefix =
-      'youtube_membership_oauth_flow_v1:';
-  static const String _pendingYouTubeCreatorFlowPreference =
-      'youtube_creator_oauth_flow_v1';
 
   ProductionRepository({
     FirebaseAuth? auth,
@@ -1109,8 +1106,7 @@ class ProductionRepository {
     }
     await user.reload();
     // Linking changes Firebase's provider identities. Force a new signed ID
-    // token so the backend can require the google.com identity before it
-    // starts the separate YouTube OAuth flow.
+    // token so the backend immediately recognizes the additional sign-in.
     await user.getIdToken(true);
     await refreshProfile(user.uid, force: true);
   }
@@ -2845,85 +2841,39 @@ class ProductionRepository {
     return result;
   }
 
-  // ── YouTube Member Verification ─────────────────────────────────────────
+  // ── Staff-approved YouTube channel claims ───────────────────────────────
 
-  String _pendingYouTubeMembershipFlowKey(String uid) =>
-      '$_pendingYouTubeMembershipFlowPreferencePrefix$uid';
+  Future<YouTubeChannelClaim?> fetchMyYouTubeChannelClaim() =>
+      apiRepo.fetchMyYouTubeChannelClaim();
 
-  Future<YouTubeOAuthStart> startYouTubeMembershipConnection(String uid) async {
-    final currentUser = auth.currentUser;
-    if (uid.isEmpty || uid == 'guest' || currentUser == null) {
+  Future<YouTubeChannelClaim> submitYouTubeChannelClaim(String channel) async {
+    if (auth.currentUser == null) {
       throw FirebaseAuthException(
         code: 'unauthenticated',
-        message: 'Sign in before connecting YouTube.',
+        message: 'Sign in before submitting a YouTube channel claim.',
       );
     }
-    if (canLinkGoogleAccount) {
-      throw FirebaseAuthException(
-        code: 'youtube-google-link-required',
-        message: 'Link Google to this account before connecting YouTube.',
-      );
-    }
-    final attempt = await apiRepo.startYouTubeMembershipConnection();
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(
-      _pendingYouTubeMembershipFlowKey(currentUser.uid),
-      attempt.flowId,
-    );
-    return attempt;
+    final claim = await apiRepo.submitYouTubeChannelClaim(channel);
+    await refreshProfile(auth.currentUser!.uid, force: true);
+    return claim;
   }
 
-  Future<YouTubeOAuthStatus?> checkYouTubeMembershipConnection(
-    String uid, {
-    String? flowId,
-  }) async {
-    final currentUser = auth.currentUser;
-    if (uid.isEmpty || uid == 'guest' || currentUser == null) return null;
-    final preferences = await SharedPreferences.getInstance();
-    final pendingKey = _pendingYouTubeMembershipFlowKey(currentUser.uid);
-    final resolvedFlowId = (flowId ?? preferences.getString(pendingKey) ?? '')
-        .trim();
-    if (resolvedFlowId.isEmpty) return null;
+  Future<List<YouTubeChannelClaim>> fetchPendingYouTubeChannelClaims() =>
+      apiRepo.fetchYouTubeChannelClaims();
 
-    final status = await apiRepo.fetchYouTubeMembershipConnectionStatus(
-      resolvedFlowId,
-    );
-    if (status.isTerminal) {
-      await preferences.remove(pendingKey);
-      await refreshProfile(uid, force: true);
-    }
-    return status;
-  }
+  Future<List<YouTubeChannelClaim>> fetchYouTubeChannelClaims({
+    String status = 'pending',
+  }) => apiRepo.fetchYouTubeChannelClaims(status: status);
 
-  Future<YouTubeOAuthStatus> fetchYouTubeCreatorConnectionStatus() =>
-      apiRepo.fetchYouTubeCreatorConnectionStatus();
-
-  Future<YouTubeOAuthStart> startYouTubeCreatorConnection() async {
-    final attempt = await apiRepo.startYouTubeCreatorConnection();
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(
-      _pendingYouTubeCreatorFlowPreference,
-      attempt.flowId,
-    );
-    return attempt;
-  }
-
-  Future<YouTubeOAuthStatus?> checkYouTubeCreatorConnection({
-    String? flowId,
-  }) async {
-    final preferences = await SharedPreferences.getInstance();
-    final resolvedFlowId =
-        (flowId ??
-                preferences.getString(_pendingYouTubeCreatorFlowPreference) ??
-                '')
-            .trim();
-    if (resolvedFlowId.isEmpty) return null;
-    final status = await apiRepo.fetchYouTubeCreatorFlowStatus(resolvedFlowId);
-    if (status.isTerminal) {
-      await preferences.remove(_pendingYouTubeCreatorFlowPreference);
-    }
-    return status;
-  }
+  Future<YouTubeChannelClaim> decideYouTubeChannelClaim({
+    required String claimId,
+    required YouTubeChannelClaimDecision decision,
+    required String reason,
+  }) => apiRepo.decideYouTubeChannelClaim(
+    claimId: claimId,
+    decision: decision,
+    reason: reason,
+  );
 
   // ── Games Arena Visibility Toggle ───────────────────────────────────────
 
@@ -2973,8 +2923,6 @@ String productionErrorMessage(Object error) {
       'account-exists-with-different-credential' => 'An account already uses this email. Sign in with the method you used before.',
       'credential-already-in-use' => 'That Google account is linked to another Abu 3meer account. Sign out of that account first, then link Google here.',
       'provider-already-linked' => 'Google is already linked to this account.',
-      'youtube-google-link-required' =>
-        'Link Google to this account before connecting YouTube.',
       'operation-not-allowed' =>
         'This sign-in method is not enabled yet. Contact support.',
       'account-deletion-password-required' =>

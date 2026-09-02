@@ -62,6 +62,22 @@ class MembershipSnapshotProfilePanel extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         AdminYouTubeMembershipSnapshotCard(repository: repository),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          key: const Key('profile-review-youtube-channel-claims'),
+          onPressed: () => showDialog<void>(
+            context: context,
+            builder: (_) => _PendingYouTubeClaimsDialog(repository: repository),
+          ),
+          icon: const Icon(Icons.fact_check_rounded),
+          label: Text(
+            abuText(
+              context,
+              'REVIEW PENDING CHANNEL CLAIMS',
+              'مراجعة طلبات القنوات المعلقة',
+            ),
+          ),
+        ),
       ],
     ),
   );

@@ -5617,8 +5617,8 @@ class _ProductionAdminTools extends StatelessWidget {
           label: abuText(context, 'YOUTUBE MEMBERS', 'أعضاء يوتيوب'),
           detail: abuText(
             context,
-            'Verify and grant Gold status to channel members.',
-            'التحقق ومنح البطاقة الذهبية لأعضاء القناة.',
+            'Review channel claims and replace the complete membership CSV.',
+            'راجع طلبات القنوات واستبدل ملف CSV الكامل للعضويات.',
           ),
           color: _gold,
           onTap: () => _manageYouTubeMembers(context),
@@ -5772,7 +5772,7 @@ class _ProductionAdminTools extends StatelessWidget {
                   color: _gold,
                   onTap: () => editAnnouncement(context),
                 ),
-                if (profile.isAdmin)
+                if (profile.canUploadMembershipSnapshot)
                   _AdminMobileAction(
                     icon: Icons.workspace_premium_rounded,
                     label: abuText(context, 'YOUTUBE MEMBERS', 'أعضاء يوتيوب'),
@@ -7669,10 +7669,34 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
             Text(
               abuText(
                 context,
-                'This complete admin-uploaded UTF-8 CSV/TSV is the membership authority. Users link Google/YouTube only to prove their channel ID; the server matches that ID against this snapshot. Always replace it with a complete current export, never a partial list.',
-                'ملف CSV/TSV الكامل الذي يرفعه المسؤول بترميز UTF-8 هو المصدر المعتمد للعضوية. يربط المستخدم Google/YouTube فقط لإثبات معرّف قناته، ثم يطابقه الخادم مع هذه اللقطة. استبدلها دائماً بقائمة حالية كاملة، وليس قائمة جزئية.',
+                'This complete admin-uploaded UTF-8 CSV/TSV is the membership authority. A user-submitted channel URL is only a claim: staff must approve it, and the channel ID must be active in this unexpired snapshot. Always replace it with a complete current export, never a partial list.',
+                'ملف CSV/TSV الكامل الذي يرفعه المسؤول بترميز UTF-8 هو مصدر العضوية. رابط القناة الذي يرسله المستخدم هو مجرد طلب: يجب أن يعتمده الموظفون وأن يكون معرّف القناة نشطاً في هذه اللقطة غير المنتهية. استبدلها دائماً بقائمة حالية كاملة، وليس قائمة جزئية.',
               ),
               style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                key: const Key('review-youtube-channel-claims'),
+                onPressed: () async {
+                  await showDialog<void>(
+                    context: context,
+                    builder: (_) => _PendingYouTubeClaimsDialog(
+                      repository: widget.repository,
+                    ),
+                  );
+                  _refresh();
+                },
+                icon: const Icon(Icons.fact_check_rounded),
+                label: Text(
+                  abuText(
+                    context,
+                    'REVIEW PENDING CHANNEL CLAIMS',
+                    'مراجعة طلبات القنوات المعلقة',
+                  ),
+                ),
+              ),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -7787,6 +7811,359 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
       ],
     );
   }
+}
+
+class _PendingYouTubeClaimsDialog extends StatefulWidget {
+  const _PendingYouTubeClaimsDialog({required this.repository});
+
+  final ProductionRepository repository;
+
+  @override
+  State<_PendingYouTubeClaimsDialog> createState() =>
+      _PendingYouTubeClaimsDialogState();
+}
+
+class _PendingYouTubeClaimsDialogState
+    extends State<_PendingYouTubeClaimsDialog> {
+  late Future<List<YouTubeChannelClaim>> _claims;
+  String? _busyClaimId;
+  String _claimFilter = 'pending';
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  void _reload() {
+    _claims = widget.repository.fetchYouTubeChannelClaims(status: _claimFilter);
+  }
+
+  Future<void> _review(
+    YouTubeChannelClaim claim,
+    YouTubeChannelClaimDecision decision,
+  ) async {
+    final reason = TextEditingController();
+    final approved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          decision == YouTubeChannelClaimDecision.approve
+              ? abuText(
+                  dialogContext,
+                  'Approve channel claim?',
+                  'اعتماد طلب القناة؟',
+                )
+              : decision == YouTubeChannelClaimDecision.revoke
+              ? abuText(
+                  dialogContext,
+                  'Revoke channel claim?',
+                  'إلغاء اعتماد طلب القناة؟',
+                )
+              : abuText(
+                  dialogContext,
+                  'Reject channel claim?',
+                  'رفض طلب القناة؟',
+                ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SelectableText(
+              claim.youtubeChannelId,
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              decision == YouTubeChannelClaimDecision.approve
+                  ? abuText(
+                      dialogContext,
+                      'Approval succeeds only if this exact ID is active in the latest unexpired complete CSV. Confirm that you independently verified the channel belongs to this app user.',
+                      'ينجح الاعتماد فقط إذا كان هذا المعرّف نفسه نشطاً في أحدث ملف CSV كامل وغير منتهي. أكد أنك تحققت بشكل مستقل من أن القناة تخص مستخدم التطبيق هذا.',
+                    )
+                  : decision == YouTubeChannelClaimDecision.revoke
+                  ? abuText(
+                      dialogContext,
+                      'Revoking removes membership benefits immediately. Explain why this approved claim is being revoked.',
+                      'يلغي هذا مزايا العضوية فوراً. اشرح سبب إلغاء اعتماد هذا الطلب.',
+                    )
+                  : abuText(
+                      dialogContext,
+                      'Explain why this claim is being rejected.',
+                      'اشرح سبب رفض هذا الطلب.',
+                    ),
+              style: const TextStyle(color: _muted, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: reason,
+              maxLength: 500,
+              minLines: 2,
+              maxLines: 4,
+              decoration: InputDecoration(
+                labelText: abuText(
+                  dialogContext,
+                  'Required audit reason',
+                  'سبب التدقيق المطلوب',
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(abuText(dialogContext, 'CANCEL', 'إلغاء')),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (reason.text.trim().length < 3) return;
+              Navigator.pop(dialogContext, true);
+            },
+            child: Text(
+              decision == YouTubeChannelClaimDecision.approve
+                  ? abuText(dialogContext, 'APPROVE', 'اعتماد')
+                  : decision == YouTubeChannelClaimDecision.revoke
+                  ? abuText(dialogContext, 'REVOKE', 'إلغاء الاعتماد')
+                  : abuText(dialogContext, 'REJECT', 'رفض'),
+            ),
+          ),
+        ],
+      ),
+    );
+    final auditReason = reason.text.trim();
+    reason.dispose();
+    if (approved != true || !mounted) return;
+
+    setState(() => _busyClaimId = claim.id);
+    try {
+      await widget.repository.decideYouTubeChannelClaim(
+        claimId: claim.id,
+        decision: decision,
+        reason: auditReason,
+      );
+      if (!mounted) return;
+      setState(() {
+        _busyClaimId = null;
+        _reload();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _busyClaimId = null);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(productionErrorMessage(error))));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    key: const Key('pending-youtube-channel-claims-dialog'),
+    insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+    title: Text(abuText(context, 'Channel claims', 'طلبات القنوات')),
+    content: SizedBox(
+      width: 640,
+      height: math.min(MediaQuery.sizeOf(context).height * .72, 650),
+      child: Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: SegmentedButton<String>(
+              segments: [
+                ButtonSegment(
+                  value: 'pending',
+                  icon: const Icon(Icons.pending_actions_rounded),
+                  label: Text(abuText(context, 'Pending', 'معلقة')),
+                ),
+                ButtonSegment(
+                  value: 'approved',
+                  icon: const Icon(Icons.verified_rounded),
+                  label: Text(abuText(context, 'Approved', 'معتمدة')),
+                ),
+              ],
+              selected: {_claimFilter},
+              onSelectionChanged: _busyClaimId != null
+                  ? null
+                  : (selection) {
+                      final selected = selection.isEmpty
+                          ? null
+                          : selection.first;
+                      if (selected == null || selected == _claimFilter) return;
+                      setState(() {
+                        _claimFilter = selected;
+                        _reload();
+                      });
+                    },
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: FutureBuilder<List<YouTubeChannelClaim>>(
+              future: _claims,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text(productionErrorMessage(snapshot.error!)),
+                  );
+                }
+                final claims = snapshot.data ?? const <YouTubeChannelClaim>[];
+                if (claims.isEmpty) {
+                  final pending = _claimFilter == 'pending';
+                  return _ProductionEmpty(
+                    icon: Icons.verified_rounded,
+                    title: abuText(
+                      context,
+                      pending ? 'No pending claims' : 'No approved claims',
+                      pending ? 'لا توجد طلبات معلقة' : 'لا توجد طلبات معتمدة',
+                    ),
+                    body: abuText(
+                      context,
+                      pending
+                          ? 'New user-submitted channel IDs will appear here.'
+                          : 'Approved and lapsed claims will appear here for review or revocation.',
+                      pending
+                          ? 'ستظهر معرّفات القنوات الجديدة التي يرسلها المستخدمون هنا.'
+                          : 'ستظهر الطلبات المعتمدة والمنتهية هنا للمراجعة أو إلغاء الاعتماد.',
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  itemCount: claims.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final claim = claims[index];
+                    final busy = _busyClaimId == claim.id;
+                    final identity = claim.displayName.isNotEmpty
+                        ? claim.displayName
+                        : claim.username.isNotEmpty
+                        ? claim.username
+                        : claim.email.isNotEmpty
+                        ? claim.email
+                        : claim.youtubeChannelId;
+                    final pending = _claimFilter == 'pending';
+                    final channelUri = Uri.https(
+                      'www.youtube.com',
+                      '/channel/${claim.youtubeChannelId}',
+                    );
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 8,
+                      ),
+                      leading: const Icon(
+                        Icons.smart_display_rounded,
+                        color: _gold,
+                      ),
+                      title: Text(identity),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (claim.username.isNotEmpty)
+                            Text('@${claim.username}'),
+                          TextButton.icon(
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.zero,
+                              minimumSize: const Size(0, 36),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              alignment: AlignmentDirectional.centerStart,
+                            ),
+                            onPressed: () => launchUrl(
+                              channelUri,
+                              mode: LaunchMode.externalApplication,
+                            ),
+                            icon: const Icon(
+                              Icons.open_in_new_rounded,
+                              size: 16,
+                            ),
+                            label: Text(
+                              claim.youtubeChannelId,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (!pending)
+                            Text(
+                              claim.status.name.toUpperCase(),
+                              style: TextStyle(
+                                color: claim.isActive
+                                    ? _productionPrimary(context)
+                                    : _gold,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 11,
+                              ),
+                            ),
+                        ],
+                      ),
+                      trailing: busy
+                          ? const SizedBox.square(
+                              dimension: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : pending
+                          ? Wrap(
+                              spacing: 4,
+                              children: [
+                                IconButton(
+                                  tooltip: abuText(context, 'Reject', 'رفض'),
+                                  onPressed: () => _review(
+                                    claim,
+                                    YouTubeChannelClaimDecision.reject,
+                                  ),
+                                  icon: const Icon(
+                                    Icons.close_rounded,
+                                    color: _red,
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: abuText(
+                                    context,
+                                    'Approve',
+                                    'اعتماد',
+                                  ),
+                                  onPressed: () => _review(
+                                    claim,
+                                    YouTubeChannelClaimDecision.approve,
+                                  ),
+                                  icon: Icon(
+                                    Icons.check_rounded,
+                                    color: _productionPrimary(context),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : IconButton(
+                              tooltip: abuText(
+                                context,
+                                'Revoke approval',
+                                'إلغاء الاعتماد',
+                              ),
+                              onPressed: () => _review(
+                                claim,
+                                YouTubeChannelClaimDecision.revoke,
+                              ),
+                              icon: const Icon(
+                                Icons.link_off_rounded,
+                                color: _red,
+                              ),
+                            ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(abuText(context, 'DONE', 'تم')),
+      ),
+    ],
+  );
 }
 
 class _AdminRolesDialog extends StatefulWidget {

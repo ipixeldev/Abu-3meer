@@ -1,17 +1,10 @@
 import { query } from '../db/pool.js';
-import { refreshLinkedYouTubeMembership } from './youtubeMembershipService.js';
+import { refreshLinkedYouTubeMembership } from './csvMembershipService.js';
 
 type QueryMembership = (
   text: string,
   params: unknown[],
 ) => Promise<{ rows: Array<{ linked: boolean; current_member: boolean }> }>;
-
-export class ChallengeMembershipUnavailableError extends Error {
-  constructor() {
-    super('YouTube membership could not be verified right now. Please try again.');
-    this.name = 'ChallengeMembershipUnavailableError';
-  }
-}
 
 /** Resolve membership before member-gated content or an XP award. */
 export async function resolveChallengeMembership(
@@ -29,10 +22,20 @@ export async function resolveChallengeMembership(
             COALESCE(
               yl.is_member = TRUE
               AND yl.verification_source = 'admin_snapshot'
-              AND yl.snapshot_import_id = (
-                SELECT active_import_id
-                FROM youtube_membership_snapshot_state
-                WHERE singleton = TRUE
+              AND EXISTS (
+                SELECT 1
+                FROM youtube_membership_snapshot_state snapshot_state
+                JOIN youtube_membership_snapshot_imports snapshot_import
+                  ON snapshot_import.id = snapshot_state.active_import_id
+                 AND snapshot_import.expires_at > CURRENT_TIMESTAMP
+                WHERE snapshot_state.singleton = TRUE
+                  AND snapshot_state.active_import_id = yl.snapshot_import_id
+              )
+              AND EXISTS (
+                SELECT 1 FROM youtube_channel_claims claim
+                WHERE claim.user_id = u.id
+                  AND claim.youtube_channel_id = yl.youtube_channel_id
+                  AND claim.status = 'approved'
               ),
               FALSE
             ) AS current_member
@@ -49,7 +52,9 @@ export async function resolveChallengeMembership(
   try {
     await refreshMembership(userId);
   } catch {
-    throw new ChallengeMembershipUnavailableError();
+    // A missing/expired CSV or reconciliation failure never blocks ordinary
+    // fan XP. It fails closed to non-member/x1 for this request.
+    return false;
   }
 
   const after = (await read()).rows[0];

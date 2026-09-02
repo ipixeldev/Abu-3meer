@@ -1,16 +1,13 @@
 import { FastifyInstance, FastifyReply } from 'fastify';
 import { z } from 'zod';
+import { authenticateUser, requirePermission } from '../middleware/auth.js';
 import {
-  authenticateUser,
-  requirePermission,
-} from '../middleware/auth.js';
-import {
-  getYouTubeOAuthFlowStatus,
-  handleYouTubeOAuthCallback,
-  refreshLinkedYouTubeMembership,
-  startYouTubeOAuthFlow,
-} from '../services/youtubeMembershipService.js';
-import { YouTubeIntegrationError } from '../services/youtubeOAuthService.js';
+  YouTubeChannelClaimError,
+  decideYouTubeChannelClaim,
+  getMyYouTubeChannelClaim,
+  listYouTubeChannelClaims,
+  submitYouTubeChannelClaim,
+} from '../services/youtubeChannelClaimService.js';
 import {
   YouTubeMembershipSnapshotError,
   getYouTubeMembershipSnapshotStatus,
@@ -18,20 +15,29 @@ import {
   youtubeMembershipSnapshotMaxBytes,
 } from '../services/youtubeMembershipSnapshotService.js';
 
-const flowIdSchema = z.string().uuid();
 const snapshotImportQuerySchema = z.object({
   confirmLargeDecrease: z.enum(['true']).optional(),
 });
-const callbackSchema = z.object({
-  state: z.string().regex(/^[A-Za-z0-9_-]{32,128}$/),
-  code: z.string().min(1).max(4096).optional(),
-  error: z.string().regex(/^[A-Za-z0-9_.-]{1,80}$/).optional(),
-}).refine((value) => Boolean(value.code || value.error), {
-  message: 'The OAuth callback is incomplete.',
+const channelClaimSchema = z.object({
+  channel: z.string().trim().min(1).max(300),
+}).strict();
+const claimListSchema = z.object({
+  status: z.enum([
+    'pending',
+    'approved',
+    'rejected',
+    'revoked',
+    'superseded',
+  ]).optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
 });
+const claimDecisionSchema = z.object({
+  decision: z.enum(['approve', 'reject', 'revoke']),
+  reason: z.string().trim().min(3).max(500),
+}).strict();
 
-function sendYouTubeError(reply: FastifyReply, error: unknown) {
-  if (error instanceof YouTubeIntegrationError) {
+function sendClaimError(reply: FastifyReply, error: unknown) {
+  if (error instanceof YouTubeChannelClaimError) {
     return reply.status(error.httpStatus).send({
       error: error.code,
       message: error.message,
@@ -47,116 +53,96 @@ function sendSnapshotError(reply: FastifyReply, error: unknown) {
       message: error.message,
     });
   }
-  return sendYouTubeError(reply, error);
-}
-
-function callbackPage(success: boolean): string {
-  const title = success ? 'YouTube connected' : 'YouTube connection failed';
-  const message = success
-    ? 'Return to ABU 3MEER. The app will finish verification automatically.'
-    : 'Return to ABU 3MEER and try the connection again.';
-  return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${title}</title>
-</head>
-<body>
-  <main>
-    <h1>${title}</h1>
-    <p>${message}</p>
-    <p>You can close this page.</p>
-  </main>
-</body>
-</html>`;
+  throw error;
 }
 
 export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
-  fastify.post(
-    '/profile/youtube/connect/start',
+  fastify.get(
+    '/profile/youtube/claim',
     {
       preHandler: [authenticateUser],
-      config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
     },
-    async (request, reply) => {
-      try {
-        return await startYouTubeOAuthFlow({
-          requestedByUserId: request.user!.id,
-          purpose: 'member_link',
-          expectedGoogleSubject: request.user!.googleProviderUid,
-        });
-      } catch (error) {
-        return sendYouTubeError(reply, error);
-      }
-    },
+    async (request) => ({
+      claim: await getMyYouTubeChannelClaim(request.user!.id),
+    }),
   );
 
-  fastify.get(
-    '/profile/youtube/connect/:flowId/status',
+  fastify.post(
+    '/profile/youtube/claim',
     {
       preHandler: [authenticateUser],
-      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
+      config: { rateLimit: { max: 4, timeWindow: '1 hour' } },
     },
     async (request, reply) => {
-      const parsed = flowIdSchema.safeParse(
-        (request.params as { flowId?: string }).flowId,
-      );
+      const parsed = channelClaimSchema.safeParse(request.body);
       if (!parsed.success) {
         return reply.status(400).send({
-          error: 'InvalidFlowId',
-          message: 'The YouTube connection identifier is invalid.',
+          error: 'ValidationError',
+          message: 'Enter a valid YouTube channel ID or /channel/ URL.',
         });
       }
       try {
-        return await getYouTubeOAuthFlowStatus({
-          flowId: parsed.data,
-          requestedByUserId: request.user!.id,
-          purpose: 'member_link',
+        const claim = await submitYouTubeChannelClaim({
+          userId: request.user!.id,
+          channel: parsed.data.channel,
         });
+        return reply.status(201).send({ claim });
       } catch (error) {
-        return sendYouTubeError(reply, error);
-      }
-    },
-  );
-
-  // Compatibility endpoint for already-linked releases. It can only refresh
-  // the server-owned channel link; no client-supplied channel or member flag
-  // is accepted.
-  fastify.post(
-    '/profile/verify-yt-member',
-    {
-      preHandler: [authenticateUser],
-      config: { rateLimit: { max: 4, timeWindow: '15 minutes' } },
-    },
-    async (request, reply) => {
-      try {
-        return await refreshLinkedYouTubeMembership(request.user!.id);
-      } catch (error) {
-        return sendYouTubeError(reply, error);
+        return sendClaimError(reply, error);
       }
     },
   );
 
   fastify.get(
-    '/admin/youtube/creator/status',
-    { preHandler: [requirePermission('settings.manage')] },
-    async () => ({
-      status: 'disabled',
-      message: 'Membership is verified only from the latest imported CSV snapshot.',
-    }),
+    '/admin/youtube/membership/claims',
+    {
+      preHandler: [requirePermission('membership_snapshots.manage')],
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    },
+    async (request, reply) => {
+      const parsed = claimListSchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'ValidationError',
+          message: 'The claim filter is invalid.',
+        });
+      }
+      return { claims: await listYouTubeChannelClaims(parsed.data) };
+    },
   );
 
   fastify.post(
-    '/admin/youtube/creator/connect/start',
+    '/admin/youtube/membership/claims/:claimId/decision',
     {
-      preHandler: [requirePermission('settings.manage')],
-      config: { rateLimit: { max: 3, timeWindow: '1 hour' } },
+      preHandler: [requirePermission('membership_snapshots.manage')],
+      config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
     },
-    async (_request, reply) => reply.status(410).send({
-      error: 'CreatorMembershipOAuthDisabled',
-      message: 'Import the latest members CSV snapshot instead.',
-    }),
+    async (request, reply) => {
+      const claimId = z.string().uuid().safeParse(
+        (request.params as { claimId?: string }).claimId,
+      );
+      const decision = claimDecisionSchema.safeParse(request.body);
+      if (!claimId.success || !decision.success) {
+        return reply.status(400).send({
+          error: 'ValidationError',
+          message: 'The claim decision or audit reason is invalid.',
+        });
+      }
+      try {
+        const claim = await decideYouTubeChannelClaim({
+          claimId: claimId.data,
+          decision: decision.data.decision,
+          reason: decision.data.reason,
+          reviewedByUserId: request.user!.id,
+          ipAddress: request.ip,
+          userAgent: request.headers['user-agent'] ?? null,
+        });
+        return { claim };
+      } catch (error) {
+        return sendClaimError(reply, error);
+      }
+    },
   );
 
   fastify.get(
@@ -200,7 +186,10 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
           );
         }
         const bytes = await part.toBuffer();
-        if (part.file.truncated || bytes.length > youtubeMembershipSnapshotMaxBytes) {
+        if (
+          part.file.truncated ||
+          bytes.length > youtubeMembershipSnapshotMaxBytes
+        ) {
           throw new YouTubeMembershipSnapshotError(
             'youtube_snapshot_too_large',
             413,
@@ -225,51 +214,6 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
           });
         }
         return sendSnapshotError(reply, error);
-      }
-    },
-  );
-
-  fastify.get(
-    '/admin/youtube/creator/connect/:flowId/status',
-    {
-      preHandler: [requirePermission('settings.manage')],
-      config: { rateLimit: { max: 60, timeWindow: '1 minute' } },
-    },
-    async (_request, reply) => reply.status(410).send({
-      status: 'error',
-      error: 'CreatorMembershipOAuthDisabled',
-    }),
-  );
-
-  // Google redirects here in the system browser. The app polls its opaque
-  // flowId, so this public callback never needs a Firebase token or deep link.
-  fastify.get(
-    '/youtube/oauth/callback',
-    { config: { rateLimit: { max: 30, timeWindow: '1 minute' } } },
-    async (request, reply) => {
-      reply.header('Cache-Control', 'no-store');
-      reply.header('Pragma', 'no-cache');
-      const parsed = callbackSchema.safeParse(request.query);
-      if (!parsed.success) {
-        return reply
-          .status(400)
-          .type('text/html; charset=utf-8')
-          .send(callbackPage(false));
-      }
-      try {
-        const result = await handleYouTubeOAuthCallback(parsed.data);
-        return reply
-          .status(result.status === 'error' ? 400 : 200)
-          .type('text/html; charset=utf-8')
-          .send(callbackPage(result.status !== 'error'));
-      } catch (error) {
-        if (error instanceof YouTubeIntegrationError) {
-          return reply
-            .status(error.httpStatus)
-            .type('text/html; charset=utf-8')
-            .send(callbackPage(false));
-        }
-        throw error;
       }
     },
   );

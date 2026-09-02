@@ -18,7 +18,6 @@ import 'package:glass_liquid_navbar/glass_liquid_navbar.dart' as glass_nav;
 import '../production/brand.dart';
 import '../production/api_client.dart';
 import '../production/admin_dashboard_stats.dart';
-import '../production/api_production_repository.dart';
 import '../production/app_preferences.dart';
 import '../production/external_content_service.dart';
 import '../production/ehzerha_embed.dart';
@@ -28,6 +27,7 @@ import '../production/shell_navigation.dart';
 import '../production/location_service.dart';
 import '../production/notification_service.dart';
 import '../production/youtube_membership_snapshot.dart';
+import '../production/youtube_channel_claim.dart';
 import '../features/match/screens/match_facts_screen.dart';
 import '../features/videos/exclusive_videos_view.dart';
 

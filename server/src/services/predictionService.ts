@@ -4,7 +4,7 @@ import {
   getPointRules,
   memberMultiplierForSource,
 } from './pointsService.js';
-import { refreshStaleYouTubeMembershipsForUsers } from './youtubeMembershipService.js';
+import { refreshStaleYouTubeMembershipsForUsers } from './csvMembershipService.js';
 import { normalizeChallengeAnswer } from './challengeService.js';
 import { config } from '../config.js';
 import {
@@ -240,15 +240,9 @@ async function settleMatchPredictionsUnlocked(
      WHERE match_id = $1 AND NOT rewarded`,
     [matchId],
   );
-  const membershipRefresh = await refreshStaleYouTubeMembershipsForUsers(
+  await refreshStaleYouTubeMembershipsForUsers(
     pendingPredictionUsers.rows.map((row) => row.user_id),
   );
-  if (membershipRefresh.unavailable > 0) {
-    // Settlement must retry rather than permanently writing base XP for a
-    // genuine member merely because Google/configuration was temporarily
-    // unavailable. Point idempotency keeps a later retry safe.
-    throw new Error('YouTube membership verification is temporarily unavailable');
-  }
 
   const predictionsRes = await query(
     `SELECT p.id, p.user_id, p.home_score, p.away_score, p.first_scorer,
@@ -256,10 +250,21 @@ async function settleMatchPredictionsUnlocked(
             COALESCE(
               yl.is_member = TRUE
               AND yl.verification_source = 'admin_snapshot'
-              AND yl.snapshot_import_id = (
-                SELECT active_import_id
-                FROM youtube_membership_snapshot_state
-                WHERE singleton = TRUE
+              AND EXISTS (
+                SELECT 1
+                FROM youtube_membership_snapshot_state snapshot_state
+                JOIN youtube_membership_snapshot_imports snapshot_import
+                  ON snapshot_import.id = snapshot_state.active_import_id
+                 AND snapshot_import.expires_at > CURRENT_TIMESTAMP
+                WHERE snapshot_state.singleton = TRUE
+                  AND snapshot_state.active_import_id = yl.snapshot_import_id
+              )
+              AND EXISTS (
+                SELECT 1
+                FROM youtube_channel_claims approved_claim
+                WHERE approved_claim.user_id = p.user_id
+                  AND approved_claim.youtube_channel_id = yl.youtube_channel_id
+                  AND approved_claim.status = 'approved'
               ),
               FALSE
             ) AS is_youtube_member

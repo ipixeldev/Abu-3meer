@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mergeChallengeActivity } from '../routes/challengeRoutes.js';
 import {
-  ChallengeMembershipUnavailableError,
   resolveChallengeMembership,
 } from '../services/challengeMembershipService.js';
 import { memberMultiplierForSource } from '../services/pointsService.js';
@@ -48,18 +47,17 @@ test('a stale active member is refreshed before receiving the 2x challenge award
   assert.equal(memberMultiplierForSource('video_phrase', isMember), 2);
 });
 
-test('a membership outage aborts before challenge attempts or awards are consumed', async () => {
-  await assert.rejects(
-    resolveChallengeMembership('user-1', {
-      queryMembership: async () => ({
-        rows: [{ linked: true, current_member: false }],
-      }),
-      refreshMembership: async () => {
-        throw new Error('temporary provider outage');
-      },
+test('a missing or unreadable CSV falls back to x1 without blocking base XP', async () => {
+  const isMember = await resolveChallengeMembership('user-1', {
+    queryMembership: async () => ({
+      rows: [{ linked: true, current_member: false }],
     }),
-    ChallengeMembershipUnavailableError,
-  );
+    refreshMembership: async () => {
+      throw new Error('temporary snapshot read error');
+    },
+  });
+  assert.equal(isMember, false);
+  assert.equal(memberMultiplierForSource('video_phrase', isMember), 1);
 
   const source = await readFile(
     path.resolve(process.cwd(), 'src/routes/challengeRoutes.ts'),
@@ -73,6 +71,5 @@ test('a membership outage aborts before challenge attempts or awards are consume
     source.indexOf('resolveChallengeMembership(user.id)') <
       source.indexOf('const result = await submitChallengeAnswer('),
   );
-  assert.match(source, /status\(503\)/);
-  assert.match(source, /retryable: true/);
+  assert.doesNotMatch(source, /YouTubeMembershipUnavailable/);
 });

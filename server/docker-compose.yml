@@ -111,14 +111,8 @@ services:
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-abu-3meer-9fd70}
       FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
       FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
-      # Server-side YouTube creator OAuth. Never embed these values in Flutter,
-      # an image layer, or a checked-in Compose file.
-      YOUTUBE_OAUTH_CLIENT_ID: ${YOUTUBE_OAUTH_CLIENT_ID:-}
-      YOUTUBE_OAUTH_CLIENT_SECRET: ${YOUTUBE_OAUTH_CLIENT_SECRET:-}
-      YOUTUBE_OAUTH_REDIRECT_URI: ${YOUTUBE_OAUTH_REDIRECT_URI:-}
+      # Public channel ID for latest-video discovery; no OAuth credentials.
       YOUTUBE_CREATOR_CHANNEL_ID: ${YOUTUBE_CREATOR_CHANNEL_ID:-}
-      YOUTUBE_TOKEN_ENCRYPTION_KEY: ${YOUTUBE_TOKEN_ENCRYPTION_KEY:-}
-      YOUTUBE_MEMBERSHIP_REFRESH_INTERVAL_SECONDS: ${YOUTUBE_MEMBERSHIP_REFRESH_INTERVAL_SECONDS:-21600}
       YOUTUBE_MEMBERSHIP_SNAPSHOT_MAX_AGE_HOURS: ${YOUTUBE_MEMBERSHIP_SNAPSHOT_MAX_AGE_HOURS:-168}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://abu3meer.com,https://www.abu3meer.com,https://abu-3meer-9fd70.web.app,https://abu-3meer-9fd70.firebaseapp.com}

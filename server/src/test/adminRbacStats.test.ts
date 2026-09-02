@@ -33,7 +33,7 @@ describe('staff RBAC', () => {
     const permissionUses = membershipRoutes.match(
       /requirePermission\('membership_snapshots\.manage'\)/g,
     );
-    assert.equal(permissionUses?.length, 2);
+    assert.equal(permissionUses?.length, 4);
   });
 
   it('keeps role assignment restricted to super administrators', async () => {
@@ -129,6 +129,8 @@ describe('admin dashboard statistics', () => {
     assert.match(sql, /role_flags[\s\S]*NOT is_member[\s\S]*AS fans/);
     assert.match(sql, /verification_source = 'admin_snapshot'/);
     assert.match(sql, /snapshot_import_id = snapshot_state\.active_import_id/);
+    assert.match(sql, /snapshot_import\.expires_at > CURRENT_TIMESTAMP/);
+    assert.match(sql, /approved_claim\.status = 'approved'/);
     assert.match(sql, /youtube_membership_snapshot_members[\s\S]*status = 'active'/);
     assert.match(
       sql,

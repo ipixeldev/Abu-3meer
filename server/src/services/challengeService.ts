@@ -53,7 +53,6 @@ export async function submitChallengeAnswer(
   challengeId: string,
   userId: string,
   rawAnswer: string,
-  isYouTubeMember: boolean,
 ): Promise<{
   correct: boolean;
   pointsAwarded: number;
@@ -75,6 +74,14 @@ export async function submitChallengeAnswer(
     await client.query(
       `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
       [`challenge:${challengeId}:user:${userId}`],
+    );
+    // Snapshot imports and claim approval/revocation take the exclusive form
+    // of this lock. A shared lock lets unrelated submissions stay concurrent
+    // while making the membership decision stable through the points write.
+    await client.query(
+      `SELECT pg_advisory_xact_lock_shared(
+         hashtextextended('youtube-membership-snapshot-import', 0)
+       )`,
     );
 
     const challengeRes = await client.query(
@@ -101,6 +108,32 @@ export async function submitChallengeAnswer(
     }
 
     const challenge = challengeRes.rows[0];
+    const membershipRes = await client.query(
+      `SELECT COALESCE(
+                member_link.is_member = TRUE
+                AND member_link.verification_source = 'admin_snapshot'
+                AND member_link.snapshot_import_id = snapshot_state.active_import_id
+                AND snapshot_import.id IS NOT NULL
+                AND approved_claim.id IS NOT NULL,
+                FALSE
+              ) AS is_youtube_member
+       FROM users user_account
+       LEFT JOIN youtube_account_links member_link
+         ON member_link.user_id = user_account.id
+       LEFT JOIN youtube_membership_snapshot_state snapshot_state
+         ON snapshot_state.singleton = TRUE
+       LEFT JOIN youtube_membership_snapshot_imports snapshot_import
+         ON snapshot_import.id = snapshot_state.active_import_id
+        AND snapshot_import.expires_at > clock_timestamp()
+       LEFT JOIN youtube_channel_claims approved_claim
+         ON approved_claim.user_id = user_account.id
+        AND approved_claim.youtube_channel_id = member_link.youtube_channel_id
+        AND approved_claim.status = 'approved'
+       WHERE user_account.id = $1`,
+      [userId],
+    );
+    const isYouTubeMember =
+      membershipRes.rows[0]?.is_youtube_member === true;
     const now = new Date();
     if (
       !['open', 'scheduled'].includes(challenge.status) ||

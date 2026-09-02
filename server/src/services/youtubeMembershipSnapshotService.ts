@@ -4,7 +4,7 @@ import { getClient, query } from '../db/pool.js';
 import {
   YouTubeMembershipLookup,
   youtubeChannelIdPattern,
-} from './youtubeOAuthService.js';
+} from './youtubeChannelId.js';
 
 export const youtubeMembershipSnapshotHeaders = [
   'Member',
@@ -57,6 +57,7 @@ export type YouTubeMembershipSnapshotMetadata = {
   memberCount: number;
   matchedUserCount: number;
   activatedAt: Date;
+  expiresAt?: Date;
 };
 
 export type ActiveYouTubeMembershipSnapshot = {
@@ -85,6 +86,7 @@ export interface YouTubeMembershipSnapshotStore {
     parsed: ParsedYouTubeMembershipSnapshot;
     activatedAt: Date;
     expiresAt: Date;
+    allowLargeDecrease?: boolean;
     ipAddress?: string | null;
     userAgent?: string | null;
   }): Promise<YouTubeMembershipSnapshotMetadata>;
@@ -329,6 +331,17 @@ export function parseYouTubeMembershipSnapshot(input: {
         `Row ${rowNumber} does not contain exactly seven columns.`,
       );
     }
+    // The exported display label is useful only to validate that this is a
+    // complete YouTube Studio row. It is deliberately never returned or
+    // persisted; channel ID is the sole matching key.
+    const memberLabel = values[0].trim();
+    if (!memberLabel || memberLabel.length > 500) {
+      throw new YouTubeMembershipSnapshotError(
+        'youtube_snapshot_member_label_invalid',
+        400,
+        `Row ${rowNumber} contains an invalid “Member” value.`,
+      );
+    }
     const channelId = extractYouTubeChannelIdFromProfileLink(values[1]);
     if (seen.has(channelId)) {
       throw new YouTubeMembershipSnapshotError(
@@ -385,6 +398,15 @@ function snapshotExpiry(activatedAt: Date, maxAgeHours: number): Date {
   return new Date(activatedAt.getTime() + maxAgeHours * 60 * 60 * 1000);
 }
 
+export function youtubeSnapshotRequiresLargeDecreaseConfirmation(
+  previousCount: number,
+  nextCount: number,
+): boolean {
+  return nextCount === 0 || (
+    previousCount > 0 && nextCount < Math.ceil(previousCount * 0.8)
+  );
+}
+
 function membershipPeriodStartedAt(
   row: ParsedYouTubeMembershipSnapshotRow,
 ): Date | null {
@@ -404,6 +426,7 @@ implements YouTubeMembershipSnapshotStore {
     parsed: ParsedYouTubeMembershipSnapshot;
     activatedAt: Date;
     expiresAt: Date;
+    allowLargeDecrease?: boolean;
     ipAddress?: string | null;
     userAgent?: string | null;
   }): Promise<YouTubeMembershipSnapshotMetadata> {
@@ -416,17 +439,36 @@ implements YouTubeMembershipSnapshotStore {
          )`,
       );
       const previous = await client.query(
-        `SELECT active_import_id
-         FROM youtube_membership_snapshot_state
-         WHERE singleton = TRUE
-         FOR UPDATE`,
+        `SELECT snapshot_state.active_import_id,
+                snapshot_import.member_count
+         FROM youtube_membership_snapshot_state snapshot_state
+         JOIN youtube_membership_snapshot_imports snapshot_import
+           ON snapshot_import.id = snapshot_state.active_import_id
+         WHERE snapshot_state.singleton = TRUE
+         FOR UPDATE OF snapshot_state, snapshot_import`,
       );
       const previousImportId = previous.rows[0]?.active_import_id ?? null;
+      const lockedPreviousCount = Number(previous.rows[0]?.member_count ?? 0);
+      const lockedNextCount = input.parsed.rows.length;
+      if (
+        youtubeSnapshotRequiresLargeDecreaseConfirmation(
+          lockedPreviousCount,
+          lockedNextCount,
+        ) && input.allowLargeDecrease !== true
+      ) {
+        throw new YouTubeMembershipSnapshotError(
+          'youtube_snapshot_large_decrease_confirmation_required',
+          409,
+          lockedPreviousCount > 0
+            ? `The new export has ${lockedNextCount} members while the current snapshot has ${lockedPreviousCount}. Confirm that this is a complete export before replacing it.`
+            : 'The export contains no members. Confirm that this complete empty export is intentional before replacing the snapshot.',
+        );
+      }
       const imported = await client.query(
         `INSERT INTO youtube_membership_snapshot_imports
            (imported_by_user_id, source_filename, source_format,
-            source_sha256, member_count, activated_at)
-         VALUES ($1, $2, $3, $4, $5, $6)
+            source_sha256, member_count, activated_at, expires_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING id`,
         [
           input.importedByUserId,
@@ -435,6 +477,7 @@ implements YouTubeMembershipSnapshotStore {
           input.parsed.sourceSha256,
           input.parsed.rows.length,
           input.activatedAt,
+          input.expiresAt,
         ],
       );
       const importId = imported.rows[0].id as string;
@@ -536,9 +579,16 @@ implements YouTubeMembershipSnapshotStore {
         `WITH observed AS (
            SELECT l.user_id, l.youtube_channel_id,
                   l.is_member AS was_member,
-                  (m.youtube_channel_id IS NOT NULL) AS is_member,
+                  (
+                    approved_claim.id IS NOT NULL
+                    AND m.youtube_channel_id IS NOT NULL
+                  ) AS is_member,
                   m.membership_level
            FROM youtube_account_links l
+           LEFT JOIN youtube_channel_claims approved_claim
+             ON approved_claim.user_id = l.user_id
+            AND approved_claim.youtube_channel_id = l.youtube_channel_id
+            AND approved_claim.status = 'approved'
            LEFT JOIN youtube_membership_snapshot_members m
              ON m.youtube_channel_id = l.youtube_channel_id
             AND m.import_id = $1
@@ -563,10 +613,17 @@ implements YouTubeMembershipSnapshotStore {
       await client.query(
         `WITH observed AS (
            SELECT l.user_id,
-                  (m.youtube_channel_id IS NOT NULL) AS is_member,
+                  (
+                    approved_claim.id IS NOT NULL
+                    AND m.youtube_channel_id IS NOT NULL
+                  ) AS is_member,
                   m.membership_level,
                   m.joined_at
            FROM youtube_account_links l
+           LEFT JOIN youtube_channel_claims approved_claim
+             ON approved_claim.user_id = l.user_id
+            AND approved_claim.youtube_channel_id = l.youtube_channel_id
+            AND approved_claim.status = 'approved'
            LEFT JOIN youtube_membership_snapshot_members m
              ON m.youtube_channel_id = l.youtube_channel_id
             AND m.import_id = $1
@@ -574,7 +631,9 @@ implements YouTubeMembershipSnapshotStore {
          )
          UPDATE youtube_account_links l
          SET is_member = observed.is_member,
-             membership_level_id = observed.membership_level,
+             membership_level_id = CASE
+               WHEN observed.is_member THEN observed.membership_level ELSE NULL
+             END,
              member_since = CASE
                WHEN NOT observed.is_member THEN NULL
                ELSE observed.joined_at
@@ -583,7 +642,9 @@ implements YouTubeMembershipSnapshotStore {
              last_attempted_at = $2,
              last_error_code = NULL,
              verification_source = 'admin_snapshot',
-             snapshot_import_id = $1,
+             snapshot_import_id = CASE
+               WHEN observed.is_member THEN $1 ELSE NULL
+             END,
              updated_at = CURRENT_TIMESTAMP
          FROM observed
          WHERE l.user_id = observed.user_id`,
@@ -603,9 +664,13 @@ implements YouTubeMembershipSnapshotStore {
       );
       await client.query(
         `INSERT INTO user_roles (user_id, role_id)
-         SELECT user_id, 'member'
-         FROM youtube_account_links
-         WHERE is_member = TRUE
+         SELECT link.user_id, 'member'
+         FROM youtube_account_links link
+         JOIN youtube_channel_claims approved_claim
+           ON approved_claim.user_id = link.user_id
+          AND approved_claim.youtube_channel_id = link.youtube_channel_id
+          AND approved_claim.status = 'approved'
+         WHERE link.is_member = TRUE
          ON CONFLICT DO NOTHING`,
       );
       await client.query(
@@ -618,6 +683,10 @@ implements YouTubeMembershipSnapshotStore {
       const matched = await client.query(
         `SELECT COUNT(*)::integer AS matched
          FROM youtube_account_links l
+         JOIN youtube_channel_claims approved_claim
+           ON approved_claim.user_id = l.user_id
+          AND approved_claim.youtube_channel_id = l.youtube_channel_id
+          AND approved_claim.status = 'approved'
          JOIN youtube_membership_snapshot_members m
            ON m.youtube_channel_id = l.youtube_channel_id
           AND m.import_id = $1
@@ -662,6 +731,7 @@ implements YouTubeMembershipSnapshotStore {
         memberCount: input.parsed.rows.length,
         matchedUserCount,
         activatedAt: input.activatedAt,
+        expiresAt: input.expiresAt,
       };
     } catch (error) {
       await client.query('ROLLBACK').catch(() => undefined);
@@ -674,7 +744,8 @@ implements YouTubeMembershipSnapshotStore {
   async getActiveMetadata(): Promise<YouTubeMembershipSnapshotMetadata | null> {
     const result = await query(
       `SELECT i.id, i.source_filename, i.source_format, i.source_sha256,
-              i.member_count, i.matched_user_count, i.activated_at
+              i.member_count, i.matched_user_count, i.activated_at,
+              i.expires_at
        FROM youtube_membership_snapshot_state s
        JOIN youtube_membership_snapshot_imports i
          ON i.id = s.active_import_id
@@ -690,6 +761,7 @@ implements YouTubeMembershipSnapshotStore {
       memberCount: Number(row.member_count),
       matchedUserCount: Number(row.matched_user_count),
       activatedAt: new Date(row.activated_at),
+      expiresAt: row.expires_at ? new Date(row.expires_at) : undefined,
     };
   }
 
@@ -756,7 +828,8 @@ export async function getYouTubeMembershipSnapshotStatus(
       maxAgeHours,
     };
   }
-  const expiresAt = snapshotExpiry(metadata.activatedAt, maxAgeHours);
+  const expiresAt = metadata.expiresAt ??
+    snapshotExpiry(metadata.activatedAt, maxAgeHours);
   return {
     status: expiresAt.getTime() > now.getTime() ? 'active' : 'expired',
     importId: metadata.importId,
@@ -769,6 +842,33 @@ export async function getYouTubeMembershipSnapshotStatus(
     expiresAt: expiresAt.toISOString(),
     maxAgeHours,
   };
+}
+
+/**
+ * Enforce the currently configured maximum age at process startup. Import
+ * rows retain their original expiry, but can never outlive a stricter policy
+ * applied later. This also safely clamps pre-037 rows backfilled by migration.
+ */
+export async function clampYouTubeMembershipSnapshotExpiryToPolicy(
+  options: {
+    environment?: NodeJS.ProcessEnv;
+    runQuery?: (text: string, params?: unknown[]) => Promise<unknown>;
+  } = {},
+): Promise<void> {
+  const maxAgeHours = youtubeMembershipSnapshotMaxAgeHours(
+    options.environment,
+  );
+  const runQuery = options.runQuery ?? query;
+  await runQuery(
+    `UPDATE youtube_membership_snapshot_imports
+     SET expires_at = LEAST(
+       expires_at,
+       activated_at + ($1::integer * INTERVAL '1 hour')
+     )
+     WHERE expires_at >
+       activated_at + ($1::integer * INTERVAL '1 hour')`,
+    [maxAgeHours],
+  );
 }
 
 export async function getActiveYouTubeMembershipSnapshot(
@@ -784,11 +884,11 @@ export async function getActiveYouTubeMembershipSnapshot(
   const metadata = await store.getActiveMetadata();
   if (!metadata) return null;
   const maxAgeHours = youtubeMembershipSnapshotMaxAgeHours(options.environment);
-  const expiresAt = snapshotExpiry(metadata.activatedAt, maxAgeHours);
-  // Age is surfaced as an expired/stale warning by the status endpoint, but
-  // the latest complete export remains the membership authority until it is
-  // replaced. Otherwise a missed weekly upload would block ordinary XP or
-  // silently revoke members despite no newer evidence from YouTube.
+  const expiresAt = metadata.expiresAt ??
+    snapshotExpiry(metadata.activatedAt, maxAgeHours);
+  // Staff approval and the latest full export are both required. Once that
+  // export expires it fails closed to x1 until staff uploads a current file.
+  if (expiresAt.getTime() <= now.getTime()) return null;
   const rows = await store.getMembers(metadata.importId, channelIds);
   return {
     importId: metadata.importId,
@@ -855,9 +955,8 @@ export async function importYouTubeMembershipSnapshot(input: {
   const previous = await store.getActiveMetadata();
   const previousCount = previous?.memberCount ?? 0;
   const nextCount = parsed.rows.length;
-  const wouldRemoveManyMembers = nextCount === 0 || (
-    previousCount > 0 && nextCount < Math.ceil(previousCount * 0.8)
-  );
+  const wouldRemoveManyMembers =
+    youtubeSnapshotRequiresLargeDecreaseConfirmation(previousCount, nextCount);
   if (wouldRemoveManyMembers && input.allowLargeDecrease !== true) {
     throw new YouTubeMembershipSnapshotError(
       'youtube_snapshot_large_decrease_confirmation_required',
@@ -873,6 +972,7 @@ export async function importYouTubeMembershipSnapshot(input: {
     parsed,
     activatedAt: now,
     expiresAt,
+    allowLargeDecrease: input.allowLargeDecrease,
     ipAddress: input.ipAddress,
     userAgent: input.userAgent,
   });

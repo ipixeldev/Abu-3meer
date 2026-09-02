@@ -669,11 +669,9 @@ async function rankedRows(
               COALESCE(
                 yl.is_member = TRUE
                 AND yl.verification_source = 'admin_snapshot'
-                AND yl.snapshot_import_id = (
-                  SELECT active_import_id
-                  FROM youtube_membership_snapshot_state
-                  WHERE singleton = TRUE
-                ),
+                AND yl.snapshot_import_id = snapshot_state.active_import_id
+                AND snapshot_import.id IS NOT NULL
+                AND approved_claim.id IS NOT NULL,
                 FALSE
               ) AS is_youtube_member,
               u.created_at AS account_created_at,
@@ -681,11 +679,21 @@ async function rankedRows(
        FROM point_transactions pt
        JOIN users u ON u.id = pt.user_id
        LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
+       LEFT JOIN youtube_membership_snapshot_state snapshot_state
+         ON snapshot_state.singleton = TRUE
+       LEFT JOIN youtube_membership_snapshot_imports snapshot_import
+         ON snapshot_import.id = snapshot_state.active_import_id
+        AND snapshot_import.expires_at > CURRENT_TIMESTAMP
+       LEFT JOIN youtube_channel_claims approved_claim
+         ON approved_claim.user_id = u.id
+        AND approved_claim.youtube_channel_id = yl.youtube_channel_id
+        AND approved_claim.status = 'approved'
        WHERE u.account_status = 'active'
          AND pt.source_type IN (${eligibleSourceSql})
          AND pt.created_at >= $1
          AND ($2::timestamptz IS NULL OR pt.created_at < $2)
-       GROUP BY u.id, yl.user_id
+       GROUP BY u.id, yl.user_id, snapshot_state.active_import_id,
+                snapshot_import.id, approved_claim.id
        HAVING SUM(pt.final_points) > 0
      ), ranked AS (
        SELECT database_user_id,
