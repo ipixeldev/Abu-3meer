@@ -85,7 +85,7 @@ The external TestFlight link is enabled and below its tester limit, but builds 1
 
 - Complete reviewer contact details and a working review login under App Review Information as well.
 - Supply copyright holder text and an accurate third-party content-rights declaration. Football logos/videos mean "does not use third-party content" cannot be assumed.
-- Add the required primary Arabic screenshots.
+- Current primary Arabic screenshots were uploaded on 6 September 2026 from full build 20 at native 1320×2868 resolution (Predictions and Leaderboard); both completed processing. Refresh them if those screens change.
 - Confirm and publish App Privacy answers, age rating, regional/trader and business agreement information in App Store Connect. Do not guess legal declarations.
 - Attach both first subscriptions to the app-version review submission. Both products have complete required metadata but are not yet approved.
 - Configure and verify RevenueCat webhooks so renewals, refunds, expirations and transfers reach the server.
