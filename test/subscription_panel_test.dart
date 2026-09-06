@@ -512,6 +512,83 @@ void main() {
     expect(find.text('Subscription active'), findsNothing);
   });
 
+  testWidgets(
+    'fresh access response replaces a stale profile reason until profile rebuild',
+    (tester) async {
+      final store = _Store();
+      addTearDown(store.dispose);
+      final repository = _Repository();
+      repository.result.complete(
+        const SubscriptionAccessResult(
+          isActive: true,
+          reason: 'admin_granted',
+          source: 'admin',
+          overrideMode: 'active',
+        ),
+      );
+      final staleProfile = _profile.copyWith(
+        subscriptionAccessReason: 'no_entitlement',
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SubscriptionPanel(
+              repository: repository,
+              profile: staleProfile,
+              subscriptionService: store,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('Access not active'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('subscription-open-details')));
+      await tester.pumpAndSettle();
+      final refresh = find.text('Refresh access');
+      await tester.ensureVisible(refresh);
+      await tester.tap(refresh);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('close-subscription-details')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Admin-granted access'), findsOneWidget);
+      expect(find.text('Access not active'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('admin block never asks an unsubscribed user to purchase again', (
+    tester,
+  ) async {
+    final store = _Store(active: false);
+    addTearDown(store.dispose);
+    final blockedProfile = _profile.copyWith(
+      subscriptionAccessMode: SubscriptionAccessMode.inactive,
+      subscriptionAccessReason: 'admin_revoked',
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SubscriptionPanel(
+            repository: _Repository(),
+            profile: blockedProfile,
+            subscriptionService: store,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Subscription access blocked'), findsOneWidget);
+    expect(find.text('View plans'), findsNothing);
+    await tester.tap(find.byKey(const Key('subscription-open-details')));
+    await tester.pumpAndSettle();
+    expect(find.text('View plans'), findsNothing);
+    expect(find.text('Restore purchases'), findsNothing);
+    expect(find.text('Customer Center'), findsNothing);
+    expect(find.text('Refresh access'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   for (final language in ['en', 'ar']) {
     testWidgets(
       'active subscription stays compact and management is explicit ($language)',

@@ -30,7 +30,25 @@ class _Storage extends Fake implements FirebaseStorage {}
 
 class _Client extends AbuApiClient {
   Future<dynamic> Function()? onSync;
+  Future<dynamic> Function()? onStatus;
   int syncCalls = 0;
+  int statusCalls = 0;
+  bool? lastStatusBypassCache;
+
+  @override
+  Future<dynamic> get(
+    String path, {
+    Map<String, String>? queryParams,
+    bool requireAuth = false,
+    bool bypassCache = false,
+  }) async {
+    expect(path, '/subscriptions/status');
+    expect(queryParams, isNull);
+    expect(requireAuth, isTrue);
+    statusCalls++;
+    lastStatusBypassCache = bypassCache;
+    return await onStatus!();
+  }
 
   @override
   Future<dynamic> post(
@@ -202,6 +220,29 @@ void main() {
       expect(result.reason, 'sandbox_not_allowed');
       expect(result.environment, 'sandbox');
       expect(profiles.last!.isProSubscriber, false);
+    },
+  );
+
+  test(
+    'local access refresh forces a fresh status request without store sync',
+    () async {
+      client.onStatus = () async => {
+        'data': {
+          'entitlementId': 'abu_3meer_pro',
+          'isActive': true,
+          'accessReason': 'admin_granted',
+          'accessSource': 'admin',
+          'subscriptionAccessMode': 'active',
+        },
+      };
+
+      final result = await repository.refreshSubscriptionAccess(_profile());
+
+      expect(result.isActive, isTrue);
+      expect(result.reason, 'admin_granted');
+      expect(client.statusCalls, 1);
+      expect(client.lastStatusBypassCache, isTrue);
+      expect(client.syncCalls, 0);
     },
   );
 

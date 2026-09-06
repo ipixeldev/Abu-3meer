@@ -1,39 +1,140 @@
-# RC-23: confirmed findings and next owner action
+# RC-23: confirmed findings and next actions
 
-Updated 6 September 2026 after the physical-device RC-23 report and successful backend rebuild.
+Updated 6 September 2026 after the physical-device report, the App Store
+Connect/API audit, the RevenueCat credential screenshots, and inspection of the
+supplied SampleCat ZIP.
 
-## Confirmed
+## What is confirmed
 
-- The released app uses the real App Store public SDK key (`appl_`), not RevenueCat Test Store.
-- RevenueCat returns the published `default` offering/paywall and the exact Apple product IDs `Ostoora3` and `Ostoora3_Pro_Max`.
-- Apple lists both products as READY_TO_SUBMIT, with prices and availability in 175 territories. They are not approved for public sale yet. READY_TO_SUBMIT does not by itself explain a TestFlight product lookup failure.
-- The device reports configuration error RC-23. Without its underlying native error or agreement status, the exact cause is not established.
-- The existing `dev` customer's **production** RevenueCat response has neither expected subscription nor `abu_3meer_pro`. This agrees with the server's `no_entitlement`.
-- Follow-up native-SDK header inspection found that RevenueCat sends `X-Is-Sandbox`. Querying the same existing customer with that header `true` returns `Ostoora3_Pro_Max` and `abu_3meer_pro`, with `is_sandbox: true`; setting it `false` returns no subscription. Thus a test subscription DOES exist, but no production subscription is recognized. The earlier header-less check was not an inventory of both environments. Do not turn the test record into a production grant.
-- The earlier `runtimeSupportsAccessReasons: false` diagnostic was collected before the backend rebuild. The user has since successfully built the API image and force-recreated it with `--wait`; Docker reports **Healthy** and `/ready` succeeds. Repeating that deployment is not the next RC-23 fix.
-- The client's **Paid Applications agreement status remains unverified**. No evidence currently establishes that it is inactive.
+- The iOS app uses the real public RevenueCat App Store SDK key (`appl_`) and
+  passes the authenticated Abu 3meer PostgreSQL user UUID as the RevenueCat App
+  User ID. The server separately uses the private REST API v1 `sk_` key.
+- Bundle identifier `omar.abu3meer.app`, entitlement `abu_3meer_pro`, and product
+  identifiers `Ostoora3` and `Ostoora3_Pro_Max` match between the app,
+  RevenueCat, and App Store Connect.
+- RevenueCat's `default` offering contains both products and the published
+  native paywall.
+- Both subscriptions have prices, 175-territory availability (including
+  Turkey), localizations, and review images. Both are **Ready to Submit**.
+- The phone's sanitized report completed both storefront and StoreKit lookups
+  for `TUR`, but StoreKit returned neither requested product. RevenueCat
+  therefore raised configuration error `RC-23`. This proves an empty product
+  response; it does not prove the public SDK key is missing.
+- Paid Applications, banking, and tax became Active on 6 September 2026. Store
+  catalog changes can take time to propagate after an agreement is activated.
+- RevenueCat shows **Valid credentials** for both the In-App Purchase key and
+  the separate App Store Connect API key. There is no screenshot evidence that
+  either `.p8` credential is invalid.
+- The existing `dev` RevenueCat customer has an active sandbox subscription but
+  no active production entitlement. Apple's **Active** test UI and Customer
+  Center therefore do not establish a paid public-App-Store subscription.
 
-## RecipeRift comparison
+## Why the sample app appeared to work
 
-The [read-only RecipeRift comparison](RECIPERIFT_SUBSCRIPTIONS_COMPARISON.md) found the same normal RevenueCat native SDK/paywall flow, with SwiftUI instead of Flutter and a **different Apple developer team**. There is no alternative billing workaround to copy. Working purchases in RecipeRift do not verify the client's Abu3meer agreement status or identify the exact RC-23 cause.
+The supplied SampleCat Xcode Run scheme enables a local StoreKit configuration.
+Its sample prices are fixture values, so it can render and purchase locally even
+when Apple's TestFlight catalog returns zero products. The RevenueCat SDK flow
+is otherwise the same normal native paywall flow used by Abu 3meer.
 
-## Owner action needed now
+A local Xcode preview is useful for layout testing, but it is not evidence that
+`Ostoora3` or `Ostoora3_Pro_Max` is available from Apple's sandbox storefront.
+The release Runner scheme and exported release app do not enable the local
+StoreKit catalog. See
+[SAMPLECAT_CONFIGURATION_CHECK.md](SAMPLECAT_CONFIGURATION_CHECK.md).
 
-1. Sign in to the **client's** App Store Connect account.
-2. Open **Business → Agreements** and check the **Paid Applications** status. Report whether it is **Active** or shows an action-needed status; its current state has not been confirmed.
-3. If Apple requests agreement, tax, or banking actions, have the account holder complete them through Apple's prompts. Do not assume anything needs changing if it already shows complete.
-4. Send the agreement status and any warning text, hiding bank/tax details. Do not send private keys.
-5. In build 23 or later, open **Members → View plans**. If Plans unavailable appears, tap **Check store connection**, wait up to 15 seconds, then **Copy report** and send that text. It first checks SDK initialization, then checks the two real product IDs without buying, restoring, changing accounts, or granting access. The report excludes account IDs, keys, receipts, and raw native messages. SDK product reads may use cached data; this is not proof of a fresh Apple request or production approval. Build 22 is superseded by the guarded diagnostic in 23; do not use 22.
-6. If both products load but the paywall still fails after Retry, or the account requirements are all complete, capture the failing phone's native RevenueCat/StoreKit error around opening View plans. Do not recreate products, rotate keys, or enable test entitlements as a guess.
+## Apple credential roles
 
-These prerequisites apply even before public release. See [RevenueCat's iOS setup requirements](https://www.revenuecat.com/docs/getting-started/entitlements/ios-products) and [empty-products troubleshooting](https://www.revenuecat.com/docs/offerings/troubleshooting-offerings).
+- The public `appl_` key identifies the RevenueCat app to the client SDK. It is
+  expected in the iOS app and is not a secret.
+- The `sk_` key authenticates the Abu 3meer server to RevenueCat. It must never
+  be bundled into the app.
+- RevenueCat's **In-app purchase key configuration** `.p8` lets RevenueCat
+  validate/record modern Apple transactions. The displayed key ID and issuer
+  show valid credentials.
+- The separate **App Store Connect API** `.p8` supports product import, prices,
+  and related App Store Connect operations. It is not the client SDK key.
+- An app-specific shared secret is a legacy StoreKit 1 compatibility credential.
+  It should be valid if legacy receipt validation is required, but it does not
+  populate an empty StoreKit product response.
+- Apple server-to-server notifications are recommended for timely renewal,
+  refund, and expiration updates. A page saying no notifications have yet been
+  received does not explain why StoreKit returned zero products before a
+  purchase. Applying RevenueCat's notification URL is a separate recommended
+  setup step.
 
-## Backend update is complete
+Do not rotate another key, upload an arbitrary team key, recreate products, or
+copy the sample's fixture prices in response to `RC-23`.
 
-The successful Docker build, forced recreation with `--wait`, **Healthy** status, and `/ready` response confirm backend readiness. **No additional Docker command is required for the reported RC-23 issue.** These checks do not prove that Apple's product lookup works or that a production subscription exists.
+## Next product-lookup action
 
-Leave `REVENUECAT_ALLOW_SANDBOX=false` for the current production-only policy. A sandbox purchase must not be converted into production access; subscriber access still requires a recognized, verified production entitlement.
+1. Allow up to 24 hours from the Paid Applications activation for Apple's store
+   catalog to propagate.
+2. Install/open the current TestFlight build, then use **Members → View plans →
+   Check store connection → Copy report**. This is a read-only product lookup;
+   it does not charge, restore, or grant access.
+3. If both products are still absent after that propagation window, retain the
+   sanitized report with the app version/build, exact UTC time, storefront,
+   bundle ID, and both product IDs. Escalate that evidence to Apple Developer
+   Support and RevenueCat Support. Do not share API keys, `.p8` files, receipts,
+   Apple IDs, or review passwords.
 
-## Icon correction in build 21
+The app can show the native RevenueCat paywall only after Apple returns at least
+one package's StoreKit product. A backend rebuild cannot manufacture that
+product response.
 
-The exact user-supplied JPG is rendered through a circular viewport. No generated/redrawn replacement is used. The old distorted PNG is removed from the bundled assets and remains recoverable in Git history.
+References: [RevenueCat empty-offering troubleshooting](https://www.revenuecat.com/docs/offerings/troubleshooting-offerings),
+[RevenueCat Apple sandbox/TestFlight behavior](https://www.revenuecat.com/docs/test-and-launch/sandbox/apple-app-store),
+[RevenueCat in-app purchase key configuration](https://www.revenuecat.com/docs/service-credentials/itunesconnect-app-specific-shared-secret/in-app-purchase-key-configuration).
+
+## Server deployment required for access fixes
+
+The earlier healthy Docker rebuild deployed migrations 040/041. The current
+revision additionally contains:
+
+- migration `042_admin_subscription_access.sql`;
+- production-first, per-account sandbox access for TestFlight/App Review;
+- admin grant/block/store-control actions; and
+- the validated WhatsApp support endpoint.
+
+Pull, back up, rebuild, and recreate the API using
+[DEPLOY_MEMBERSHIP_SUBSCRIPTIONS.md](DEPLOY_MEMBERSHIP_SUBSCRIPTIONS.md). This is
+required for those access/support features, but it is not presented as a repair
+for Apple's `RC-23` product response.
+
+Keep:
+
+```dotenv
+REVENUECAT_ALLOW_SANDBOX=false
+REVENUECAT_SANDBOX_ALLOWED_USER_IDS=<dedicated-review-app-account-postgresql-uuid>
+SUPPORT_WHATSAPP_NUMBER=
+```
+
+The server requests production state first. Only the exact allowlisted account,
+and only when it lacks an active production entitlement, receives the explicit
+sandbox fallback. RevenueCat must also be set manually to **Sandbox Testing
+Access → Allowed App User IDs only** with the same UUID. Blank WhatsApp support
+is disabled safely until the real international digits-only number is supplied.
+
+## App Store Connect review blockers
+
+The current review draft contains the subscription group and both subscription
+versions. Apple would not accept the app version into that draft because these
+owner actions remain:
+
+- answer and publish App Privacy;
+- upload the required 12.9-inch iPad Pro screenshots, or explicitly decide to
+  remove iPad support in a future build;
+- enter reviewer first name, last name, email, phone country code, and phone;
+- enter the exact copyright holder;
+- make the accurate third-party content-rights declaration; and
+- wait for/resolve the Digital Services Act status shown as **In Review** if
+  Apple requires it for EU distribution.
+
+The dedicated review login is already stored and must remain private. Once the
+manual blockers are cleared and the final processed build is selected, the app
+version must join the subscription group/items because these are the first
+subscriptions.
+
+Do not submit Beta App Review, public App Review, or release the app without
+explicit owner authorization. No App Review submission is authorized by this
+document.

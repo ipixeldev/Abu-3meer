@@ -32,6 +32,8 @@ import '../features/match/screens/match_facts_screen.dart';
 import '../features/videos/exclusive_videos_view.dart';
 import '../features/membership/manual_membership_dialog.dart';
 import '../features/subscriptions/subscription_panel.dart';
+import '../features/admin/admin_subscription_dialog.dart';
+import '../features/support/whatsapp_support_button.dart';
 import '../production/subscription_service.dart';
 
 part 'fan_league_extended.dart';

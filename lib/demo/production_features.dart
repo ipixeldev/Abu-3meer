@@ -5676,6 +5676,18 @@ class _ProductionAdminTools extends StatelessWidget {
             color: _productionPrimary(context),
             onTap: () => manageLeaderboardSeasons(context),
           ),
+        if (profile.canManageSubscriptions)
+          _AdminQuickAction(
+            icon: Icons.verified_user_outlined,
+            label: abuText(context, 'MEMBERSHIP ACCESS', 'صلاحيات العضوية'),
+            detail: abuText(
+              context,
+              'Grant or block app access. Store billing is unchanged.',
+              'منح أو تعطيل صلاحيات التطبيق دون تغيير فوترة المتجر.',
+            ),
+            color: _gold,
+            onTap: () => manageSubscriptionAccess(context),
+          ),
         if (profile.canManageRoles)
           _AdminQuickAction(
             icon: Icons.manage_accounts_rounded,
@@ -5818,6 +5830,17 @@ class _ProductionAdminTools extends StatelessWidget {
                     ),
                     color: _productionPrimary(context),
                     onTap: () => manageLeaderboardSeasons(context),
+                  ),
+                if (profile.canManageSubscriptions)
+                  _AdminMobileAction(
+                    icon: Icons.verified_user_outlined,
+                    label: abuText(
+                      context,
+                      'MEMBERSHIP ACCESS',
+                      'صلاحيات العضوية',
+                    ),
+                    color: _gold,
+                    onTap: () => manageSubscriptionAccess(context),
                   ),
                 if (profile.canManageRoles)
                   _AdminMobileAction(
@@ -7084,6 +7107,15 @@ class _ProductionAdminTools extends StatelessWidget {
       showDialog<void>(
         context: context,
         builder: (_) => _AdminLeaderboardSeasonsDialog(repository: repository),
+      );
+
+  Future<void> manageSubscriptionAccess(BuildContext context) =>
+      showDialog<void>(
+        context: context,
+        builder: (_) => AdminSubscriptionDialog(
+          repository: repository,
+          currentProfile: profile,
+        ),
       );
 
   Future<void> manageRoles(BuildContext context) => showDialog<void>(

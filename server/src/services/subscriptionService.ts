@@ -11,13 +11,17 @@ export interface SubscriptionStatus {
   isSandbox: boolean;
   verifiedAt: string | null;
   accessReason: 'active' | 'sandbox_not_allowed' | 'no_entitlement'
-    | 'expired' | 'verification_required' | 'inactive';
+    | 'expired' | 'verification_required' | 'inactive' | 'admin_granted' | 'admin_revoked';
   environment: 'production' | 'sandbox' | 'unknown';
+  accessSource: 'admin' | 'store' | 'none';
+  subscriptionAccessMode: 'active' | 'inactive' | 'store';
+  subscriptionAccessExpiresAt: string | null;
 }
 
 // Policy decisions are derived when reading. Persist the verified upstream
 // subscription, not a sandbox-policy denial that would hide why access stopped.
-type VerifiedSubscriptionStatus = Omit<SubscriptionStatus, 'accessReason' | 'environment'>;
+type VerifiedSubscriptionStatus = Omit<SubscriptionStatus,
+  'accessReason' | 'environment' | 'accessSource' | 'subscriptionAccessMode' | 'subscriptionAccessExpiresAt'>;
 
 export class SubscriptionError extends Error {
   constructor(public code: string, message: string, public statusCode = 503) {
@@ -40,6 +44,7 @@ export function emptySubscriptionStatus(): SubscriptionStatus {
     entitlementId: 'abu_3meer_pro', isActive: false, productId: null,
     expiresAt: null, willRenew: false, isSandbox: false, verifiedAt: null,
     accessReason: 'no_entitlement', environment: 'unknown',
+    accessSource: 'none', subscriptionAccessMode: 'store', subscriptionAccessExpiresAt: null,
   };
 }
 
@@ -100,7 +105,40 @@ export function enforceSubscriptionAccess(
   } else if (status.isSandbox && !allowSandbox) accessReason = 'sandbox_not_allowed';
   else accessReason = 'active';
   const active = accessReason === 'active';
-  return { ...status, isActive: active, willRenew: active && status.willRenew, accessReason, environment };
+  return {
+    ...status, isActive: active, willRenew: active && status.willRenew, accessReason, environment,
+    accessSource: status.productId ? 'store' : 'none',
+    subscriptionAccessMode: 'store', subscriptionAccessExpiresAt: null,
+  };
+}
+
+export function sandboxAccessAllowedForUser(
+  userId: string,
+  allowSandbox = config.revenueCat.allowSandbox,
+  allowedUserIds = config.revenueCat.sandboxAllowedUserIds,
+): boolean {
+  if (allowSandbox) return true;
+  const normalized = userId.trim().toLowerCase();
+  return allowedUserIds.some(value => value.toLowerCase() === normalized);
+}
+
+/** Overrides grant app access only; store product, expiry and provenance remain truthful. */
+export function applySubscriptionAccessOverride(
+  status: SubscriptionStatus,
+  override: { mode?: unknown; expiresAt?: unknown },
+  now = Date.now(),
+): SubscriptionStatus {
+  const mode = override.mode === 'active' || override.mode === 'inactive' ? override.mode : 'store';
+  const expiry = validDate(override.expiresAt);
+  const base: SubscriptionStatus = { ...status, subscriptionAccessMode: mode,
+    subscriptionAccessExpiresAt: expiry === null ? null : new Date(expiry).toISOString() };
+  if (mode === 'inactive') {
+    return { ...base, isActive: false, accessReason: 'admin_revoked', accessSource: 'admin' };
+  }
+  if (mode === 'active' && (override.expiresAt == null || (expiry !== null && expiry > now))) {
+    return { ...base, isActive: true, accessReason: 'admin_granted', accessSource: 'admin' };
+  }
+  return base;
 }
 
 type SubscriptionQuery = (text: string, params?: unknown[]) => Promise<{rows: JsonObject[]}>;
@@ -110,14 +148,17 @@ export async function readSubscriptionStatus(
   execute: SubscriptionQuery = query,
 ): Promise<SubscriptionStatus> {
   const result = await execute(
-    `SELECT is_active, product_id, expires_at, will_renew, is_sandbox, verified_at
-     FROM user_subscription_entitlements
-     WHERE user_id = $1 AND entitlement_id = 'abu_3meer_pro'`,
+    `SELECT s.is_active, s.product_id, s.expires_at, s.will_renew, s.is_sandbox, s.verified_at,
+            o.mode AS access_override_mode, o.expires_at AS access_override_expires_at
+     FROM (SELECT $1::uuid AS user_id) selected
+     LEFT JOIN user_subscription_entitlements s ON s.user_id = selected.user_id
+       AND s.entitlement_id = 'abu_3meer_pro'
+     LEFT JOIN user_subscription_access_overrides o ON o.user_id = selected.user_id`,
     [userId],
   );
   const row = result.rows[0];
   if (!row) return emptySubscriptionStatus();
-  return enforceSubscriptionAccess({
+  const storeStatus = enforceSubscriptionAccess({
     entitlementId: 'abu_3meer_pro',
     isActive: row.is_active === true,
     productId: typeof row.product_id === 'string' ? row.product_id : null,
@@ -125,6 +166,11 @@ export async function readSubscriptionStatus(
     willRenew: row.will_renew === true,
     isSandbox: row.is_sandbox === true,
     verifiedAt: row.verified_at ? new Date(row.verified_at as string).toISOString() : null,
+  }, Date.now(), sandboxAccessAllowedForUser(userId));
+  return applySubscriptionAccessOverride(storeStatus, {
+    mode: row.access_override_mode,
+    expiresAt: row.access_override_expires_at
+      ? new Date(row.access_override_expires_at as string).toISOString() : null,
   });
 }
 
@@ -162,15 +208,31 @@ export async function syncSubscriptionStatus(
   return readSubscriptionStatus(userId, execute);
 }
 
-export async function fetchRevenueCatCustomer(userId: string): Promise<unknown> {
+type RevenueCatRequest = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
+
+async function fetchRevenueCatCustomerEnvironment(
+  userId: string,
+  sandbox: boolean,
+  request: RevenueCatRequest,
+): Promise<unknown> {
   const secret = config.revenueCat.secretApiKey;
   if (!secret.startsWith('sk_')) {
     throw new SubscriptionError('subscriptions_not_configured', 'Subscriptions are not configured on the server yet.');
   }
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${secret}`,
+    Accept: 'application/json',
+  };
+  // RevenueCat v1 separates sandbox subscribers behind this explicit header.
+  // Never send it on the first/production lookup.
+  if (sandbox) headers['X-Is-Sandbox'] = 'true';
   let response: Response;
   try {
-    response = await fetch(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(userId)}`, {
-      headers: { Authorization: `Bearer ${secret}`, Accept: 'application/json' },
+    response = await request(`https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(userId)}`, {
+      headers,
       signal: AbortSignal.timeout(8_000),
     });
   } catch {
@@ -182,6 +244,30 @@ export async function fetchRevenueCatCustomer(userId: string): Promise<unknown> 
   try { return await response.json(); } catch {
     throw new SubscriptionError('subscription_response_invalid', 'Subscription verification is temporarily unavailable.');
   }
+}
+
+/**
+ * Resolve the production customer first. A sandbox lookup is permitted only
+ * for an explicitly allowed app account and only when production has no active
+ * entitlement. Consequently, test data can never shadow a valid paid receipt.
+ */
+export async function fetchRevenueCatCustomer(
+  userId: string,
+  dependencies: {
+    request?: RevenueCatRequest;
+    now?: number;
+  } = {},
+): Promise<unknown> {
+  const request = dependencies.request ?? fetch;
+  const now = dependencies.now ?? Date.now();
+  const production = await fetchRevenueCatCustomerEnvironment(userId, false, request);
+  const productionStatus = subscriptionFromRevenueCat(production, now);
+  if (productionStatus.isActive && !productionStatus.isSandbox) return production;
+  if (!sandboxAccessAllowedForUser(userId)) return production;
+
+  const sandbox = await fetchRevenueCatCustomerEnvironment(userId, true, request);
+  const sandboxStatus = subscriptionFromRevenueCat(sandbox, now);
+  return sandboxStatus.isActive && sandboxStatus.isSandbox ? sandbox : production;
 }
 
 export function isValidRevenueCatWebhookAuthorization(

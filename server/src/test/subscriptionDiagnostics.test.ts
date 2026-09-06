@@ -87,3 +87,26 @@ test('diagnostics distinguish expired, stale, absent and active production subsc
   assert.equal(missing.accountFound, false);
   assert.equal(missing.accessActive, undefined);
 });
+
+test('diagnostics apply the sandbox allowlist only to the matching private account UUID', async () => {
+  const { diagnoseSubscription } = await diagnostics;
+  const allowedPolicy = {
+    ...policy,
+    sandboxAllowedUserIds: ['private-account-id'],
+  };
+  const allowed = await diagnoseSubscription({
+    username: 'reviewer', policy: allowedPolicy, now,
+    enforce: enforceSubscriptionAccess,
+    execute: async () => ({ rows: [row] }),
+  });
+  assert.equal(allowed.sandboxAllowed, true);
+  assert.equal(allowed.accessReason, 'active');
+  const denied = await diagnoseSubscription({
+    username: 'tester', policy: allowedPolicy, now,
+    enforce: enforceSubscriptionAccess,
+    execute: async () => ({ rows: [{ ...row, id: 'different-private-id' }] }),
+  });
+  assert.equal(denied.sandboxAllowed, false);
+  assert.equal(denied.accessReason, 'sandbox_not_allowed');
+  assert.doesNotMatch(JSON.stringify(allowed), /private-account-id/);
+});

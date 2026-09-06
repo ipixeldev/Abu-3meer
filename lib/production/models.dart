@@ -18,6 +18,18 @@ String footballSeasonId(DateTime value) {
   return '$startYear-${startYear + 1}';
 }
 
+enum SubscriptionAccessMode {
+  active,
+  inactive,
+  store;
+
+  static SubscriptionAccessMode parse(Object? value) => switch (value) {
+    'active' => active,
+    'inactive' => inactive,
+    _ => store,
+  };
+}
+
 class AbuUserProfile {
   const AbuUserProfile({
     required this.uid,
@@ -53,11 +65,19 @@ class AbuUserProfile {
     this.youtubeMemberSince,
     this.backendUserId = '',
     this.isProSubscriber = false,
+    this.subscriptionAccessMode = SubscriptionAccessMode.store,
+    this.subscriptionAccessExpiresAt,
+    this.subscriptionAccessReason = 'unknown',
+    this.subscriptionAccessSource = 'none',
   });
 
   final String uid;
   final String backendUserId;
   final bool isProSubscriber;
+  final SubscriptionAccessMode subscriptionAccessMode;
+  final DateTime? subscriptionAccessExpiresAt;
+  final String subscriptionAccessReason;
+  final String subscriptionAccessSource;
   final String email;
   final String username;
   final String displayName;
@@ -107,6 +127,7 @@ class AbuUserProfile {
   bool get canUploadMembershipSnapshot =>
       role == 'moderator' || role == 'admin' || role == 'superAdmin';
   bool get canManageRoles => !isGuest && role == 'superAdmin';
+  bool get canManageSubscriptions => isAdmin;
   bool get isYouTubeMember => membershipMultiplier > 1;
   bool get hasMemberAccess => isYouTubeMember || isProSubscriber;
   String get countryFlag {
@@ -196,13 +217,28 @@ class AbuUserProfile {
     DateTime? lastActivityAt,
     bool? onboardingCompleted,
     bool? youtubeChannelLinked,
+    bool? isProSubscriber,
+    SubscriptionAccessMode? subscriptionAccessMode,
+    DateTime? subscriptionAccessExpiresAt,
+    bool clearSubscriptionAccessExpiresAt = false,
+    String? subscriptionAccessReason,
+    String? subscriptionAccessSource,
     String? youtubeMembershipLevelId,
     DateTime? youtubeMembershipVerifiedAt,
     DateTime? youtubeMemberSince,
   }) => AbuUserProfile(
     uid: uid,
     backendUserId: backendUserId,
-    isProSubscriber: isProSubscriber,
+    isProSubscriber: isProSubscriber ?? this.isProSubscriber,
+    subscriptionAccessMode:
+        subscriptionAccessMode ?? this.subscriptionAccessMode,
+    subscriptionAccessExpiresAt: clearSubscriptionAccessExpiresAt
+        ? null
+        : subscriptionAccessExpiresAt ?? this.subscriptionAccessExpiresAt,
+    subscriptionAccessReason:
+        subscriptionAccessReason ?? this.subscriptionAccessReason,
+    subscriptionAccessSource:
+        subscriptionAccessSource ?? this.subscriptionAccessSource,
     email: email ?? this.email,
     username: username ?? this.username,
     displayName: displayName ?? this.displayName,

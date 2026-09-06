@@ -11726,6 +11726,11 @@ class _ProductionSettings extends StatelessWidget {
                     mode: LaunchMode.externalApplication,
                   ),
                 ),
+                const Divider(height: 1),
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: WhatsAppSupportButton(),
+                ),
               ],
             );
 

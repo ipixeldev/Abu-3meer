@@ -20,11 +20,17 @@ class SubscriptionAccessResult {
     required this.isActive,
     this.reason = 'unknown',
     this.environment = 'unknown',
+    this.source = 'none',
+    this.overrideMode = 'store',
+    this.overrideExpiresAt,
   });
 
   final bool isActive;
   final String reason;
   final String environment;
+  final String source;
+  final String overrideMode;
+  final DateTime? overrideExpiresAt;
 
   factory SubscriptionAccessResult.fromEnvelope(Object? envelope) {
     final data = envelope is Map ? envelope['data'] : null;
@@ -39,19 +45,36 @@ class SubscriptionAccessResult {
       'expired',
       'verification_required',
       'inactive',
+      'admin_granted',
+      'admin_revoked',
     };
     const environments = {'production', 'sandbox'};
     return SubscriptionAccessResult(
       isActive:
           data['isActive'] == true &&
           (!reasons.contains(data['accessReason']) ||
-              data['accessReason'] == 'active'),
+              data['accessReason'] == 'active' ||
+              data['accessReason'] == 'admin_granted'),
       reason: reasons.contains(data['accessReason'])
           ? data['accessReason'] as String
           : 'unknown',
       environment: environments.contains(data['environment'])
           ? data['environment'] as String
           : 'unknown',
+      source: const {'admin', 'store', 'none'}.contains(data['accessSource'])
+          ? data['accessSource'] as String
+          : 'none',
+      overrideMode:
+          const {
+            'active',
+            'inactive',
+            'store',
+          }.contains(data['subscriptionAccessMode'])
+          ? data['subscriptionAccessMode'] as String
+          : 'store',
+      overrideExpiresAt: DateTime.tryParse(
+        (data['subscriptionAccessExpiresAt'] ?? '').toString(),
+      ),
     );
   }
 }

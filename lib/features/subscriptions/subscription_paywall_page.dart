@@ -1,6 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+
+import '../support/whatsapp_support_button.dart';
+
 import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
@@ -320,6 +323,7 @@ class _SubscriptionPaywallPageState extends State<SubscriptionPaywallPage> {
                             ),
                           ),
                           const SizedBox(height: 8),
+                          const WhatsAppSupportButton(),
                           TextButton.icon(
                             key: const Key('check-subscription-store'),
                             onPressed: _checkingStore ? null : _checkStore,

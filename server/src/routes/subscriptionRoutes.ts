@@ -54,6 +54,13 @@ export async function subscriptionRoutes(
       return { data: await sync(request.user!.id) };
     } catch (error) {
       if (error instanceof SubscriptionError) {
+        // A store outage must not hide an independent admin access decision.
+        // Keep this fallback out of webhook sync: failed verification there
+        // must remain retryable and must not record a processed receipt.
+        try {
+          const effective = await read(request.user!.id);
+          if (effective.accessSource === 'admin') return { data: effective };
+        } catch { /* Preserve the original safe verification error. */ }
         return reply.status(error.statusCode).send({ error: 'SubscriptionUnavailable', code: error.code, message: error.message });
       }
       request.log.error({ err: error }, 'Subscription synchronization failed');

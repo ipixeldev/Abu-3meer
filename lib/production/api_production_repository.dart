@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'api_client.dart';
 import 'external_content_service.dart';
 import 'models.dart';
+import 'subscription_service.dart';
 import 'youtube_membership_check.dart';
 
 @visibleForTesting
@@ -18,6 +19,29 @@ int parseApiInt(dynamic value, [int fallback = 0]) {
 double parseApiDouble(dynamic value, [double fallback = 0]) {
   if (value is num) return value.toDouble();
   return double.tryParse(value?.toString() ?? '') ?? fallback;
+}
+
+bool isValidAdminSubscriptionReason(String value) {
+  final reason = value.trim();
+  return reason.length >= 3 &&
+      reason.length <= 500 &&
+      !RegExp(r'\p{C}', unicode: true).hasMatch(reason);
+}
+
+class AdminUserPage {
+  const AdminUserPage({
+    required this.users,
+    required this.total,
+    required this.limit,
+    required this.offset,
+    required this.hasMore,
+  });
+
+  final List<AbuUserProfile> users;
+  final int total;
+  final int limit;
+  final int offset;
+  final bool hasMore;
 }
 
 @visibleForTesting
@@ -266,6 +290,26 @@ AbuUserProfile parseAdminUserProfile(dynamic value) {
     // client-side identity comparisons.
     uid: (user['firebaseUid'] ?? user['uid'] ?? user['id'] ?? '').toString(),
     isProSubscriber: user['isProSubscriber'] == true,
+    backendUserId: (user['id'] ?? '').toString(),
+    subscriptionAccessMode: SubscriptionAccessMode.parse(
+      user['subscriptionAccessMode'],
+    ),
+    subscriptionAccessExpiresAt: optionalTimestamp(
+      'subscriptionAccessExpiresAt',
+      'subscription_access_expires_at',
+    ),
+    subscriptionAccessReason:
+        (user['subscriptionAccessReason'] ??
+                user['subscription_access_reason'] ??
+                user['accessReason'] ??
+                'unknown')
+            .toString(),
+    subscriptionAccessSource:
+        (user['subscriptionAccessSource'] ??
+                user['subscription_access_source'] ??
+                user['accessSource'] ??
+                'none')
+            .toString(),
     email: (user['email'] ?? '').toString(),
     username: (user['username'] ?? '').toString(),
     displayName: (user['displayName'] ?? '').toString(),
@@ -416,6 +460,16 @@ class ApiProductionRepository {
         uid: u['firebaseUid'] ?? user.uid,
         backendUserId: (u['id'] ?? '').toString(),
         isProSubscriber: u['isProSubscriber'] == true,
+        subscriptionAccessMode: SubscriptionAccessMode.parse(
+          u['subscriptionAccessMode'],
+        ),
+        subscriptionAccessExpiresAt: DateTime.tryParse(
+          (u['subscriptionAccessExpiresAt'] ?? '').toString(),
+        ),
+        subscriptionAccessReason: (u['subscriptionAccessReason'] ?? 'unknown')
+            .toString(),
+        subscriptionAccessSource: (u['subscriptionAccessSource'] ?? 'none')
+            .toString(),
         email: u['email'] ?? user.email ?? '',
         displayName: u['displayName'] ?? user.displayName ?? '',
         username: u['username'] ?? '',
@@ -1408,27 +1462,54 @@ class ApiProductionRepository {
     String? role,
     String? status,
     int limit = 200,
+  }) async => (await fetchAdminUserPage(
+    search: search,
+    role: role,
+    status: status,
+    limit: limit,
+  )).users;
+
+  Future<AdminUserPage> fetchAdminUserPage({
+    String search = '',
+    String? role,
+    String? status,
+    int limit = 200,
+    int offset = 0,
   }) async {
+    final normalizedLimit = limit.clamp(1, 200);
+    final normalizedOffset = offset < 0 ? 0 : offset;
     final response = await api.get(
       '/admin/users',
       queryParams: <String, String>{
         if (search.trim().isNotEmpty) 'q': search.trim(),
         if (role != null && role.isNotEmpty) 'role': role,
         if (status != null && status.isNotEmpty) 'status': status,
-        'limit': limit.clamp(1, 200).toString(),
+        'limit': normalizedLimit.toString(),
+        'offset': normalizedOffset.toString(),
       },
       requireAuth: true,
     );
-    if (response is! Map || response['users'] is! List) {
+    if (response is! Map ||
+        response['users'] is! List ||
+        response['total'] is! num ||
+        response['limit'] is! num ||
+        response['offset'] is! num ||
+        response['hasMore'] is! bool) {
       throw AbuApiException(
         statusCode: 502,
         message: 'The server returned an invalid user directory.',
         details: response,
       );
     }
-    return (response['users'] as List)
-        .map(parseAdminUserProfile)
-        .toList(growable: false);
+    return AdminUserPage(
+      users: (response['users'] as List)
+          .map(parseAdminUserProfile)
+          .toList(growable: false),
+      total: (response['total'] as num).toInt(),
+      limit: (response['limit'] as num).toInt(),
+      offset: (response['offset'] as num).toInt(),
+      hasMore: response['hasMore'] as bool,
+    );
   }
 
   Future<List<LeaderboardSeason>> fetchAdminLeaderboardSeasons() async {
@@ -1490,6 +1571,54 @@ class ApiProductionRepository {
     return LeaderboardSeason.fromMap(
       Map<String, dynamic>.from(response['season'] as Map),
     );
+  }
+
+  Future<SubscriptionAccessResult> setAdminSubscriptionAccess({
+    required String userId,
+    required SubscriptionAccessMode mode,
+    required String reason,
+    DateTime? expiresAt,
+  }) async {
+    final normalizedUserId = userId.trim();
+    if (!RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    ).hasMatch(normalizedUserId)) {
+      throw ArgumentError('A valid user is required.');
+    }
+    final normalizedReason = reason.trim();
+    if (normalizedReason.length < 3 || normalizedReason.length > 500) {
+      throw ArgumentError('A reason of 3–500 characters is required.');
+    }
+    if (!isValidAdminSubscriptionReason(normalizedReason)) {
+      throw ArgumentError(
+        'The reason must not contain control or formatting characters.',
+      );
+    }
+    if (expiresAt != null &&
+        (mode != SubscriptionAccessMode.active ||
+            !expiresAt.isAfter(DateTime.now()))) {
+      throw ArgumentError('Only an active grant may have a future expiry.');
+    }
+    final response = await api.put(
+      '/admin/users/${Uri.encodeComponent(normalizedUserId)}/subscription-access',
+      body: {
+        'mode': mode.name,
+        'reason': normalizedReason,
+        if (expiresAt != null) 'expiresAt': expiresAt.toUtc().toIso8601String(),
+      },
+      requireAuth: true,
+    );
+    final data = response is Map ? response['data'] : null;
+    if (data is! Map ||
+        data['entitlementId'] != SubscriptionService.entitlementId ||
+        data['isActive'] is! bool) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server did not confirm the access change. Refresh the user before trying again.',
+      );
+    }
+    return SubscriptionAccessResult.fromEnvelope(response);
   }
 
   Future<void> setAdminUserStatus({

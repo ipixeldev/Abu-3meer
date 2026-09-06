@@ -18,6 +18,17 @@ import {
   saveManualLeaderboardSeason,
 } from '../services/leaderboardService.js';
 import { activeSubscriptionSql } from '../services/subscriptionAccess.js';
+import {
+  applySubscriptionAccessOverride,
+  enforceSubscriptionAccess,
+  sandboxAccessAllowedForUser,
+} from '../services/subscriptionService.js';
+
+function isoTimestamp(value: unknown): string | null {
+  if (value == null) return null;
+  const parsed = new Date(value as string | number | Date);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
 
 const manageableRoles = ['fan', 'member', 'moderator', 'admin', 'super_admin'] as const;
 const adminAssignableRoles = ['fan', 'moderator', 'admin', 'super_admin'] as const;
@@ -96,6 +107,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
                 FALSE
               ) AS is_youtube_member,
               ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
+              COALESCE(subscription_override.mode, 'store') AS subscription_access_mode,
+              subscription_override.expires_at AS subscription_access_expires_at,
+              subscription_entitlement.is_active AS subscription_store_is_active,
+              subscription_entitlement.product_id AS subscription_store_product_id,
+              subscription_entitlement.expires_at AS subscription_store_expires_at,
+              subscription_entitlement.will_renew AS subscription_store_will_renew,
+              subscription_entitlement.is_sandbox AS subscription_store_is_sandbox,
+              subscription_entitlement.verified_at AS subscription_store_verified_at,
               yl.youtube_channel_id, yl.membership_level_id,
               yl.last_verified_at AS youtube_membership_verified_at,
               yl.last_attempted_at AS youtube_membership_last_attempted_at,
@@ -113,6 +132,10 @@ export async function adminRoutes(fastify: FastifyInstance) {
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
        LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
+       LEFT JOIN user_subscription_access_overrides subscription_override ON subscription_override.user_id = u.id
+       LEFT JOIN user_subscription_entitlements subscription_entitlement
+         ON subscription_entitlement.user_id = u.id
+        AND subscription_entitlement.entitlement_id = 'abu_3meer_pro'
        LEFT JOIN user_roles ur ON ur.user_id = u.id
          AND (
            ur.role_id <> 'member'
@@ -177,7 +200,9 @@ export async function adminRoutes(fastify: FastifyInstance) {
          )
        )
        AND ($3::text IS NULL OR u.account_status = $3)
-       GROUP BY u.id, p.user_id, yl.user_id
+       GROUP BY u.id, p.user_id, yl.user_id, subscription_override.user_id,
+                subscription_entitlement.user_id,
+                subscription_entitlement.entitlement_id
        ORDER BY u.created_at DESC, u.id
        LIMIT $4 OFFSET $5`,
       [
@@ -191,6 +216,26 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
     const users = result.rows.map((row) => {
       const roles = Array.isArray(row.roles) ? row.roles : [];
+      // Mirror the authenticated status endpoint so Admin Studio never has to
+      // guess whether an expired grant fell back to the store. Raw receipt
+      // metadata remains server-side and is not returned in the user list.
+      const subscriptionAccess = applySubscriptionAccessOverride(
+        enforceSubscriptionAccess({
+          entitlementId: 'abu_3meer_pro',
+          isActive: row.subscription_store_is_active === true,
+          productId: typeof row.subscription_store_product_id === 'string'
+            ? row.subscription_store_product_id
+            : null,
+          expiresAt: isoTimestamp(row.subscription_store_expires_at),
+          willRenew: row.subscription_store_will_renew === true,
+          isSandbox: row.subscription_store_is_sandbox === true,
+          verifiedAt: isoTimestamp(row.subscription_store_verified_at),
+        }, Date.now(), sandboxAccessAllowedForUser(row.id)),
+        {
+          mode: row.subscription_access_mode,
+          expiresAt: isoTimestamp(row.subscription_access_expires_at),
+        },
+      );
       return {
         id: row.id,
         uid: row.firebase_uid,
@@ -205,6 +250,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
         supportedTeamLogo: row.supported_team_logo,
         isYouTubeMember: row.is_youtube_member,
         isProSubscriber: row.is_pro_subscriber === true,
+        subscriptionAccessMode: subscriptionAccess.subscriptionAccessMode,
+        subscriptionAccessExpiresAt:
+          subscriptionAccess.subscriptionAccessExpiresAt,
+        accessReason: subscriptionAccess.accessReason,
+        accessSource: subscriptionAccess.accessSource,
         youtubeChannelLinked: Boolean(row.youtube_channel_id),
         youtubeChannelId: row.youtube_channel_id ?? null,
         youtubeMembershipLevelId: row.membership_level_id ?? null,

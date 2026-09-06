@@ -4,9 +4,11 @@ import Fastify, { FastifyRequest } from 'fastify';
 import {
   emptySubscriptionStatus,
   enforceSubscriptionAccess,
+  fetchRevenueCatCustomer,
   isValidRevenueCatWebhookAuthorization,
   processRevenueCatWebhook,
   readSubscriptionStatus,
+  sandboxAccessAllowedForUser,
   SubscriptionError,
   subscriptionFromRevenueCat,
   syncSubscriptionStatus,
@@ -99,6 +101,7 @@ test('access reasons distinguish production policy from expiry and verification 
 
 test('a cached verified sandbox row is gated by the current policy on every read', async () => {
   const previousPolicy = config.revenueCat.allowSandbox;
+  const previousAllowedIds = config.revenueCat.sandboxAllowedUserIds;
   const currentTime = Date.now();
   const row = {
     is_active: true, product_id: 'Ostoora3_Pro_Max', will_renew: true, is_sandbox: true,
@@ -106,6 +109,7 @@ test('a cached verified sandbox row is gated by the current policy on every read
   };
   const execute = async () => ({ rows: [row] });
   try {
+    config.revenueCat.sandboxAllowedUserIds = [];
     config.revenueCat.allowSandbox = true;
     assert.equal((await readSubscriptionStatus(ownerId, execute)).accessReason, 'active');
     config.revenueCat.allowSandbox = false;
@@ -118,6 +122,190 @@ test('a cached verified sandbox row is gated by the current policy on every read
     assert.equal(missing.accessReason, 'no_entitlement');
   } finally {
     config.revenueCat.allowSandbox = previousPolicy;
+    config.revenueCat.sandboxAllowedUserIds = previousAllowedIds;
+  }
+});
+
+test('only explicitly allowlisted app-review UUIDs can use sandbox receipts in production', async () => {
+  const previousPolicy = config.revenueCat.allowSandbox;
+  const previousAllowedIds = config.revenueCat.sandboxAllowedUserIds;
+  const currentTime = Date.now();
+  const row = {
+    is_active: true, product_id: 'Ostoora3_Pro_Max', will_renew: true,
+    is_sandbox: true, expires_at: new Date(currentTime + 60 * 60_000),
+    verified_at: new Date(currentTime),
+  };
+  try {
+    config.revenueCat.allowSandbox = false;
+    config.revenueCat.sandboxAllowedUserIds = [ownerId];
+    assert.equal(sandboxAccessAllowedForUser(ownerId), true);
+    assert.equal(sandboxAccessAllowedForUser(ownerId.toUpperCase()), true);
+    assert.equal(sandboxAccessAllowedForUser(otherId), false);
+    assert.equal((await readSubscriptionStatus(ownerId, async () => ({ rows: [row] }))).accessReason, 'active');
+    assert.equal((await readSubscriptionStatus(otherId, async () => ({ rows: [row] }))).accessReason, 'sandbox_not_allowed');
+  } finally {
+    config.revenueCat.allowSandbox = previousPolicy;
+    config.revenueCat.sandboxAllowedUserIds = previousAllowedIds;
+  }
+});
+
+test('RevenueCat lookup is production-first and never lets sandbox shadow active production', async () => {
+  const previousSecret = config.revenueCat.secretApiKey;
+  const previousPolicy = config.revenueCat.allowSandbox;
+  const previousAllowedIds = config.revenueCat.sandboxAllowedUserIds;
+  const calls: Array<{ url: string; headers: Record<string, string> }> = [];
+  try {
+    config.revenueCat.secretApiKey = 'sk_server_test_only';
+    config.revenueCat.allowSandbox = false;
+    config.revenueCat.sandboxAllowedUserIds = [ownerId];
+    const production = response();
+    const selected = await fetchRevenueCatCustomer(ownerId, {
+      now,
+      request: async (input, init) => {
+        const headers = init?.headers as Record<string, string>;
+        calls.push({ url: input.toString(), headers });
+        return new Response(JSON.stringify(production), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      },
+    });
+    assert.deepEqual(selected, production);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].url, new RegExp(`/v1/subscribers/${ownerId}$`));
+    assert.equal(calls[0].headers.Authorization, 'Bearer sk_server_test_only');
+    assert.equal(calls[0].headers['X-Is-Sandbox'], undefined);
+  } finally {
+    config.revenueCat.secretApiKey = previousSecret;
+    config.revenueCat.allowSandbox = previousPolicy;
+    config.revenueCat.sandboxAllowedUserIds = previousAllowedIds;
+  }
+});
+
+test('only an allowed account with no active production entitlement gets the explicit sandbox lookup', async () => {
+  const previousSecret = config.revenueCat.secretApiKey;
+  const previousPolicy = config.revenueCat.allowSandbox;
+  const previousAllowedIds = config.revenueCat.sandboxAllowedUserIds;
+  const production = { subscriber: { entitlements: {} } };
+  const sandbox = response({ is_sandbox: true });
+  try {
+    config.revenueCat.secretApiKey = 'sk_server_test_only';
+    config.revenueCat.allowSandbox = false;
+    config.revenueCat.sandboxAllowedUserIds = [ownerId];
+    const headers: Record<string, string>[] = [];
+    const selected = await fetchRevenueCatCustomer(ownerId, {
+      now,
+      request: async (_input, init) => {
+        headers.push(init?.headers as Record<string, string>);
+        const body = headers.length === 1 ? production : sandbox;
+        return new Response(JSON.stringify(body), { status: 200 });
+      },
+    });
+    assert.equal(headers.length, 2);
+    assert.equal(headers[0]['X-Is-Sandbox'], undefined);
+    assert.equal(headers[1]['X-Is-Sandbox'], 'true');
+    const parsed = subscriptionFromRevenueCat(selected, now);
+    assert.equal(parsed.isActive, true);
+    assert.equal(parsed.isSandbox, true);
+
+    config.revenueCat.sandboxAllowedUserIds = [];
+    let unlistedCalls = 0;
+    const unlisted = await fetchRevenueCatCustomer(otherId, {
+      now,
+      request: async () => {
+        unlistedCalls++;
+        return new Response(JSON.stringify(production), { status: 200 });
+      },
+    });
+    assert.deepEqual(unlisted, production);
+    assert.equal(unlistedCalls, 1);
+  } finally {
+    config.revenueCat.secretApiKey = previousSecret;
+    config.revenueCat.allowSandbox = previousPolicy;
+    config.revenueCat.sandboxAllowedUserIds = previousAllowedIds;
+  }
+});
+
+test('sandbox fallback sync persists the verified test receipt, while lookup failure writes nothing', async () => {
+  const previousSecret = config.revenueCat.secretApiKey;
+  const previousPolicy = config.revenueCat.allowSandbox;
+  const previousAllowedIds = config.revenueCat.sandboxAllowedUserIds;
+  const currentTime = Date.now();
+  const production = { subscriber: { entitlements: {} } };
+  const sandbox = response({ is_sandbox: true });
+  sandbox.subscriber.entitlements.abu_3meer_pro.expires_date =
+    new Date(currentTime + 60 * 60_000).toISOString();
+  try {
+    config.revenueCat.secretApiKey = 'sk_server_test_only';
+    config.revenueCat.allowSandbox = false;
+    config.revenueCat.sandboxAllowedUserIds = [ownerId];
+    let requestCount = 0;
+    let saved: Record<string, unknown> | undefined;
+    const status = await syncSubscriptionStatus(ownerId, {
+      fetchCustomer: id => fetchRevenueCatCustomer(id, {
+        now: currentTime,
+        request: async () => new Response(JSON.stringify(
+          ++requestCount === 1 ? production : sandbox,
+        ), { status: 200 }),
+      }),
+      execute: async (sql, parameters = []) => {
+        if (sql.startsWith('INSERT')) {
+          saved = {
+            is_active: parameters[1], product_id: parameters[2],
+            expires_at: parameters[3], will_renew: parameters[4],
+            is_sandbox: parameters[5], verified_at: parameters[6],
+          };
+          return { rows: [] };
+        }
+        return { rows: saved ? [saved] : [] };
+      },
+    });
+    assert.equal(requestCount, 2);
+    assert.equal(saved?.is_active, true);
+    assert.equal(saved?.is_sandbox, true);
+    assert.equal(status.isActive, true);
+    assert.equal(status.environment, 'sandbox');
+
+    let writes = 0;
+    let failedRequestCount = 0;
+    await assert.rejects(syncSubscriptionStatus(ownerId, {
+      fetchCustomer: id => fetchRevenueCatCustomer(id, {
+        now: currentTime,
+        request: async () => {
+          failedRequestCount++;
+          if (failedRequestCount === 1) {
+            return new Response(JSON.stringify(production), { status: 200 });
+          }
+          throw new Error('sandbox endpoint unavailable');
+        },
+      }),
+      execute: async () => { writes++; return { rows: [] }; },
+    }), (error: unknown) => error instanceof SubscriptionError
+      && error.code === 'subscription_verification_unavailable');
+    assert.equal(writes, 0);
+  } finally {
+    config.revenueCat.secretApiKey = previousSecret;
+    config.revenueCat.allowSandbox = previousPolicy;
+    config.revenueCat.sandboxAllowedUserIds = previousAllowedIds;
+  }
+});
+
+test('backend RevenueCat lookup rejects public SDK keys before any network request', async () => {
+  const previousSecret = config.revenueCat.secretApiKey;
+  let calls = 0;
+  try {
+    config.revenueCat.secretApiKey = 'appl_public_keys_belong_in_the_app';
+    await assert.rejects(fetchRevenueCatCustomer(ownerId, {
+      now,
+      request: async () => {
+        calls++;
+        return new Response('{}', { status: 200 });
+      },
+    }), (error: unknown) => error instanceof SubscriptionError
+      && error.code === 'subscriptions_not_configured');
+    assert.equal(calls, 0);
+  } finally {
+    config.revenueCat.secretApiKey = previousSecret;
   }
 });
 
@@ -165,11 +353,13 @@ test('subscription sync persists only paid state, preserving the independent CSV
 
 test('sync preserves verified sandbox entitlement upstream state while denying production access', async () => {
   const previousPolicy = config.revenueCat.allowSandbox;
+  const previousAllowedIds = config.revenueCat.sandboxAllowedUserIds;
   const customer = response({ is_sandbox: true });
   customer.subscriber.entitlements.abu_3meer_pro.expires_date = new Date(Date.now() + 60 * 60_000).toISOString();
   let saved: Record<string, unknown> | undefined;
   try {
     config.revenueCat.allowSandbox = false;
+    config.revenueCat.sandboxAllowedUserIds = [];
     const status = await syncSubscriptionStatus(ownerId, {
       fetchCustomer: async () => customer,
       execute: async (text, parameters = []) => {
@@ -188,6 +378,7 @@ test('sync preserves verified sandbox entitlement upstream state while denying p
     assert.equal(status.environment, 'sandbox');
   } finally {
     config.revenueCat.allowSandbox = previousPolicy;
+    config.revenueCat.sandboxAllowedUserIds = previousAllowedIds;
   }
 });
 

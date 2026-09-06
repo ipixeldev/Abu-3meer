@@ -21,6 +21,15 @@ function numericIdList(value: string, maximum = 8): string[] {
     .slice(0, maximum);
 }
 
+function uuidList(value: string, maximum = 20): string[] {
+  return value
+    .split(',')
+    .map(item => item.trim().toLowerCase())
+    .filter(item => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(item))
+    .filter((item, index, items) => items.indexOf(item) === index)
+    .slice(0, maximum);
+}
+
 function dailyFootballRequestBudget(value: string): number {
   // The Mega plan permits 150,000 requests/day. Preserve headroom for manual
   // diagnostics and a second deployment during a rolling release.
@@ -31,6 +40,11 @@ export const config = {
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3000', 10),
   host: process.env.HOST || '0.0.0.0',
+
+  support: {
+    // Public business contact, not a secret. Blank disables WhatsApp support.
+    whatsappNumber: (process.env.SUPPORT_WHATSAPP_NUMBER || '').trim(),
+  },
 
   database: {
     url: process.env.DATABASE_URL || 'postgres://abu3meer_admin:change_me_in_production@127.0.0.1:6432/abu3meer_prod',
@@ -58,6 +72,11 @@ export const config = {
     entitlementId: 'abu_3meer_pro',
     webhookAuthorization: (process.env.REVENUECAT_WEBHOOK_AUTHORIZATION || '').trim(),
     allowSandbox: process.env.REVENUECAT_ALLOW_SANDBOX === 'true',
+    // App Review purchases are sandbox transactions. Keep global sandbox
+    // access disabled and allow only dedicated PostgreSQL account UUIDs.
+    sandboxAllowedUserIds: uuidList(
+      process.env.REVENUECAT_SANDBOX_ALLOWED_USER_IDS || '',
+    ),
     // Webhooks and app foreground/purchase sync refresh this verified lease.
     // A missing webhook cannot retain revoked access indefinitely.
     verificationMaxAgeSeconds: 24 * 60 * 60,

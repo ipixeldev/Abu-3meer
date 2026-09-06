@@ -12,6 +12,7 @@ import {
   listLeaderboardSeasons,
 } from '../services/leaderboardService.js';
 import { activeSubscriptionSql } from '../services/subscriptionAccess.js';
+import { readSubscriptionStatus } from '../services/subscriptionService.js';
 
 const eligibleXpSources = [...eligibleLeaderboardSourceTypes];
 
@@ -153,10 +154,15 @@ export async function profileRoutes(fastify: FastifyInstance) {
       [user.id, eligibleXpSources]
     );
 
+    const subscriptionAccess = await readSubscriptionStatus(user.id);
     return {
       user: {
         id: user.id,
         firebaseUid: user.firebaseUid,
+        subscriptionAccessMode: subscriptionAccess.subscriptionAccessMode,
+        subscriptionAccessExpiresAt: subscriptionAccess.subscriptionAccessExpiresAt,
+        subscriptionAccessReason: subscriptionAccess.accessReason,
+        subscriptionAccessSource: subscriptionAccess.accessSource,
         email: user.email,
         username: user.username,
         displayName: user.displayName,
@@ -167,8 +173,8 @@ export async function profileRoutes(fastify: FastifyInstance) {
         countryCode: user.countryCode,
         onboardingCompleted: user.onboardingCompleted,
         isYouTubeMember: user.isYouTubeMember,
-        isProSubscriber: user.isProSubscriber,
-        hasMemberAccess: user.hasMemberAccess,
+        isProSubscriber: subscriptionAccess.isActive,
+        hasMemberAccess: user.isYouTubeMember || subscriptionAccess.isActive,
         roles: user.roles,
         isAdmin: user.isAdmin,
         isSuperAdmin: user.isSuperAdmin,
@@ -369,6 +375,10 @@ export async function profileRoutes(fastify: FastifyInstance) {
     }
 
     const row = updatedUserRes.rows[0];
+    // An admin may change this account's access while the profile update is in
+    // flight. Read the effective decision after the write instead of returning
+    // the authentication snapshot captured at the start of the request.
+    const subscriptionAccess = await readSubscriptionStatus(user.id);
 
     return {
       success: true,
@@ -387,8 +397,13 @@ export async function profileRoutes(fastify: FastifyInstance) {
         onboardingCompleted: row.onboarding_completed,
         locationUpdatedAt: row.location_updated_at,
         isYouTubeMember: user.isYouTubeMember,
-        isProSubscriber: user.isProSubscriber,
-        hasMemberAccess: user.hasMemberAccess,
+        isProSubscriber: subscriptionAccess.isActive,
+        hasMemberAccess: user.isYouTubeMember || subscriptionAccess.isActive,
+        subscriptionAccessMode: subscriptionAccess.subscriptionAccessMode,
+        subscriptionAccessExpiresAt:
+          subscriptionAccess.subscriptionAccessExpiresAt,
+        subscriptionAccessReason: subscriptionAccess.accessReason,
+        subscriptionAccessSource: subscriptionAccess.accessSource,
         accountStatus: row.account_status,
       },
     };

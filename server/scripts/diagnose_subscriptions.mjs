@@ -71,13 +71,18 @@ export async function diagnoseSubscription({ username, execute, enforce, policy,
     isSandbox: row.is_sandbox === true,
     verifiedAt: verified === null ? null : new Date(verified).toISOString(),
   };
-  const status = enforce(source, now, policy.allowSandbox);
+  const sandboxAllowed = policy.allowSandbox === true
+    || (Array.isArray(policy.sandboxAllowedUserIds)
+      && policy.sandboxAllowedUserIds.some(id => typeof id === 'string'
+        && id.toLowerCase() === String(row.id).toLowerCase()));
+  const status = enforce(source, now, sandboxAllowed);
   const knownReasons = new Set([
     'active', 'sandbox_not_allowed', 'no_entitlement', 'expired', 'verification_required', 'inactive',
   ]);
-  const derivedReason = legacyReason(source, now, policy.maxAgeSeconds, policy.allowSandbox);
+  const derivedReason = legacyReason(source, now, policy.maxAgeSeconds, sandboxAllowed);
   return {
     ...report,
+    sandboxAllowed,
     accountFound: true,
     snapshotPresent: row.subscription_user_id != null,
     entitlementId: source.entitlementId,
@@ -122,6 +127,7 @@ async function main() {
       policy: {
         serverKeyConfigured: config.revenueCat.secretApiKey.startsWith('sk_'),
         allowSandbox: config.revenueCat.allowSandbox,
+        sandboxAllowedUserIds: config.revenueCat.sandboxAllowedUserIds,
         maxAgeSeconds: config.revenueCat.verificationMaxAgeSeconds,
         runtimeSupportsAccessReasons: typeof service.emptySubscriptionStatus().accessReason === 'string',
       },

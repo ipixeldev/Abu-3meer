@@ -138,6 +138,18 @@ class SubscriptionFeedback {
     required bool isSandbox,
     String accessReason = 'unknown',
   }) {
+    if (serverActive && accessReason == 'admin_granted') {
+      return const SubscriptionFeedback(
+        'An admin granted your app access. This is not a store purchase and does not change store billing.',
+        'منحك المدير صلاحيات التطبيق. هذا ليس شراءً من المتجر ولا يغيّر فوترة المتجر.',
+      );
+    }
+    if (accessReason == 'admin_revoked') {
+      return const SubscriptionFeedback(
+        'An admin blocked subscription-based app access. Your store subscription was not cancelled or refunded. Contact support; purchasing again will not remove this block. YouTube CSV membership is checked separately.',
+        'عطّل المدير صلاحيات اشتراك التطبيق. لم يُلغَ اشتراك المتجر ولم يُردّ مبلغه. تواصل مع الدعم؛ الشراء مجدداً لن يزيل التعطيل. تُفحص عضوية يوتيوب في CSV بشكل منفصل.',
+      );
+    }
     if (serverActive) {
       return const SubscriptionFeedback(
         'Membership confirmed. Your access and subscriber badge have been refreshed.',

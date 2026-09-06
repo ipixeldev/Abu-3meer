@@ -103,6 +103,7 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       HOST: 0.0.0.0
+      SUPPORT_WHATSAPP_NUMBER: ${SUPPORT_WHATSAPP_NUMBER:-}
       DATABASE_URL: postgres://${POSTGRES_USER:-abu3meer_admin}:${POSTGRES_PASSWORD:-change_me_in_production}@pgbouncer:6432/${POSTGRES_DB:-abu3meer_prod}
       DIRECT_DATABASE_URL: postgres://${POSTGRES_USER:-abu3meer_admin}:${POSTGRES_PASSWORD:-change_me_in_production}@postgres:5432/${POSTGRES_DB:-abu3meer_prod}
       REDIS_HOST: redis
@@ -114,6 +115,7 @@ services:
       REVENUECAT_SECRET_API_KEY: ${REVENUECAT_SECRET_API_KEY:-}
       REVENUECAT_WEBHOOK_AUTHORIZATION: ${REVENUECAT_WEBHOOK_AUTHORIZATION:-}
       REVENUECAT_ALLOW_SANDBOX: ${REVENUECAT_ALLOW_SANDBOX:-false}
+      REVENUECAT_SANDBOX_ALLOWED_USER_IDS: ${REVENUECAT_SANDBOX_ALLOWED_USER_IDS:-}
       # Public channel ID for latest-video discovery; no OAuth credentials.
       YOUTUBE_CREATOR_CHANNEL_ID: ${YOUTUBE_CREATOR_CHANNEL_ID:-}
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}

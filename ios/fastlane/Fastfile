@@ -105,6 +105,21 @@ platform :ios do
       .to_models
       .first
     UI.user_error!("TestFlight review information is missing") unless beta_review
+    missing_review_fields = {
+      "contact email" => beta_review.contact_email,
+      "contact first name" => beta_review.contact_first_name,
+      "contact last name" => beta_review.contact_last_name,
+      "contact phone" => beta_review.contact_phone
+    }.select { |_label, value| value.to_s.strip.empty? }.keys
+    if beta_review.demo_account_required
+      missing_review_fields << "demo account name" if beta_review.demo_account_name.to_s.strip.empty?
+      missing_review_fields << "demo account password" if beta_review.demo_account_password.to_s.empty?
+    end
+    unless missing_review_fields.empty?
+      UI.user_error!(
+        "Complete TestFlight review information before external distribution: #{missing_review_fields.join(', ')}"
+      )
+    end
 
     localized_app_info = ["ar-SA", "en-US"].to_h do |locale|
       [
@@ -138,7 +153,7 @@ platform :ios do
         notes: abu3meer_review_notes
       },
       distribute_external: true,
-      groups: ["Abu 3meer External"],
+      groups: ["ext"],
       notify_external_testers: true,
       skip_waiting_for_build_processing: false,
       uses_non_exempt_encryption: false

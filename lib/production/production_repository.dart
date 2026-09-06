@@ -957,6 +957,55 @@ class ProductionRepository {
   Future<List<AbuUserProfile>> fetchAdminUsers({String search = ''}) =>
       apiRepo.fetchAdminUsers(search: search);
 
+  Future<AdminUserPage> fetchAdminUserPage({
+    String search = '',
+    int limit = 200,
+    int offset = 0,
+  }) =>
+      apiRepo.fetchAdminUserPage(search: search, limit: limit, offset: offset);
+
+  /// Changes app access only; store billing and the CSV snapshot are untouched.
+  Future<SubscriptionAccessResult> setAdminSubscriptionAccess({
+    required String userId,
+    required SubscriptionAccessMode mode,
+    required String reason,
+    DateTime? expiresAt,
+  }) async {
+    final actorUid = auth.currentUser?.uid;
+    if (actorUid == null) {
+      throw FirebaseAuthException(code: 'unauthenticated');
+    }
+    final result = await apiRepo.setAdminSubscriptionAccess(
+      userId: userId,
+      mode: mode,
+      reason: reason,
+      expiresAt: expiresAt,
+    );
+    // Never turn an already-saved audited change into a failed mutation just
+    // because an optional feed could not refresh. No synthetic access values.
+    final resources = <_ReplayResource<dynamic>>[
+      ..._adminUserResources.values,
+      ..._leaderboardResources.values,
+      ..._leaderboardViewResources.values,
+      ?_profileResources[actorUid],
+      ?_exclusiveVideosResource,
+    ];
+    await Future.wait([
+      for (final resource in resources)
+        () async {
+          if (auth.currentUser?.uid != actorUid) return;
+          try {
+            await resource.refresh(force: true);
+          } catch (_) {
+            debugPrint(
+              '[Subscriptions] Access saved; an open view needs retry.',
+            );
+          }
+        }(),
+    ]);
+    return result;
+  }
+
   Future<List<LeaderboardSeason>> fetchAdminLeaderboardSeasons() =>
       apiRepo.fetchAdminLeaderboardSeasons();
 
@@ -2872,6 +2921,30 @@ class ProductionRepository {
   /// database ID. The client never submits an entitlement or receipt verdict.
   Future<bool> syncSubscription(AbuUserProfile profile) async =>
       (await syncSubscriptionAccess(profile)).isActive;
+
+  /// Reads local effective access without contacting or configuring a store.
+  Future<SubscriptionAccessResult> refreshSubscriptionAccess(
+    AbuUserProfile profile,
+  ) async {
+    const unconfirmed = SubscriptionAccessResult(isActive: false);
+    if (profile.isGuest || auth.currentUser?.uid != profile.uid) {
+      return unconfirmed;
+    }
+    final status = await apiRepo.api.get(
+      '/subscriptions/status',
+      requireAuth: true,
+      bypassCache: true,
+    );
+    if (auth.currentUser?.uid != profile.uid) return unconfirmed;
+    await refreshProfile(profile.uid, force: true);
+    if (auth.currentUser?.uid != profile.uid) return unconfirmed;
+    final access = SubscriptionAccessResult.fromEnvelope(status);
+    SubscriptionService.instance.recordServerAccess(
+      profile.backendUserId,
+      access,
+    );
+    return access;
+  }
 
   Future<SubscriptionAccessResult> syncSubscriptionAccess(
     AbuUserProfile profile,

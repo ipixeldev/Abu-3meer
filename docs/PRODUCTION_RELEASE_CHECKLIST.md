@@ -1,98 +1,155 @@
-# Production release: what remains
+# Production release checklist
 
-The iOS app uses the public App Store `appl_` SDK key and the real products `Ostoora3` and `Ostoora3_Pro_Max`. The server's private `sk_` credential stays in its existing environment file. A release build cannot silently switch to RevenueCat Test Store.
+The application code is configured for the real Abu 3meer App Store app: the
+iOS client uses its public RevenueCat `appl_` SDK key, the server keeps the
+private `sk_` key, and the product identifiers are `Ostoora3` and
+`Ostoora3_Pro_Max`. A release build cannot silently fall back to RevenueCat Test
+Store or the repository's local StoreKit preview catalog.
 
-## Subscription screens
+This checklist separates code/deployment work from account-owner actions. A
+successful build or healthy `/ready` response does not make an App Store
+submission ready by itself.
 
-- Members uses a compact membership row and the original green-star icon, not a full-page subscription form.
-- Manage/Details opens the detailed controls on demand.
-- View plans opens a dedicated full-screen route immediately, then loads the current offering into RevenueCat's native `PaywallView`. Store failures stay on that screen with Retry/Close and a safe `RC-…` code; they do not bounce back into a second View plans dialog. The existing `default` offering was verified to serve the published custom paywall, revision 98, on 6 September 2026. Do not recreate the products or enter replacement prices in app code.
-- The paid badge is based on the server's verified profile, never just the store's "already subscribed" alert.
-- Build 20 also fixes the signup country keyboard overlap, RTL fan-card edit/XP overlap, and stale-language subscription messages. The SDK receives the app's selected language; RevenueCat dashboard content still needs its own matching localization.
+## Implemented application behavior
 
-## Physical-device paywall failure: what to check
+- The navigation label is **Members** and uses the supplied green-star artwork.
+- **View plans** opens a dedicated screen and presents RevenueCat's native
+  `PaywallView` for the current offering. A store lookup failure stays on that
+  screen with Retry, Close, a sanitized `RC-…` code, and a read-only product
+  report.
+- Access and subscriber badges use the authenticated server decision. An Apple
+  or RevenueCat client alert alone never grants protected access.
+- Subscription refresh bypasses stale client state. An administrator block is
+  shown as an access decision and does not prompt the user to buy again.
+- Admin Studio has a separate **Membership access** directory for admins and
+  super admins. It can grant app access, block app access, or return a user to
+  store-controlled status. Migration `042_admin_subscription_access.sql`
+  records these overrides and their audit history. This never cancels, renews,
+  refunds, or invents an App Store purchase, and it does not change YouTube CSV
+  membership.
+- A WhatsApp support action is available from the app's support and subscription
+  failure surfaces. It opens only a server-validated `wa.me` number; when the
+  server setting is blank, the app shows the existing support email instead of
+  opening a placeholder chat.
+- The signup country selector avoids the keyboard, Arabic fan-card metrics no
+  longer overlap, and the YouTube check accepts resolvable channel/profile URLs
+  (including `@handle` profiles) while returning a friendly not-member result
+  when the channel is absent from the current CSV snapshot.
 
-Apple currently lists both subscriptions as Ready to Submit with current prices in 175 territories, including Sweden, USA and Saudi Arabia. RevenueCat returns both product IDs and the published paywall. These checks do not prove Apple can return StoreKit products on the affected phone.
+## Deploy the current server revision
 
-1. On the client's App Store Connect account, open **Business → Agreements**. **Paid Applications must be Active**, with any required banking/tax setup complete. This cannot be inspected through the public App Store Connect API. The browser session was signed out during our audit; no agreement was accepted on your behalf.
-2. Install build 23 or later, open **Members → View plans** (or **Details → View plans** if the account already has a store subscription). If it fails, tap **Check store connection → Copy report** and send that report. This is a guarded, read-only product-availability check, not a purchase or proof of production approval. Do not send keys, receipts or passwords. Build 22 is superseded and should not be used.
-3. `RC-23` means a store/RevenueCat configuration error, `RC-5` means a product is unavailable, `RC-11` means credentials, and `RC-17` means the Apple subscription key. These are categories, not proof of one specific missing setting. Connection errors have separate messages.
-4. For missing server access/badges, run the read-only report in [SUBSCRIPTION_PRODUCTION_DIAGNOSTICS.md](SUBSCRIPTION_PRODUCTION_DIAGNOSTICS.md). It determines the running server's actual denial reason; a healthy `/ready` and unauthenticated `401` cannot do that.
+The current revision contains server changes beyond migrations 040/041. The
+earlier successful Docker recreation does **not** deploy the admin override,
+review-account allowlist, or WhatsApp support changes. Pull the new revision,
+back up PostgreSQL, update `.env`, rebuild the API image, and recreate the API.
+Migration 042 runs automatically at API startup.
 
-The simulator rendered the published paywall without a new purchase. A successful physical-device purchase/activation has **not** been verified by this update.
+Keep these production values in `/opt/abu3meer/server/.env`:
 
-## Server deployment — already completed
-
-Your 6 September transcript confirms the API was rebuilt and recreated successfully, Docker reports Healthy, and `/ready` succeeds. **Build 23 adds no server change, so no more Docker commands are needed for this update.** Migrations 040/041 and the database backup were already completed.
-
-The commands below are retained only as a future redeployment reference, not as a fix for RC-23. If a later backend update requires them, run each block separately and stop on an error.
-
-```bash
-cd /opt/abu3meer
+```dotenv
+REVENUECAT_SECRET_API_KEY=sk_...
+REVENUECAT_ALLOW_SANDBOX=false
+REVENUECAT_SANDBOX_ALLOWED_USER_IDS=<dedicated-review-app-account-postgresql-uuid>
+SUPPORT_WHATSAPP_NUMBER=
 ```
 
-```bash
-git status --short
-```
+`REVENUECAT_SANDBOX_ALLOWED_USER_IDS` is a comma-separated list of app-account
+PostgreSQL UUIDs, not emails, Apple IDs, Firebase UIDs, or RevenueCat keys. Use
+only dedicated TestFlight/App Review accounts. Leave
+`SUPPORT_WHATSAPP_NUMBER` blank until the business number is known; blank safely
+disables WhatsApp. When enabled, enter the international number with country
+code using digits only, without `+`, spaces, `00`, or a local trunk prefix.
 
-Stop if tracked files have edits. Keep the existing environment files and backups private; do not add them to Git.
+The detailed, non-destructive commands are in
+[DEPLOY_MEMBERSHIP_SUBSCRIPTIONS.md](DEPLOY_MEMBERSHIP_SUBSCRIPTIONS.md). Do not
+run `docker compose down -v`.
 
-```bash
-git fetch origin agent/production-backend
-```
+## Production-first TestFlight and App Review access
 
-```bash
-git merge --ff-only origin/agent/production-backend
-```
+TestFlight and App Review purchases use Apple's sandbox even though the same
+binary uses the production `appl_` key. Keep the global server switch
+`REVENUECAT_ALLOW_SANDBOX=false`.
 
-```bash
-cd /opt/abu3meer/server
-```
+For the dedicated review account only:
 
-```bash
-nano .env
-```
+1. Put its PostgreSQL user UUID in
+   `REVENUECAT_SANDBOX_ALLOWED_USER_IDS` and redeploy the API.
+2. In RevenueCat, open the project **Sandbox Testing Access** settings, choose
+   **Allowed App User IDs only**, and add the same UUID. The app identifies the
+   RevenueCat customer with this UUID.
+3. Sign into that exact app account in TestFlight and use Restore/Refresh once
+   if it already owns the test subscription.
 
-Keep your new RevenueCat secret unchanged. For your requested production-only policy, set `REVENUECAT_ALLOW_SANDBOX=false`. Save with Ctrl+O, Enter, Ctrl+X.
+The server always asks RevenueCat for production state first. Only if that exact
+allowlisted account has no active production entitlement does it perform the
+explicit sandbox lookup. An active production entitlement therefore cannot be
+shadowed by test data, and sandbox access remains unavailable to every other
+production user. Do not set the global sandbox switch to `true` for the public
+deployment.
 
-```bash
-docker compose config -q
-```
+## Current RC-23/store state
 
-```bash
-docker compose build api
-```
+- Both subscriptions have prices, 175-territory availability, localizations,
+  and review images in App Store Connect. Their current state is
+  **Ready to Submit**.
+- The RevenueCat `default` offering contains both products and the published
+  paywall. The public SDK key, bundle identifier, product identifiers,
+  entitlement, and the displayed Apple credential panels match.
+- The affected TestFlight phone returned zero StoreKit products, including in
+  the enabled Turkey storefront. That is the immediate cause of the paywall's
+  `RC-23` screen; it is not evidence that the app forgot the public key.
+- Paid Applications, banking, and tax were activated on 6 September 2026. Apple
+  catalog changes can take time to propagate. Wait up to 24 hours from that
+  activation before treating the unchanged zero-product result as final, then
+  retry on a current TestFlight build and copy the sanitized store report.
 
-```bash
-docker compose up -d --no-deps --force-recreate api
-```
+The supplied sample app succeeds locally because its Xcode Run scheme enables a
+local `.storekit` catalog. That confirms its UI path, not TestFlight catalog
+availability. See [SAMPLECAT_CONFIGURATION_CHECK.md](SAMPLECAT_CONFIGURATION_CHECK.md)
+and [RC23_STORE_ACTIONS.md](RC23_STORE_ACTIONS.md).
 
-```bash
-curl -sS https://api.abu3meer.com/ready
-```
+## App Store Connect actions that still require the account owner
 
-No users, points, CSV uploads, or subscriptions are deleted. Do not run `docker compose down -v`.
+The review draft currently contains the subscription group and both
+subscription versions, but the app version could not be added. Complete these
+items in App Store Connect without inventing legal or contact information:
 
-In the updated app open Members → Details/Manage → Refresh access. The detailed result distinguishes production-only test rejection from missing entitlements, expiry, and temporary verification failures. Do not purchase again to try to fix an activation issue.
+1. Answer and publish **App Privacy** for the current app.
+2. Upload the required **12.9-inch iPad Pro** screenshot set. The app currently
+   declares iPhone and iPad support; dropping iPad instead requires an explicit
+   product decision and a new build.
+3. Fill the App Review contact first name, last name, email, phone country code,
+   and phone number. A review demo login is already stored; do not expose it in
+   chat or source control.
+4. Enter the exact copyright holder text.
+5. Set the content-rights declaration accurately. Football logos and videos
+   mean third-party content rights must not be guessed.
+6. Wait for or resolve the **Digital Services Act** status currently shown as
+   **In Review** if Apple requires completion for EU distribution.
+7. After the final build finishes processing, select it for the app version and
+   add that app version to the same review submission as the first subscription
+   group/items.
 
-## TestFlight is not the public App Store
+Apple currently refuses editing the draft version's **What's New** field in its
+present state; this is not a reason to invent release notes through another
+field. Optional promotional images are not release blockers.
 
-TestFlight always uses sandbox purchases. The same production-ready binary and `appl_` key use real payments once installed from the public App Store. With production-only server policy, a TestFlight test subscription intentionally gets no production access or badge.
+The App Store Connect API cannot truthfully answer App Privacy, content-rights,
+copyright, reviewer identity, or DSA legal questions for the owner, and it
+cannot manufacture a missing iPad screenshot. Those require manual owner input.
 
-The **1 August 2013** original-download date in Customer Center is Apple's documented sandbox `AppTransaction.originalPurchaseDate` placeholder. It is not the app release date, the user's birthday, or a subscription start date. See [Apple's date documentation](https://developer.apple.com/documentation/storekit/apptransaction/originalpurchasedate).
+## Release authorization boundary
 
-The external TestFlight link is enabled and below its tester limit, but builds 17/18 had not passed Beta App Review at the time of the audit. Complete TestFlight → Test Information → Beta App Review Information (contact first/last name, email, phone, and a working dedicated review login). Do not paste the review password in chat. External testing then requires a Beta App Review submission and approval.
+Uploading a build to App Store Connect/TestFlight and selecting it is distinct
+from submitting Beta App Review, submitting public App Review, or releasing the
+app. Do **not** submit any App Review or release action without the owner's
+explicit authorization after the manual blockers above are cleared and the
+purchase-to-access flow is verified.
 
-## Before public App Review
+No App Review submission is authorized by this checklist.
 
-- Complete reviewer contact details and a working review login under App Review Information as well.
-- Supply copyright holder text and an accurate third-party content-rights declaration. Football logos/videos mean "does not use third-party content" cannot be assumed.
-- Current primary Arabic screenshots were uploaded on 6 September 2026 from full build 20 at native 1320×2868 resolution (Predictions and Leaderboard); both completed processing. Refresh them if those screens change.
-- Confirm and publish App Privacy answers, age rating, regional/trader and business agreement information in App Store Connect. Do not guess legal declarations.
-- Attach both first subscriptions to the app-version review submission. Both products have complete required metadata but are not yet approved.
-- Configure and verify RevenueCat webhooks so renewals, refunds, expirations and transfers reach the server.
-- Verify a reviewer purchase can unlock the advertised features. Apple reviews in sandbox; a production-only server that rejects the review purchase will fail that flow. Use an intentional review/test environment or agree a tightly scoped reviewer-access policy before submission. Do not silently grant test users paid production badges.
-
-No Beta App Review, public App Review or public release has been submitted by this update.
-
-References: [RevenueCat: Apple App Store and TestFlight](https://www.revenuecat.com/docs/test-and-launch/sandbox/apple-app-store), [Apple: invite external testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers).
+References: [RevenueCat sandbox access controls](https://www.revenuecat.com/docs/projects/sandbox-access),
+[RevenueCat Apple sandbox/TestFlight behavior](https://www.revenuecat.com/docs/test-and-launch/sandbox/apple-app-store),
+[RevenueCat empty-offering troubleshooting](https://www.revenuecat.com/docs/offerings/troubleshooting-offerings),
+[Apple: submit an in-app purchase](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-in-app-purchase),
+[Apple: submit an app](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/submit-an-app).

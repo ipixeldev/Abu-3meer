@@ -9,6 +9,7 @@ import '../../production/production_repository.dart';
 import '../../production/subscription_service.dart';
 import 'subscription_feedback.dart';
 import 'subscription_paywall_page.dart';
+import '../support/whatsapp_support_button.dart';
 
 /// This panel never unlocks content from SDK state. The refreshed server
 /// profile is the access authority, including for restores and renewals.
@@ -34,11 +35,16 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
   String? _activeAction;
   SubscriptionFeedback? _message;
   String? _localAccessReason;
+  bool? _localAccessActive;
   String? get _accessReason =>
       _localAccessReason ??
-      (_store.userId == widget.profile.backendUserId
+      (widget.profile.subscriptionAccessReason != 'unknown'
+          ? widget.profile.subscriptionAccessReason
+          : _store.userId == widget.profile.backendUserId
           ? _store.serverAccess?.reason
           : null);
+  bool get _accessActive =>
+      _localAccessActive ?? widget.profile.isProSubscriber;
   final _detailsRevision = ValueNotifier<int>(0);
   bool _detailsOpen = false;
 
@@ -64,6 +70,9 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
     });
     var storeCompleted = false;
     var showDetails = false;
+    final localAccessOnly =
+        action == 'refresh' &&
+        const ['admin_granted', 'admin_revoked'].contains(_accessReason);
     try {
       if (action == 'plans') {
         final result = await SubscriptionPaywallPage.open(
@@ -87,11 +96,13 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           profile.backendUserId,
           locale: Localizations.localeOf(context).toLanguageTag(),
         );
-      } else {
+      } else if (!localAccessOnly) {
         await _store.refresh(profile.backendUserId);
       }
       storeCompleted = true;
-      final access = await widget.repository.syncSubscriptionAccess(profile);
+      final access = localAccessOnly
+          ? await widget.repository.refreshSubscriptionAccess(profile)
+          : await widget.repository.syncSubscriptionAccess(profile);
       if (!mounted || widget.profile.uid != profile.uid) return;
       final entitlement = _store
           .customerInfo
@@ -105,6 +116,7 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
       );
       _update(() {
         _localAccessReason = access.reason;
+        _localAccessActive = access.isActive;
         _message = feedback;
       });
       showDetails = action == 'plans' && !access.isActive;
@@ -141,6 +153,20 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
         oldWidget.profile.backendUserId != widget.profile.backendUserId) {
       _message = null;
       _localAccessReason = null;
+      _localAccessActive = null;
+    } else if (oldWidget.profile.isProSubscriber !=
+            widget.profile.isProSubscriber ||
+        oldWidget.profile.subscriptionAccessReason !=
+            widget.profile.subscriptionAccessReason ||
+        oldWidget.profile.subscriptionAccessMode !=
+            widget.profile.subscriptionAccessMode ||
+        oldWidget.profile.subscriptionAccessExpiresAt !=
+            widget.profile.subscriptionAccessExpiresAt) {
+      // A newly delivered profile is authoritative over an earlier local
+      // response. Until it arrives, the response keeps the panel from showing
+      // the stale pre-refresh reason and access verdict.
+      _localAccessReason = null;
+      _localAccessActive = null;
     }
     if (!identical(oldWidget.profile, widget.profile)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -224,9 +250,11 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           _store.customerInfo?.entitlements.active[SubscriptionService
                   .entitlementId] !=
               null;
-      final active = profile.isProSubscriber;
+      final active = _accessActive;
+      final adminGranted = active && _accessReason == 'admin_granted';
+      final adminBlocked = !active && _accessReason == 'admin_revoked';
       final memberAccess = active || profile.isYouTubeMember;
-      final pending = !active && storeActive;
+      final pending = !active && storeActive && !adminBlocked;
       final storeSandbox =
           pending &&
           _store
@@ -236,7 +264,9 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                   ?.isSandbox ==
               true;
       final testSubscription =
-          !active && (_accessReason == 'sandbox_not_allowed' || storeSandbox);
+          !active &&
+          !adminBlocked &&
+          (_accessReason == 'sandbox_not_allowed' || storeSandbox);
       final accessNotActive =
           !active &&
           const [
@@ -244,14 +274,23 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
             'expired',
             'inactive',
           ].contains(_accessReason);
-      final showPlans = !memberAccess && !pending && !testSubscription;
+      final showPlans =
+          !memberAccess && !pending && !testSubscription && !adminBlocked;
       final working = _working || _store.busy;
       final enabled =
           !working &&
           !profile.isGuest &&
           profile.backendUserId.isNotEmpty &&
           _store.available;
-      final title = active
+      final title = adminGranted
+          ? abuText(context, 'Admin-granted access', 'صلاحيات ممنوحة من المدير')
+          : adminBlocked
+          ? abuText(
+              context,
+              'Subscription access blocked',
+              'صلاحيات الاشتراك معطلة',
+            )
+          : active
           ? abuText(context, 'Subscription active', 'الاشتراك نشط')
           : accessNotActive && pending
           ? abuText(context, 'Access not active', 'الصلاحيات غير مفعّلة')
@@ -262,7 +301,15 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           : memberAccess
           ? abuText(context, 'Member access active', 'مزايا العضوية مفعّلة')
           : abuText(context, 'Ostoora3 membership', 'عضوية الأسطورة');
-      final subtitle = accessNotActive && pending
+      final subtitle = adminGranted
+          ? abuText(context, 'Not a store purchase', 'ليس شراءً من المتجر')
+          : adminBlocked
+          ? abuText(
+              context,
+              'Contact support · billing unchanged',
+              'تواصل مع الدعم · الفوترة لم تتغير',
+            )
+          : accessNotActive && pending
           ? abuText(context, 'Review subscription status', 'راجع حالة الاشتراك')
           : testSubscription
           ? abuText(
@@ -330,7 +377,10 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        _message != null && !active && !testSubscription
+                        _message != null &&
+                                !active &&
+                                !testSubscription &&
+                                !adminBlocked
                             ? abuText(
                                 context,
                                 'Review subscription status',
@@ -376,8 +426,8 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                 child: Text(
                   abuText(
                     context,
-                    active ? 'Manage' : 'Details',
-                    active ? 'إدارة' : 'التفاصيل',
+                    active && !adminGranted ? 'Manage' : 'Details',
+                    active && !adminGranted ? 'إدارة' : 'التفاصيل',
                   ),
                 ),
               ),
@@ -391,21 +441,29 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
     animation: _store,
     builder: (context, _) {
       final profile = widget.profile;
+      final accessActive = _accessActive;
       final enabled =
           !_working &&
           !_store.busy &&
           !profile.isGuest &&
           profile.backendUserId.isNotEmpty &&
           _store.available;
+      final canRefreshLocalAccess =
+          !_working &&
+          !_store.busy &&
+          !profile.isGuest &&
+          profile.backendUserId.isNotEmpty &&
+          const ['admin_granted', 'admin_revoked'].contains(_accessReason);
       final info = _store.userId == profile.backendUserId
           ? _store.customerInfo
           : null;
       final entitlement =
           info?.entitlements.active[SubscriptionService.entitlementId];
+      final adminBlocked = _accessReason == 'admin_revoked';
       // A known store subscription must not lead the user back to buying it
       // again just because the separate server activation is unavailable.
       final hasSubscription =
-          profile.isProSubscriber ||
+          (accessActive && _accessReason != 'admin_granted') ||
           entitlement != null ||
           _accessReason == 'sandbox_not_allowed';
       return Container(
@@ -460,7 +518,24 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
               ),
               style: const TextStyle(color: AbuBrand.muted, height: 1.4),
             ),
-            if (profile.isProSubscriber) ...[
+            if (_accessReason == 'admin_granted' ||
+                _accessReason == 'admin_revoked') ...[
+              const SizedBox(height: 12),
+              Builder(
+                builder: (context) {
+                  final feedback = SubscriptionFeedback.checked(
+                    serverActive: accessActive,
+                    storeActive: entitlement != null,
+                    isSandbox: entitlement?.isSandbox ?? false,
+                    accessReason: _accessReason!,
+                  );
+                  return Text(
+                    abuText(context, feedback.english, feedback.arabic),
+                    style: const TextStyle(color: AbuBrand.gold, height: 1.45),
+                  );
+                },
+              ),
+            ] else if (accessActive) ...[
               const SizedBox(height: 12),
               Text(
                 abuText(context, 'Subscription active', 'الاشتراك نشط'),
@@ -556,24 +631,25 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
               ),
             ],
             const SizedBox(height: 14),
-            FilledButton.icon(
-              onPressed: enabled
-                  ? () => _perform(hasSubscription ? 'manage' : 'plans')
-                  : null,
-              icon: Icon(
-                hasSubscription
-                    ? Icons.manage_accounts_outlined
-                    : Icons.star_outline_rounded,
-              ),
-              label: Text(
-                abuText(
-                  context,
-                  hasSubscription ? 'Manage subscription' : 'View plans',
-                  hasSubscription ? 'إدارة الاشتراك' : 'عرض الخطط',
+            if (!adminBlocked || hasSubscription)
+              FilledButton.icon(
+                onPressed: enabled
+                    ? () => _perform(hasSubscription ? 'manage' : 'plans')
+                    : null,
+                icon: Icon(
+                  hasSubscription
+                      ? Icons.manage_accounts_outlined
+                      : Icons.star_outline_rounded,
+                ),
+                label: Text(
+                  abuText(
+                    context,
+                    hasSubscription ? 'Manage subscription' : 'View plans',
+                    hasSubscription ? 'إدارة الاشتراك' : 'عرض الخطط',
+                  ),
                 ),
               ),
-            ),
-            if (hasSubscription)
+            if (hasSubscription && !adminBlocked)
               TextButton.icon(
                 key: const Key('subscription-details-view-plans'),
                 onPressed: enabled ? () => _perform('plans') : null,
@@ -584,14 +660,21 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
               alignment: WrapAlignment.center,
               spacing: 8,
               children: [
-                TextButton(
-                  onPressed: enabled ? () => _perform('restore') : null,
-                  child: Text(
-                    abuText(context, 'Restore purchases', 'استعادة المشتريات'),
+                if (!adminBlocked)
+                  TextButton(
+                    onPressed: enabled ? () => _perform('restore') : null,
+                    child: Text(
+                      abuText(
+                        context,
+                        'Restore purchases',
+                        'استعادة المشتريات',
+                      ),
+                    ),
                   ),
-                ),
                 TextButton(
-                  onPressed: enabled ? () => _perform('refresh') : null,
+                  onPressed: enabled || canRefreshLocalAccess
+                      ? () => _perform('refresh')
+                      : null,
                   child: Text(
                     abuText(
                       context,
@@ -604,7 +687,7 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                     ),
                   ),
                 ),
-                if (!hasSubscription)
+                if (!hasSubscription && !adminBlocked)
                   TextButton(
                     onPressed: enabled ? () => _perform('manage') : null,
                     child: Text(
@@ -613,6 +696,7 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                   ),
               ],
             ),
+            const WhatsAppSupportButton(),
             if (_message != null) ...[
               const SizedBox(height: 8),
               Semantics(
