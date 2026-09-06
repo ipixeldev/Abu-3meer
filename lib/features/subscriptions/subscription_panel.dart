@@ -279,8 +279,8 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           : active
           ? abuText(
               context,
-              'Members only + member bonuses',
-              'للأعضاء فقط ومزايا العضوية',
+              'Members + member bonuses',
+              'قسم الأعضاء ومزايا العضوية',
             )
           : memberAccess
           ? abuText(context, 'YouTube membership', 'عضوية يوتيوب')
@@ -288,8 +288,8 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           ? abuText(context, 'Sign in to subscribe', 'سجّل الدخول للاشتراك')
           : abuText(
               context,
-              'Members only + member bonuses',
-              'للأعضاء فقط ومزايا العضوية',
+              'Members + member bonuses',
+              'قسم الأعضاء ومزايا العضوية',
             );
       final color = memberAccess ? AbuBrand.lime : AbuBrand.gold;
       return Container(
@@ -455,7 +455,7 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
             Text(
               abuText(
                 context,
-                'Both plans include Members only access and member bonuses. Prices and renewal terms are shown by the store before purchase.',
+                'Both plans include access to Members and member bonuses. Prices and renewal terms are shown by the store before purchase.',
                 'تتضمن الخطتان محتوى الأعضاء ومزايا العضوية. يعرض المتجر السعر وشروط التجديد قبل الشراء.',
               ),
               style: const TextStyle(color: AbuBrand.muted, height: 1.4),

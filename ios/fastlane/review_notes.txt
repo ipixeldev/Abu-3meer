@@ -1,10 +1,10 @@
 Abu 3meer supports Arabic and English. This is the full app, not a standalone paywall demonstration.
 
 Subscription review:
-- Sign in, then open Profile or Settings and select View plans. The Members Zone tab also provides access to membership plans.
+- Sign in, then open Profile or Settings and select View plans. The Members tab also provides access to membership plans.
 - Ostoora3 (product ID: Ostoora3) is an auto-renewable monthly subscription. Ostoora3 Pro Max (product ID: Ostoora3_Pro_Max) is an auto-renewable yearly subscription. Both unlock the same member benefits; only the billing period differs.
 - The paywall shows App Store-localized prices and billing periods before purchase. RevenueCat manages the native purchase flow. The backend verifies the abu_3meer_pro entitlement for member access.
-- Restore purchases and subscription management are available in the subscription panel. Subscribers receive Members Zone access, eligible member bonuses, and a green subscriber badge beside their names.
+- Restore purchases and subscription management are available in the subscription panel. Subscribers receive access to Members, eligible member bonuses, and a green subscriber badge beside their names.
 - Subscriptions renew automatically unless cancelled through the App Store. Deleting an app account does not cancel its App Store subscription.
 
 Authentication and account controls:
@@ -28,6 +28,6 @@ Data and content behavior:
 - Location permission is optional and is used once to suggest a country; users can select a country manually.
 - Match facts, lineups, tables, and results appear only when the official football data provider publishes them.
 - Notification permission is optional.
-- Public channel uploads are shown on Home, separately from members-only content in Members Zone.
+- Public channel uploads are shown on Home, separately from members-only content in Members.
 
 Legal and support pages are available in Settings and at https://ipixeldev.github.io/Abu-3meer/.

@@ -2523,7 +2523,7 @@ List<(IconData, String)> _productionNavigationItems(
   (Icons.grid_view_rounded, abuText(context, 'Home', 'الرئيسية')),
   (Icons.sports_soccer_rounded, abuText(context, 'Predict', 'توقع')),
   (Icons.bolt_rounded, abuText(context, 'Challenges', 'التحديات')),
-  (Icons.stars_rounded, abuText(context, 'Members only', 'للأعضاء فقط')),
+  (Icons.stars_rounded, abuText(context, 'Members', 'الأعضاء')),
   (Icons.leaderboard_rounded, abuText(context, 'Leaders', 'الترتيب')),
   (Icons.person_rounded, abuText(context, 'Profile', 'حسابي')),
   (Icons.settings_rounded, abuText(context, 'Settings', 'الإعدادات')),
@@ -12386,7 +12386,7 @@ class _ProductionAdmin extends StatelessWidget {
                       child: SubscriberBadge(size: 22),
                     ),
                     label: Text(
-                      abuText(context, 'MEMBERS ONLY', 'للأعضاء فقط'),
+                      abuText(context, 'MEMBERS', 'الأعضاء'),
                       textAlign: TextAlign.center,
                     ),
                   ),

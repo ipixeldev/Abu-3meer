@@ -35,7 +35,7 @@ class _VideoRepository implements ProductionRepository {
 
 void main() {
   for (final language in ['en', 'ar']) {
-    testWidgets('Members only empty state uses shared badge ($language)', (
+    testWidgets('Members empty state uses shared badge ($language)', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -53,7 +53,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.text(language == 'en' ? 'Members only' : 'للأعضاء فقط'),
+        find.text(language == 'en' ? 'Members' : 'الأعضاء'),
         findsOneWidget,
       );
       expect(find.byType(SubscriberBadge), findsOneWidget);
@@ -61,7 +61,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
     testWidgets(
-      'Members Zone leads with video before compact subscription row ($language)',
+      'Members leads with video before compact subscription row ($language)',
       (tester) async {
         tester.view.physicalSize = const Size(320, 750);
         tester.view.devicePixelRatio = 1;

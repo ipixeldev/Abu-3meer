@@ -122,9 +122,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        final title = find.text(
-          language == 'en' ? 'Members only' : 'للأعضاء فقط',
-        );
+        final title = find.text(language == 'en' ? 'Members' : 'الأعضاء');
         expect(title, findsOneWidget);
         expect(find.byType(SubscriberBadge), findsOneWidget);
         final paragraph = tester.renderObject<RenderParagraph>(title);

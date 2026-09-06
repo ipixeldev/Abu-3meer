@@ -160,7 +160,7 @@ class _ExclusiveVideosViewState extends State<ExclusiveVideosView> {
             ),
             const SizedBox(height: 18),
             Text(
-              abuText(context, 'Members only', 'للأعضاء فقط'),
+              abuText(context, 'Members', 'الأعضاء'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: dark ? Colors.white : _exclusiveLightInk,
