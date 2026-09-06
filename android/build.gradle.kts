@@ -19,8 +19,11 @@ subprojects {
     project.evaluationDependsOn(":app")
 
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        compilerOptions {
-            freeCompilerArgs.add("-Xannotation-default-target=param-property")
+        compilerOptions { freeCompilerArgs.add("-Xannotation-default-target=param-property") }
+    }
+    if (name == "purchases_ui_flutter") {
+        tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+            compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
         }
     }
 

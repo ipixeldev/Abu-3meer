@@ -204,7 +204,7 @@ class SubscriptionService extends ChangeNotifier {
   Future<void> _connect(String userId) async {
     if (!available) {
       throw const SubscriptionException(
-        'Subscriptions are not configured yet. The iOS app needs its public appl_ RevenueCat SDK key.',
+        'Subscriptions are not configured yet. Add the store-specific public RevenueCat SDK key (appl_ for iOS or goog_ for Android).',
       );
     }
     if (userId.isEmpty || userId == 'guest') {

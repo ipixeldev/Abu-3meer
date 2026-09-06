@@ -1,4 +1,4 @@
-package com.abu3meer.app
+package omar.abu3meer.app
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

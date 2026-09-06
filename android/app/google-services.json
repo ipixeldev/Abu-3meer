@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:701810344443:android:4d78f9446bc398a25a4b5e",
         "android_client_info": {
-          "package_name": "com.abu3meer.app"
+          "package_name": "omar.abu3meer.app"
         }
       },
       "oauth_client": [
@@ -17,7 +17,7 @@
           "client_id": "701810344443-21odj0mdeq7d8pl4rfrk1bagpqejt9lb.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.abu3meer.app",
+            "package_name": "omar.abu3meer.app",
             "certificate_hash": "c9cd079852f0b2d2057c74541c3a9d5b35c6d955"
           }
         },
@@ -42,7 +42,7 @@
               "client_id": "701810344443-l6tgomd9ftjpair1lsck5jvebdas9ngb.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "com.abu3meer.app"
+                "bundle_id": "omar.abu3meer.app"
               }
             }
           ]
