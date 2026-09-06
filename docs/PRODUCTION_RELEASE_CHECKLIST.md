@@ -21,9 +21,11 @@ Apple currently lists both subscriptions as Ready to Submit with current prices 
 
 The simulator rendered the published paywall without a new purchase. A successful physical-device purchase/activation has **not** been verified by this update.
 
-## Update the existing server
+## Server deployment — already completed
 
-Your previous deployment already applied migrations 040/041 and created a database backup. This follow-up adds clearer status reasons and a timestamp guard; no new migration is required. Run each block on the Ubuntu server separately and stop on an error.
+Your 6 September transcript confirms the API was rebuilt and recreated successfully, Docker reports Healthy, and `/ready` succeeds. **Build 23 adds no server change, so no more Docker commands are needed for this update.** Migrations 040/041 and the database backup were already completed.
+
+The commands below are retained only as a future redeployment reference, not as a fix for RC-23. If a later backend update requires them, run each block separately and stop on an error.
 
 ```bash
 cd /opt/abu3meer
