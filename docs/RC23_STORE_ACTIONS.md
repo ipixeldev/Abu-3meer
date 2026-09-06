@@ -8,7 +8,8 @@ Checked 6 September 2026 after the physical-device build 20 report.
 - RevenueCat returns the published `default` offering/paywall and the exact Apple product IDs `Ostoora3` and `Ostoora3_Pro_Max`.
 - Apple lists both products as READY_TO_SUBMIT, with prices and availability in 175 territories. They are not approved for public sale yet. READY_TO_SUBMIT does not by itself explain a TestFlight product lookup failure.
 - The device reports configuration error RC-23. Without its underlying native error or agreement status, the exact cause is not established.
-- The existing `dev` customer in the same RevenueCat project currently has neither expected subscription nor `abu_3meer_pro`. This agrees with the server's `no_entitlement`; it is not a rejected active sandbox subscription.
+- The existing `dev` customer's **production** RevenueCat response has neither expected subscription nor `abu_3meer_pro`. This agrees with the server's `no_entitlement`.
+- Follow-up native-SDK header inspection found that RevenueCat sends `X-Is-Sandbox`. Querying the same existing customer with that header `true` returns `Ostoora3_Pro_Max` and `abu_3meer_pro`, with `is_sandbox: true`; setting it `false` returns no subscription. Thus a test subscription DOES exist, but no production subscription is recognized. The earlier header-less check was not an inventory of both environments. Do not turn the test record into a production grant.
 - The server diagnostic's `runtimeSupportsAccessReasons: false` means the running container predates the newer diagnostic fields. Pulling Git alone does not update a running Docker image.
 
 ## Owner action needed now
