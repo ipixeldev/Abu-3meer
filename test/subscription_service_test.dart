@@ -15,6 +15,7 @@ void main() {
   late String nativeId;
   late Map<String, dynamic> offerings;
   late String paywallResult;
+  bool customerInfoUnavailable = false;
   Completer<Map<String, dynamic>>? pendingRestore;
   Map<String, dynamic> info() => {
     'entitlements': {'all': {}, 'active': {}},
@@ -34,6 +35,7 @@ void main() {
     pendingRestore = null;
     offerings = {'all': {}, 'current': null};
     paywallResult = 'CANCELLED';
+    customerInfoUnavailable = false;
     service = SubscriptionService.forTesting();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(uiChannel, (call) async {
@@ -48,6 +50,7 @@ void main() {
               nativeId = call.arguments['appUserId'] as String;
               return null;
             case 'getCustomerInfo':
+              if (customerInfoUnavailable) throw PlatformException(code: '10');
               return info();
             case 'logIn':
               nativeId = call.arguments['appUserID'] as String;
@@ -98,6 +101,29 @@ void main() {
     ],
   };
 
+  test('completed purchase survives customer-info refresh failure and uses app locale', () async {
+    final current = currentOffering();
+    offerings = {
+      'current': current,
+      'all': {'default': current},
+    };
+    final result = await service.showPaywall(
+      'account-1',
+      locale: 'ar',
+      presenter: (offering) async {
+        expect(offering.identifier, 'default');
+        customerInfoUnavailable = true;
+        return PaywallResult.purchased;
+      },
+    );
+    expect(result, PaywallResult.purchased);
+    expect(
+      calls.any((call) => call.method == 'overridePreferredUILocale'),
+      true,
+    );
+    expect(calls.any((call) => call.method == 'presentPaywall'), false);
+  });
+
   test('iOS uses its real app key without a Test Store fallback', () {
     expect(service.apiKey, startsWith('appl_'));
     expect(service.usesTestStore, false);
@@ -107,6 +133,41 @@ void main() {
     expect(service.apiKey, isEmpty);
     expect(service.available, false);
   });
+
+  test('native UI error codes cannot throw while handling another error', () {
+    for (final code in ['presentation_error', '-1', '9999', '1.5']) {
+      final error = PlatformException(code: code, message: 'private receipt');
+      expect(SubscriptionService.isCancellation(error), false);
+      expect(
+        SubscriptionService.errorMessage(error),
+        isNot(contains('private')),
+      );
+    }
+    expect(
+      SubscriptionService.isCancellation(PlatformException(code: '1')),
+      true,
+    );
+  });
+
+  test(
+    'server display status is scoped to SDK account and cleared on switch',
+    () async {
+      await service.refresh('account-1');
+      const denied = SubscriptionAccessResult(
+        isActive: false,
+        reason: 'sandbox_not_allowed',
+      );
+      service.recordServerAccess('account-2', denied);
+      expect(service.serverAccess, isNull);
+      service.recordServerAccess('account-1', denied);
+      expect(service.serverAccess?.reason, 'sandbox_not_allowed');
+      await service.refresh('account-2');
+      expect(service.serverAccess, isNull);
+      service.recordServerAccess('account-2', denied);
+      await service.clearIdentity();
+      expect(service.serverAccess, isNull);
+    },
+  );
 
   test('server policy reason is separate from a subscription grant', () {
     final result = SubscriptionAccessResult.fromEnvelope({

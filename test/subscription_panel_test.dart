@@ -41,7 +41,11 @@ class _Store extends SubscriptionService {
   var refreshes = 0;
   var paywalls = 0;
   @override
-  Future<PaywallResult> showPaywall(String userId) async {
+  Future<PaywallResult> showPaywall(
+    String userId, {
+    Future<PaywallResult> Function(Offering)? presenter,
+    String? locale,
+  }) async {
     paywalls++;
     return paywallResult;
   }
@@ -102,6 +106,116 @@ class _Repository implements ProductionRepository {
 }
 
 void main() {
+  for (final initialLanguage in ['en', 'ar']) {
+    for (final serverFailure in [false, true]) {
+      testWidgets(
+        'open feedback follows locale after ${serverFailure ? 'failure' : 'check'} from $initialLanguage',
+        (tester) async {
+          tester.view.physicalSize = const Size(320, 750);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          final locale = ValueNotifier(Locale(initialLanguage));
+          addTearDown(locale.dispose);
+          final store = _Store();
+          addTearDown(store.dispose);
+          final repository = _Repository();
+          final failure = AbuApiException(
+            statusCode: 404,
+            message: 'Route missing',
+          );
+          final feedback = serverFailure
+              ? SubscriptionFeedback.serverFailure(failure)
+              : SubscriptionFeedback.checked(
+                  serverActive: false,
+                  storeActive: true,
+                  isSandbox: true,
+                  accessReason: 'sandbox_not_allowed',
+                );
+          final panel = SubscriptionPanel(
+            repository: repository,
+            profile: _profile,
+            subscriptionService: store,
+          );
+          await tester.pumpWidget(
+            ValueListenableBuilder<Locale>(
+              valueListenable: locale,
+              builder: (_, currentLocale, _) => MaterialApp(
+                locale: currentLocale,
+                supportedLocales: const [Locale('en'), Locale('ar')],
+                localizationsDelegates: GlobalMaterialLocalizations.delegates,
+                home: Scaffold(
+                  body: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: panel,
+                  ),
+                ),
+              ),
+            ),
+          );
+          final summary = find.byKey(const Key('subscription-summary'));
+          await tester.tap(find.byKey(const Key('subscription-open-details')));
+          await tester.pumpAndSettle();
+          final refresh = find.text(
+            initialLanguage == 'en' ? 'Refresh access' : 'تحديث الصلاحيات',
+          );
+          await tester.ensureVisible(refresh);
+          await tester.tap(refresh);
+          await tester.pump();
+          expect(
+            find.descendant(
+              of: summary,
+              matching: find.byType(CircularProgressIndicator),
+            ),
+            findsOneWidget,
+          );
+          expect(tester.getSize(summary).height, lessThan(170));
+          expect(tester.takeException(), isNull);
+          if (serverFailure) {
+            repository.result.completeError(failure);
+          } else {
+            repository.result.complete(
+              const SubscriptionAccessResult(
+                isActive: false,
+                reason: 'sandbox_not_allowed',
+                environment: 'sandbox',
+              ),
+            );
+          }
+          await tester.pumpAndSettle();
+          final oldMessage = initialLanguage == 'en'
+              ? feedback.english
+              : feedback.arabic;
+          final nextMessage = initialLanguage == 'en'
+              ? feedback.arabic
+              : feedback.english;
+          expect(find.text(oldMessage), findsOneWidget);
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          locale.value = Locale(initialLanguage == 'en' ? 'ar' : 'en');
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const Key('subscription-details-sheet')),
+            findsOneWidget,
+          );
+          expect(find.text(nextMessage), findsOneWidget);
+          expect(find.text(oldMessage), findsNothing);
+          expect(tester.getSize(summary).height, lessThan(170));
+          expect(tester.takeException(), isNull);
+          await tester.tap(find.byKey(const Key('close-subscription-details')));
+          await tester.pumpAndSettle();
+          expect(
+            find.text(
+              initialLanguage == 'en' ? 'اشتراك تجريبي' : 'Test subscription',
+            ),
+            findsOneWidget,
+          );
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          expect(_profile.isProSubscriber, isFalse);
+        },
+      );
+    }
+  }
+
   test(
     'missing route has actionable feedback, never asks for another purchase',
     () {
@@ -235,7 +349,7 @@ void main() {
     }
   }
 
-  for (final result in [PaywallResult.purchased, PaywallResult.error]) {
+  for (final result in [PaywallResult.purchased]) {
     testWidgets(
       'plans $result opens explicit diagnostic details, not another purchase',
       (tester) async {
@@ -301,9 +415,7 @@ void main() {
           ),
         );
         expect(
-          find.text(
-            language == 'en' ? 'Activation pending' : 'بانتظار التفعيل',
-          ),
+          find.text(language == 'en' ? 'Test subscription' : 'اشتراك تجريبي'),
           findsOneWidget,
         );
         expect(find.text('Subscription active'), findsNothing);

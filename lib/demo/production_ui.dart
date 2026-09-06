@@ -1099,6 +1099,8 @@ Future<_CountryItem?> _showCountryPickerSheet(
 }) {
   return showModalBottomSheet<_CountryItem?>(
     context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
     backgroundColor: _surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1115,96 +1117,107 @@ Future<_CountryItem?> _showCountryPickerSheet(
                 c.code.toLowerCase().contains(q);
           }).toList();
 
-          return Padding(
-            padding: EdgeInsets.fromLTRB(
-              18,
-              18,
-              18,
-              MediaQuery.viewInsetsOf(context).bottom + 18,
+          // A default half-height sheet leaves no list space once the iOS
+          // keyboard opens. Let the sheet use the available screen, then
+          // constrain its content above the keyboard instead of behind it.
+          return AnimatedPadding(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(context).bottom,
             ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
+            child: SizedBox(
+              height: MediaQuery.sizeOf(context).height * .78,
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(
-                      Icons.public_rounded,
-                      color: _productionPrimary(context),
-                      size: 22,
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.public_rounded,
+                          color: _productionPrimary(context),
+                          size: 22,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            abuText(context, 'Select Country', 'اختر الدولة'),
+                            style: _display(20),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(sheetContext).pop(),
+                          icon: Icon(Icons.close_rounded),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      abuText(context, 'Select Country', 'اختر الدولة'),
-                      style: _display(20),
+                    const SizedBox(height: 10),
+                    TextField(
+                      key: const Key('country-search-input'),
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        hintText: abuText(
+                          context,
+                          'Search country…',
+                          'ابحث عن الدولة…',
+                        ),
+                        prefixIcon: Icon(Icons.search_rounded),
+                      ),
+                      onChanged: (val) => setSheetState(() => query = val),
                     ),
-                    const Spacer(),
-                    IconButton(
-                      onPressed: () => Navigator.of(sheetContext).pop(),
-                      icon: Icon(Icons.close_rounded),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView.separated(
+                        key: const Key('country-search-results'),
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final item = filtered[i];
+                          final label = abuText(
+                            context,
+                            item.nameEn,
+                            item.nameAr,
+                          );
+                          final isSelected =
+                              currentCountry == item.nameEn ||
+                              currentCountry == item.code;
+                          return ListTile(
+                            key: ValueKey('country-${item.code}'),
+                            leading: _CountryFlagWidget(
+                              country: item.nameEn,
+                              flagEmoji: item.flag,
+                              size: 22,
+                            ),
+                            title: Text(
+                              label,
+                              style: TextStyle(
+                                fontWeight: isSelected
+                                    ? FontWeight.w900
+                                    : FontWeight.w600,
+                              ),
+                            ),
+                            trailing: isSelected
+                                ? Icon(
+                                    Icons.check_circle_rounded,
+                                    color: _productionPrimary(context),
+                                    size: 20,
+                                  )
+                                : null,
+                            onTap: () {
+                              Navigator.of(sheetContext).pop(item);
+                            },
+                          );
+                        },
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: abuText(
-                      context,
-                      'Search country…',
-                      'ابحث عن الدولة…',
-                    ),
-                    prefixIcon: Icon(Icons.search_rounded),
-                  ),
-                  onChanged: (val) => setSheetState(() => query = val),
-                ),
-                const SizedBox(height: 12),
-                Flexible(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 340),
-                    child: ListView.separated(
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (context, i) {
-                        final item = filtered[i];
-                        final label = abuText(
-                          context,
-                          item.nameEn,
-                          item.nameAr,
-                        );
-                        final isSelected =
-                            currentCountry == item.nameEn ||
-                            currentCountry == item.code;
-                        return ListTile(
-                          leading: _CountryFlagWidget(
-                            country: item.nameEn,
-                            flagEmoji: item.flag,
-                            size: 22,
-                          ),
-                          title: Text(
-                            label,
-                            style: TextStyle(
-                              fontWeight: isSelected
-                                  ? FontWeight.w900
-                                  : FontWeight.w600,
-                            ),
-                          ),
-                          trailing: isSelected
-                              ? Icon(
-                                  Icons.check_circle_rounded,
-                                  color: _productionPrimary(context),
-                                  size: 20,
-                                )
-                              : null,
-                          onTap: () {
-                            Navigator.of(sheetContext).pop(item);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           );
         },
@@ -1212,6 +1225,11 @@ Future<_CountryItem?> _showCountryPickerSheet(
     },
   );
 }
+
+@visibleForTesting
+Future<String?> showProductionCountryPickerForTesting(
+  BuildContext context,
+) async => (await _showCountryPickerSheet(context))?.code;
 
 class _ProductionOnboarding extends StatefulWidget {
   const _ProductionOnboarding({required this.repository, required this.user});
@@ -2308,23 +2326,7 @@ class _ProductionShellState extends State<_ProductionShell>
         _ProductionAdmin(repository: widget.repository, profile: profile),
     ];
     if (index >= pages.length) index = _homeShellPageIndex;
-    final items = <(IconData, String)>[
-      (Icons.grid_view_rounded, abuText(context, 'Home', 'الرئيسية')),
-      (Icons.sports_soccer_rounded, abuText(context, 'Predict', 'توقع')),
-      (Icons.bolt_rounded, abuText(context, 'Challenges', 'التحديات')),
-      (
-        Icons.play_circle_fill_rounded,
-        abuText(context, 'Members Zone', 'منطقة الأعضاء'),
-      ),
-      (Icons.leaderboard_rounded, abuText(context, 'Leaders', 'الترتيب')),
-      (Icons.person_rounded, abuText(context, 'Profile', 'حسابي')),
-      (Icons.settings_rounded, abuText(context, 'Settings', 'الإعدادات')),
-      if (profile.canManageContent)
-        (
-          Icons.admin_panel_settings_rounded,
-          abuText(context, 'Admin Studio', 'استوديو المشرف'),
-        ),
-    ];
+    final items = _productionNavigationItems(context, profile.canManageContent);
     final viewportWidth = MediaQuery.sizeOf(context).width;
     final desktop = viewportWidth >= 1100;
     final narrowHeader = !desktop && viewportWidth < 400;
@@ -2514,6 +2516,36 @@ class _ProductionShellState extends State<_ProductionShell>
   }
 }
 
+List<(IconData, String)> _productionNavigationItems(
+  BuildContext context,
+  bool canManageContent,
+) => [
+  (Icons.grid_view_rounded, abuText(context, 'Home', 'الرئيسية')),
+  (Icons.sports_soccer_rounded, abuText(context, 'Predict', 'توقع')),
+  (Icons.bolt_rounded, abuText(context, 'Challenges', 'التحديات')),
+  (Icons.stars_rounded, abuText(context, 'Members only', 'للأعضاء فقط')),
+  (Icons.leaderboard_rounded, abuText(context, 'Leaders', 'الترتيب')),
+  (Icons.person_rounded, abuText(context, 'Profile', 'حسابي')),
+  (Icons.settings_rounded, abuText(context, 'Settings', 'الإعدادات')),
+  if (canManageContent)
+    (
+      Icons.admin_panel_settings_rounded,
+      abuText(context, 'Admin Studio', 'استوديو المشرف'),
+    ),
+];
+
+@visibleForTesting
+Widget productionRootNavigationForTesting(BuildContext context) {
+  final items = _productionNavigationItems(context, false);
+  return _LiquidGlassNavBar(
+    selectedIndex: 0,
+    onSelect: (_) {},
+    items: ProductionShellNavigation.mobileRootPageIndexes
+        .map((index) => items[index])
+        .toList(),
+  );
+}
+
 class _LiquidGlassNavBar extends StatelessWidget {
   const _LiquidGlassNavBar({
     required this.selectedIndex,
@@ -2530,6 +2562,8 @@ class _LiquidGlassNavBar extends StatelessWidget {
     final dark = _isDarkTheme(context);
     final primary = _productionPrimary(context);
     final rtl = Directionality.of(context) == TextDirection.rtl;
+    final narrow = MediaQuery.sizeOf(context).width < 360;
+    final labelFontSize = narrow ? 8.5 : 9.5;
     // glass_liquid_navbar lays out and animates its indicator in physical LTR
     // coordinates. A surrounding RTL Directionality reverses the Row without
     // reversing the indicator calculation, which made the glow appear under a
@@ -2558,13 +2592,13 @@ class _LiquidGlassNavBar extends StatelessWidget {
             glassBlur: 24,
             borderRadius: 25,
             pillHeight: 54,
-            horizontalPadding: 12,
+            horizontalPadding: narrow ? 8 : 12,
             bottomSafeAreaPadding: 0,
             iconSize: 21,
             shadowBlurRadius: 24,
             shadowOffset: const Offset(0, 5),
             labelStyle: TextStyle(
-              fontSize: 9.5,
+              fontSize: labelFontSize,
               fontWeight: FontWeight.w700,
               letterSpacing: .1,
             ),
@@ -2581,14 +2615,14 @@ class _LiquidGlassNavBar extends StatelessWidget {
             glassBlur: 28,
             borderRadius: 25,
             pillHeight: 54,
-            horizontalPadding: 12,
+            horizontalPadding: narrow ? 8 : 12,
             bottomSafeAreaPadding: 0,
             iconSize: 21,
             shadowColor: _lightInk.withValues(alpha: .18),
             shadowBlurRadius: 22,
             shadowOffset: const Offset(0, 5),
             labelStyle: TextStyle(
-              fontSize: 9.5,
+              fontSize: labelFontSize,
               fontWeight: FontWeight.w700,
               letterSpacing: .1,
             ),
@@ -2622,6 +2656,9 @@ class _LiquidGlassNavBar extends StatelessWidget {
                 glass_nav.LiquidNavItem(
                   icon: item.$1,
                   activeIcon: item.$1,
+                  customIcon: item.$1 == Icons.stars_rounded
+                      ? const ExcludeSemantics(child: SubscriberBadge(size: 21))
+                      : null,
                   label: item.$2,
                 ),
             ],
@@ -2733,6 +2770,11 @@ class _ProductionDesktopScaffold extends StatelessWidget {
                       padding: const EdgeInsets.only(bottom: 4),
                       child: _SideItem(
                         icon: items[itemIndex].$1,
+                        customIcon: items[itemIndex].$1 == Icons.stars_rounded
+                            ? const ExcludeSemantics(
+                                child: SubscriberBadge(size: 20),
+                              )
+                            : null,
                         label: items[itemIndex].$2,
                         selected: itemIndex == selectedIndex,
                         onTap: () => onSelect(itemIndex),
@@ -11511,8 +11553,8 @@ class _ProductionSettings extends StatelessWidget {
                   title: abuText(context, 'New challenges', 'التحديات الجديدة'),
                   subtitle: abuText(
                     context,
-                    'Video questions, player guesses, and Members Zone videos.',
-                    'أسئلة الفيديو وتخمين اللاعبين وفيديوهات منطقة الأعضاء.',
+                    'Video questions, player guesses, and members-only videos.',
+                    'أسئلة الفيديو وتخمين اللاعبين وفيديوهات للأعضاء فقط.',
                   ),
                   value: preferences.challengeNotifications,
                   onChanged: preferences.setChallengeNotifications,
@@ -12340,9 +12382,11 @@ class _ProductionAdmin extends StatelessWidget {
                   OutlinedButton.icon(
                     style: actionStyle,
                     onPressed: () => _showExclusiveVideosManager(context),
-                    icon: Icon(Icons.video_library_rounded),
+                    icon: const ExcludeSemantics(
+                      child: SubscriberBadge(size: 22),
+                    ),
                     label: Text(
-                      abuText(context, 'MEMBERS ZONE', 'منطقة الأعضاء'),
+                      abuText(context, 'MEMBERS ONLY', 'للأعضاء فقط'),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -13703,7 +13747,7 @@ class _ProductionAdmin extends StatelessWidget {
             borderRadius: BorderRadius.circular(24),
           ),
           title: Text(
-            abuText(context, 'Manage Members Zone', 'إدارة منطقة الأعضاء'),
+            abuText(context, 'Manage member videos', 'إدارة فيديوهات الأعضاء'),
           ),
           content: SizedBox(
             width: 580,

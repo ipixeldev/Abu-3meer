@@ -1,6 +1,9 @@
 import 'dart:convert';
 
+import 'package:purchases_flutter/purchases_flutter.dart';
+
 import '../../production/api_client.dart';
+import '../../production/subscription_service.dart';
 
 /// Keep an activation outage distinct from a declined or missing purchase.
 /// These messages never grant access or expose raw server responses.
@@ -9,6 +12,78 @@ class SubscriptionFeedback {
 
   final String english;
   final String arabic;
+
+  static String supportCode(Object error) {
+    if (error is SubscriptionException && error.code == 'plans_unavailable') {
+      return 'RC-PLANS';
+    }
+    return 'RC-${SubscriptionService.errorCode(error).index}';
+  }
+
+  /// Deliberately excludes native messages, receipts and account identifiers.
+  /// A stable code lets support diagnose a physical-device failure safely.
+  static SubscriptionFeedback storeFailure(Object error) {
+    final code = SubscriptionService.errorCode(error);
+    if (code == PurchasesErrorCode.configurationError ||
+        code == PurchasesErrorCode.productNotAvailableForPurchaseError ||
+        (error is SubscriptionException && error.code == 'plans_unavailable')) {
+      return const SubscriptionFeedback(
+        'The App Store could not load the subscription plans. Store setup or availability needs checking. Please contact support with the code below; you have not been charged by opening this screen.',
+        'تعذر على App Store تحميل خطط الاشتراك. يجب التحقق من إعدادات المتجر أو توفر الخطط. تواصل مع الدعم وأرسل الرمز أدناه؛ فتح هذه الشاشة لا يخصم أي مبلغ.',
+      );
+    }
+    if (code == PurchasesErrorCode.invalidCredentialsError ||
+        code == PurchasesErrorCode.invalidAppleSubscriptionKeyError ||
+        code == PurchasesErrorCode.signatureVerificationFailed) {
+      return const SubscriptionFeedback(
+        'Subscription service setup needs attention. Please contact support with the code below. Do not purchase again.',
+        'تحتاج إعدادات خدمة الاشتراك إلى مراجعة. تواصل مع الدعم وأرسل الرمز أدناه. لا تشترِ مرة أخرى.',
+      );
+    }
+    if ({
+      PurchasesErrorCode.networkError,
+      PurchasesErrorCode.offlineConnectionError,
+      PurchasesErrorCode.apiEndpointBlocked,
+      PurchasesErrorCode.productRequestTimeout,
+    }.contains(code)) {
+      return const SubscriptionFeedback(
+        'Unable to reach the subscription store. Check your connection, then try again.',
+        'تعذر الاتصال بمتجر الاشتراكات. تحقق من اتصالك ثم حاول مجدداً.',
+      );
+    }
+    if ({
+      PurchasesErrorCode.receiptAlreadyInUseError,
+      PurchasesErrorCode.receiptInUseByOtherSubscriberError,
+      PurchasesErrorCode.purchaseBelongsToOtherUser,
+    }.contains(code)) {
+      return const SubscriptionFeedback(
+        'This purchase is linked to another app account. Sign in to the account you used to subscribe, or contact support. Do not purchase again.',
+        'هذه العملية مرتبطة بحساب تطبيق آخر. سجّل الدخول إلى الحساب الذي اشتركت به أو تواصل مع الدعم. لا تشترِ مرة أخرى.',
+      );
+    }
+    if (code == PurchasesErrorCode.productAlreadyPurchasedError) {
+      return const SubscriptionFeedback(
+        'You already have this subscription. Use Restore purchases to check its access. Do not purchase again.',
+        'لديك هذا الاشتراك بالفعل. استخدم استعادة المشتريات للتحقق من صلاحياته. لا تشترِ مرة أخرى.',
+      );
+    }
+    if (code == PurchasesErrorCode.paymentPendingError) {
+      return const SubscriptionFeedback(
+        'Payment is awaiting store approval. Access can activate after approval; do not purchase again.',
+        'الدفع بانتظار موافقة المتجر. يمكن تفعيل الصلاحيات بعد الموافقة؛ لا تشترِ مرة أخرى.',
+      );
+    }
+    if (code == PurchasesErrorCode.purchaseNotAllowedError) {
+      return const SubscriptionFeedback(
+        'Purchases are disabled for this device or store account.',
+        'المشتريات معطلة لهذا الجهاز أو حساب المتجر.',
+      );
+    }
+    return const SubscriptionFeedback(
+      'The store could not complete this request. Try again or contact support with the code below.',
+      'تعذر على المتجر إكمال هذا الطلب. حاول مجدداً أو تواصل مع الدعم وأرسل الرمز أدناه.',
+    );
+  }
 
   static SubscriptionFeedback serverFailure(Object error) {
     if (error is AbuApiException) {

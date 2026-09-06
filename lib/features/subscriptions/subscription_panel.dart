@@ -8,6 +8,7 @@ import '../../production/models.dart';
 import '../../production/production_repository.dart';
 import '../../production/subscription_service.dart';
 import 'subscription_feedback.dart';
+import 'subscription_paywall_page.dart';
 
 /// This panel never unlocks content from SDK state. The refreshed server
 /// profile is the access authority, including for restores and renewals.
@@ -31,8 +32,13 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
       widget.subscriptionService ?? SubscriptionService.instance;
   bool _working = false;
   String? _activeAction;
-  String? _message;
-  String? _accessReason;
+  SubscriptionFeedback? _message;
+  String? _localAccessReason;
+  String? get _accessReason =>
+      _localAccessReason ??
+      (_store.userId == widget.profile.backendUserId
+          ? _store.serverAccess?.reason
+          : null);
   final _detailsRevision = ValueNotifier<int>(0);
   bool _detailsOpen = false;
 
@@ -60,7 +66,11 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
     var showDetails = false;
     try {
       if (action == 'plans') {
-        final result = await _store.showPaywall(profile.backendUserId);
+        final result = await SubscriptionPaywallPage.open(
+          context,
+          service: _store,
+          userId: profile.backendUserId,
+        );
         if (result == PaywallResult.cancelled ||
             result == PaywallResult.notPresented) {
           return;
@@ -73,7 +83,10 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
       } else if (action == 'restore') {
         await _store.restore(profile.backendUserId);
       } else if (action == 'manage') {
-        await _store.showCustomerCenter(profile.backendUserId);
+        await _store.showCustomerCenter(
+          profile.backendUserId,
+          locale: Localizations.localeOf(context).toLanguageTag(),
+        );
       } else {
         await _store.refresh(profile.backendUserId);
       }
@@ -91,8 +104,8 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
         accessReason: access.reason,
       );
       _update(() {
-        _accessReason = access.reason;
-        _message = abuText(context, feedback.english, feedback.arabic);
+        _localAccessReason = access.reason;
+        _message = feedback;
       });
       showDetails = action == 'plans' && !access.isActive;
     } catch (error) {
@@ -104,8 +117,8 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
       final feedback = SubscriptionFeedback.serverFailure(error);
       _update(
         () => _message = storeCompleted
-            ? abuText(context, feedback.english, feedback.arabic)
-            : SubscriptionService.errorMessage(error),
+            ? feedback
+            : SubscriptionFeedback.storeFailure(error),
       );
       showDetails = action == 'plans';
     } finally {
@@ -127,7 +140,7 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
     if (oldWidget.profile.uid != widget.profile.uid ||
         oldWidget.profile.backendUserId != widget.profile.backendUserId) {
       _message = null;
-      _accessReason = null;
+      _localAccessReason = null;
     }
     if (!identical(oldWidget.profile, widget.profile)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -214,8 +227,16 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
       final active = profile.isProSubscriber;
       final memberAccess = active || profile.isYouTubeMember;
       final pending = !active && storeActive;
+      final storeSandbox =
+          pending &&
+          _store
+                  .customerInfo
+                  ?.entitlements
+                  .active[SubscriptionService.entitlementId]
+                  ?.isSandbox ==
+              true;
       final testSubscription =
-          !active && _accessReason == 'sandbox_not_allowed';
+          !active && (_accessReason == 'sandbox_not_allowed' || storeSandbox);
       final accessNotActive =
           !active &&
           const [
@@ -232,19 +253,23 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           _store.available;
       final title = active
           ? abuText(context, 'Subscription active', 'الاشتراك نشط')
-          : testSubscription
-          ? abuText(context, 'Test subscription', 'اشتراك تجريبي')
           : accessNotActive && pending
           ? abuText(context, 'Access not active', 'الصلاحيات غير مفعّلة')
+          : testSubscription
+          ? abuText(context, 'Test subscription', 'اشتراك تجريبي')
           : pending
-          ? abuText(context, 'Activation pending', 'بانتظار التفعيل')
+          ? abuText(context, 'Access not confirmed', 'لم يتم تأكيد الصلاحيات')
           : memberAccess
           ? abuText(context, 'Member access active', 'مزايا العضوية مفعّلة')
           : abuText(context, 'Ostoora3 membership', 'عضوية الأسطورة');
-      final subtitle = testSubscription
-          ? abuText(context, 'Not active in production', 'غير مفعّل في الإنتاج')
-          : accessNotActive && pending
+      final subtitle = accessNotActive && pending
           ? abuText(context, 'Review subscription status', 'راجع حالة الاشتراك')
+          : testSubscription
+          ? abuText(
+              context,
+              'Not a live paid subscription',
+              'ليس اشتراكاً مدفوعاً فعلياً',
+            )
           : pending
           ? abuText(
               context,
@@ -254,8 +279,8 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           : active
           ? abuText(
               context,
-              'Members Zone + member bonuses',
-              'منطقة الأعضاء ومزايا العضوية',
+              'Members only + member bonuses',
+              'للأعضاء فقط ومزايا العضوية',
             )
           : memberAccess
           ? abuText(context, 'YouTube membership', 'عضوية يوتيوب')
@@ -263,8 +288,8 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           ? abuText(context, 'Sign in to subscribe', 'سجّل الدخول للاشتراك')
           : abuText(
               context,
-              'Members Zone + member bonuses',
-              'منطقة الأعضاء ومزايا العضوية',
+              'Members only + member bonuses',
+              'للأعضاء فقط ومزايا العضوية',
             );
       final color = memberAccess ? AbuBrand.lime : AbuBrand.gold;
       return Container(
@@ -430,8 +455,8 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
             Text(
               abuText(
                 context,
-                'Both plans include Members Zone access and member bonuses. Prices and renewal terms are shown by the store before purchase.',
-                'تتضمن الخطتان دخول منطقة الأعضاء ومزايا العضوية. يعرض المتجر السعر وشروط التجديد قبل الشراء.',
+                'Both plans include Members only access and member bonuses. Prices and renewal terms are shown by the store before purchase.',
+                'تتضمن الخطتان محتوى الأعضاء ومزايا العضوية. يعرض المتجر السعر وشروط التجديد قبل الشراء.',
               ),
               style: const TextStyle(color: AbuBrand.muted, height: 1.4),
             ),
@@ -457,24 +482,24 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
               Text(
                 abuText(
                   context,
-                  _accessReason == 'sandbox_not_allowed'
-                      ? 'Test subscription · not active in production'
+                  entitlement.isSandbox
+                      ? 'Test subscription · access not active'
                       : const [
                           'no_entitlement',
                           'expired',
                           'inactive',
                         ].contains(_accessReason)
                       ? 'Store subscription found · access not active'
-                      : 'Store subscription found · activation pending',
-                  _accessReason == 'sandbox_not_allowed'
-                      ? 'اشتراك تجريبي · غير مفعّل في الإنتاج'
+                      : 'Store subscription found · access not confirmed',
+                  entitlement.isSandbox
+                      ? 'اشتراك تجريبي · الصلاحيات غير مفعّلة'
                       : const [
                           'no_entitlement',
                           'expired',
                           'inactive',
                         ].contains(_accessReason)
                       ? 'تم العثور على اشتراك المتجر · الصلاحيات غير مفعّلة'
-                      : 'تم العثور على اشتراك المتجر · التفعيل قيد الانتظار',
+                      : 'تم العثور على اشتراك المتجر · لم يتم تأكيد الصلاحيات',
                 ),
                 style: const TextStyle(
                   color: AbuBrand.gold,
@@ -592,7 +617,10 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
               const SizedBox(height: 8),
               Semantics(
                 liveRegion: true,
-                child: Text(_message!, style: const TextStyle(height: 1.45)),
+                child: Text(
+                  abuText(context, _message!.english, _message!.arabic),
+                  style: const TextStyle(height: 1.45),
+                ),
               ),
             ],
             const Divider(),

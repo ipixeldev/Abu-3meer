@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/widgets/subscriber_badge.dart';
 import '../../production/app_preferences.dart';
 import '../../production/models.dart';
 import '../../production/production_repository.dart';
@@ -155,15 +156,11 @@ class _ExclusiveVideosViewState extends State<ExclusiveVideosView> {
                 color: primary.withValues(alpha: .1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.play_circle_fill_rounded,
-                color: primary,
-                size: 48,
-              ),
+              child: const ExcludeSemantics(child: SubscriberBadge(size: 48)),
             ),
             const SizedBox(height: 18),
             Text(
-              abuText(context, 'Members Zone', 'منطقة الأعضاء'),
+              abuText(context, 'Members only', 'للأعضاء فقط'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: dark ? Colors.white : _exclusiveLightInk,

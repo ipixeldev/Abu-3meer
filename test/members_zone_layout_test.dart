@@ -1,4 +1,5 @@
 import 'package:abu_3meer/features/videos/exclusive_videos_view.dart';
+import 'package:abu_3meer/core/widgets/subscriber_badge.dart';
 import 'package:abu_3meer/production/models.dart';
 import 'package:abu_3meer/production/production_repository.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _VideoRepository implements ProductionRepository {
+  _VideoRepository({this.empty = false});
+  final bool empty;
   var refreshes = 0;
 
   @override
@@ -15,7 +18,7 @@ class _VideoRepository implements ProductionRepository {
 
   @override
   Stream<List<ExclusiveVideo>> watchExclusiveVideos() => Stream.value([
-    for (final index in [1, 2])
+    for (final index in empty ? <int>[] : [1, 2])
       ExclusiveVideo(
         id: '$index',
         youtubeId: '',
@@ -32,6 +35,31 @@ class _VideoRepository implements ProductionRepository {
 
 void main() {
   for (final language in ['en', 'ar']) {
+    testWidgets('Members only empty state uses shared badge ($language)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: Locale(language),
+          supportedLocales: const [Locale('en'), Locale('ar')],
+          localizationsDelegates: GlobalMaterialLocalizations.delegates,
+          home: Scaffold(
+            body: ExclusiveVideosView(
+              repository: _VideoRepository(empty: true),
+              profile: AbuUserProfile.guest(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text(language == 'en' ? 'Members only' : 'للأعضاء فقط'),
+        findsOneWidget,
+      );
+      expect(find.byType(SubscriberBadge), findsOneWidget);
+      expect(find.byIcon(Icons.play_circle_fill_rounded), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
     testWidgets(
       'Members Zone leads with video before compact subscription row ($language)',
       (tester) async {

@@ -2925,7 +2925,12 @@ class ProductionRepository {
         }(),
     ]);
     if (auth.currentUser?.uid != profile.uid) return unconfirmed;
-    return SubscriptionAccessResult.fromEnvelope(status);
+    final access = SubscriptionAccessResult.fromEnvelope(status);
+    SubscriptionService.instance.recordServerAccess(
+      profile.backendUserId,
+      access,
+    );
+    return access;
   }
 
   // ── Games Arena Visibility Toggle ───────────────────────────────────────

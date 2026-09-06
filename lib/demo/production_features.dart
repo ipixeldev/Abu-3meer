@@ -2660,6 +2660,18 @@ class _InteractiveFanCard extends StatefulWidget {
   State<_InteractiveFanCard> createState() => _InteractiveFanCardState();
 }
 
+@visibleForTesting
+Widget productionFanCardForTesting({
+  required AbuUserProfile profile,
+  required VoidCallback onEdit,
+}) => _InteractiveFanCard(
+  profile: profile,
+  onEdit: onEdit,
+  monthlyRank: 1,
+  seasonRank: 1,
+  accuracy: 100,
+);
+
 // Kept dormant for a future Fan War release.
 // ignore: unused_element
 class _ProductionFanWar extends StatelessWidget {
@@ -4426,6 +4438,7 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                                 children: [
                                   Text(
                                     'XP',
+                                    key: const Key('fan-card-xp-heading'),
                                     style: TextStyle(
                                       color: tierColor,
                                       fontSize: 40,
@@ -4657,12 +4670,13 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                     ),
                     CustomPaint(painter: _FanCardBorderPainter()),
                     if (widget.onEdit != null)
-                      Positioned(
+                      PositionedDirectional(
                         top: 14,
-                        right: 14,
+                        end: 14,
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
+                            key: const Key('fan-card-edit-button'),
                             onTap: widget.onEdit,
                             borderRadius: BorderRadius.circular(999),
                             child: Container(

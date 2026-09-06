@@ -3834,11 +3834,13 @@ class _Pill extends StatelessWidget {
 class _SideItem extends StatelessWidget {
   const _SideItem({
     required this.icon,
+    this.customIcon,
     required this.label,
     required this.selected,
     required this.onTap,
   });
   final IconData icon;
+  final Widget? customIcon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -3856,7 +3858,8 @@ class _SideItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 13),
           child: Row(
             children: [
-              Icon(icon, color: selected ? primary : muted, size: 20),
+              customIcon ??
+                  Icon(icon, color: selected ? primary : muted, size: 20),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(

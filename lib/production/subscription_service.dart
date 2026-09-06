@@ -6,8 +6,9 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:purchases_ui_flutter/purchases_ui_flutter.dart';
 
 class SubscriptionException implements Exception {
-  const SubscriptionException(this.message);
+  const SubscriptionException(this.message, {this.code = 'subscription'});
   final String message;
+  final String code;
   @override
   String toString() => message;
 }
@@ -85,8 +86,19 @@ class SubscriptionService extends ChangeNotifier {
   int _pending = 0;
   String? _userId;
   CustomerInfo? _customerInfo;
+  SubscriptionAccessResult? _serverAccess;
 
   CustomerInfo? get customerInfo => _customerInfo;
+  SubscriptionAccessResult? get serverAccess => _serverAccess;
+
+  /// Display diagnostics only; protected access and badges still use the
+  /// independently refreshed server profile, never this cached verdict.
+  void recordServerAccess(String userId, SubscriptionAccessResult access) {
+    if (_userId != userId || _switching) return;
+    _serverAccess = access;
+    notifyListeners();
+  }
+
   bool get busy => _pending > 0;
   bool get hasStoreEntitlement =>
       _customerInfo?.entitlements.active[entitlementId] != null;
@@ -180,6 +192,7 @@ class SubscriptionService extends ChangeNotifier {
     if (_configured && _userId == userId) return;
     _switching = true;
     _customerInfo = null;
+    _serverAccess = null;
     _userId = null;
     final generation = ++_generation;
     try {
@@ -243,22 +256,39 @@ class SubscriptionService extends ChangeNotifier {
     if (current == null || current.availablePackages.isEmpty) {
       throw const SubscriptionException(
         'Subscription plans are not available yet. Please try again later.',
+        code: 'plans_unavailable',
       );
     }
     return current;
   }
 
-  Future<PaywallResult> showPaywall(String userId) =>
-      _forUser(userId, () async {
-        final offering = await _currentOffering();
-        // RevenueCatUI owns the purchase. Do not also call purchase() from callbacks.
-        final result = await RevenueCatUI.presentPaywall(
-          offering: offering,
-          displayCloseButton: true,
-        );
+  Future<PaywallResult> showPaywall(
+    String userId, {
+    Future<PaywallResult> Function(Offering)? presenter,
+    String? locale,
+  }) => _forUser(userId, () async {
+    if (locale != null) await Purchases.overridePreferredUILocale(locale);
+    final offering = await _currentOffering();
+    // RevenueCatUI owns the purchase. Do not also call purchase() from callbacks.
+    final result = presenter != null
+        ? await presenter(offering)
+        : await RevenueCatUI.presentPaywall(
+            offering: offering,
+            displayCloseButton: true,
+          );
+    if (result == PaywallResult.purchased || result == PaywallResult.restored) {
+      try {
         _customerInfo = await Purchases.getCustomerInfo();
-        return result;
-      });
+      } catch (error) {
+        // Never turn a completed payment into a failed purchase/retry. The
+        // caller must still ask the server to verify and refresh the profile.
+        debugPrint(
+          '[Subscriptions] Post-purchase refresh unavailable (RC-${errorCode(error).index}).',
+        );
+      }
+    }
+    return result;
+  });
 
   Future<CustomerInfo> purchase(String userId, Package package) => _forUser(
     userId,
@@ -272,11 +302,13 @@ class SubscriptionService extends ChangeNotifier {
     return _customerInfo = await Purchases.restorePurchases();
   });
 
-  Future<void> showCustomerCenter(String userId) => _forUser(userId, () async {
-    await RevenueCatUI.presentCustomerCenter();
-    await Purchases.invalidateCustomerInfoCache();
-    _customerInfo = await Purchases.getCustomerInfo();
-  });
+  Future<void> showCustomerCenter(String userId, {String? locale}) =>
+      _forUser(userId, () async {
+        if (locale != null) await Purchases.overridePreferredUILocale(locale);
+        await RevenueCatUI.presentCustomerCenter();
+        await Purchases.invalidateCustomerInfoCache();
+        _customerInfo = await Purchases.getCustomerInfo();
+      });
 
   Future<void> clearIdentity() {
     // Immediately hide account state, even if a store sheet is still open.
@@ -284,6 +316,7 @@ class SubscriptionService extends ChangeNotifier {
     _logoutRevision++;
     _userId = null;
     _customerInfo = null;
+    _serverAccess = null;
     notifyListeners();
     return _enqueue(() async {
       if (!_configured) return;
@@ -304,14 +337,26 @@ class SubscriptionService extends ChangeNotifier {
   }
 
   static bool isCancellation(Object error) =>
-      error is PlatformException &&
-      PurchasesErrorHelper.getErrorCode(error) ==
-          PurchasesErrorCode.purchaseCancelledError;
+      errorCode(error) == PurchasesErrorCode.purchaseCancelledError;
+
+  /// Native UI failures can have textual codes. The SDK helper parses with
+  /// num.parse and can throw while handling the original exception.
+  static PurchasesErrorCode errorCode(Object error) {
+    if (error is PurchasesError) return error.code;
+    if (error is! PlatformException) return PurchasesErrorCode.unknownError;
+    final index = int.tryParse(error.code);
+    if (index == null ||
+        index < 0 ||
+        index >= PurchasesErrorCode.values.length) {
+      return PurchasesErrorCode.unknownError;
+    }
+    return PurchasesErrorCode.values[index];
+  }
 
   static String errorMessage(Object error) {
     if (error is SubscriptionException) return error.message;
     if (error is PlatformException) {
-      return switch (PurchasesErrorHelper.getErrorCode(error)) {
+      return switch (errorCode(error)) {
         PurchasesErrorCode.paymentPendingError => 'Payment is pending approval. Access activates after the store confirms it.',
         PurchasesErrorCode.networkError =>
           'Unable to reach the store. Check your connection and try again.',
