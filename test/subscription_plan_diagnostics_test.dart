@@ -10,10 +10,12 @@ void main() {
   final checkedAt = DateTime.parse('2026-09-06T15:12:34+02:00');
 
   SubscriptionPlanDiagnosticsRunner runner({
+    Future<bool> Function()? isConfigured,
     SubscriptionProductLookup? products,
     SubscriptionStorefrontLookup? storefront,
     Duration timeout = const Duration(seconds: 15),
   }) => SubscriptionPlanDiagnosticsRunner(
+    isConfigured: isConfigured ?? () async => true,
     getProducts: products ?? (_) async => ids,
     getStorefrontCountry: storefront ?? () async => 'SWE',
     timeout: timeout,
@@ -43,6 +45,7 @@ void main() {
       expect(report.checkedAtUtc.isUtc, isTrue);
       expect(report.checkedAtUtc.toIso8601String(), '2026-09-06T13:12:34.000Z');
       expect(report.originalSupportCode, 'RC-23');
+      expect(report.setupErrorCode, isNull);
       expect(report.productLookupErrorCode, isNull);
       expect(report.storefrontErrorCode, isNull);
       expect(report.supportText, contains('RC-23 (configurationError)'));
@@ -168,6 +171,7 @@ void main() {
         return storefront.future;
       },
     ).check();
+    await Future<void>.delayed(Duration.zero);
     expect(startedProducts, isTrue);
     expect(startedStorefront, isTrue);
     storefront.complete('USA');
@@ -287,45 +291,175 @@ void main() {
     );
   });
 
-  test('default adapter calls only the two read-only SDK methods', () async {
-    const channel = MethodChannel('purchases_flutter');
-    final calls = <MethodCall>[];
-    final messenger =
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    messenger.setMockMethodCallHandler(channel, (call) async {
-      calls.add(call);
-      switch (call.method) {
-        case 'getProductInfo':
-          expect(call.arguments, {
-            'productIdentifiers': ids,
-            'type': 'subscription',
-          });
-          return [
-            for (final id in ids)
-              {
-                'identifier': id,
-                'description': 'private description',
-                'title': 'private title',
-                'price': 123.45,
-                'priceString': 'private price',
-                'currencyCode': 'USD',
-              },
-          ];
-        case 'getStorefront':
-          return {'countryCode': 'SWE', 'privateCustomer': 'not-for-report'};
-        default:
-          fail('Diagnostic called an unexpected SDK method: ${call.method}');
-      }
-    });
-    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
-    final report = await SubscriptionPlanDiagnosticsRunner().check();
-    expect(report.category, 'products_available');
-    expect(calls.map((call) => call.method), [
-      'getProductInfo',
-      'getStorefront',
-    ]);
-    expect(report.supportText, isNot(contains('private')));
-    expect(report.supportText, isNot(contains('123.45')));
-    expect(report.supportText, isNot(contains('not-for-report')));
+  test(
+    'default adapter checks setup before the two read-only SDK methods',
+    () async {
+      const channel = MethodChannel('purchases_flutter');
+      final calls = <MethodCall>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call);
+        switch (call.method) {
+          case 'isConfigured':
+            return true;
+          case 'getProductInfo':
+            expect(call.arguments, {
+              'productIdentifiers': ids,
+              'type': 'subscription',
+            });
+            return [
+              for (final id in ids)
+                {
+                  'identifier': id,
+                  'description': 'private description',
+                  'title': 'private title',
+                  'price': 123.45,
+                  'priceString': 'private price',
+                  'currencyCode': 'USD',
+                },
+            ];
+          case 'getStorefront':
+            return {'countryCode': 'SWE', 'privateCustomer': 'not-for-report'};
+          default:
+            fail('Diagnostic called an unexpected SDK method: ${call.method}');
+        }
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final report = await SubscriptionPlanDiagnosticsRunner().check();
+      expect(report.category, 'products_available');
+      expect(calls.map((call) => call.method), [
+        'isConfigured',
+        'getProductInfo',
+        'getStorefront',
+      ]);
+      expect(report.supportText, isNot(contains('private')));
+      expect(report.supportText, isNot(contains('123.45')));
+      expect(report.supportText, isNot(contains('not-for-report')));
+    },
+  );
+
+  test(
+    'unconfigured SDK never starts native product or storefront lookup',
+    () async {
+      var lookupCalls = 0;
+      final report = await runner(
+        isConfigured: () async => false,
+        products: (_) async {
+          lookupCalls++;
+          return ids;
+        },
+        storefront: () async {
+          lookupCalls++;
+          return 'SWE';
+        },
+      ).check(originalSupportCode: 'RC-23');
+      expect(report.category, 'store_request_failed');
+      expect(report.setupErrorCode, 'sdk_not_configured');
+      expect(report.productLookupErrorCode, 'not_started');
+      expect(report.storefrontErrorCode, 'not_started');
+      expect(report.returnedProductIds, isEmpty);
+      expect(report.originalSupportCode, 'RC-23');
+      expect(lookupCalls, 0);
+      expect(report.supportText, contains('SDK setup: sdk_not_configured'));
+    },
+  );
+
+  test('setup errors are sanitized and prevent both native lookups', () async {
+    for (final error in [
+      PlatformException(
+        code: '23',
+        message: 'private-message',
+        details: 'private-key',
+      ),
+      PlatformException(code: 'private-token', message: 'private-message'),
+      StateError('private-state'),
+    ]) {
+      var lookupCalls = 0;
+      final report = await runner(
+        isConfigured: () => throw error,
+        products: (_) async {
+          lookupCalls++;
+          return ids;
+        },
+        storefront: () async {
+          lookupCalls++;
+          return 'SWE';
+        },
+      ).check();
+      expect(report.category, 'store_request_failed');
+      expect(
+        report.setupErrorCode,
+        error is PlatformException && error.code == '23'
+            ? 'RC-23'
+            : 'unknown_error',
+      );
+      expect(report.productLookupErrorCode, 'not_started');
+      expect(report.storefrontErrorCode, 'not_started');
+      expect(lookupCalls, 0);
+      expect(report.supportText, isNot(contains('private-')));
+    }
   });
+
+  test(
+    'setup timeout prevents lookups even if setup eventually succeeds',
+    () async {
+      final setup = Completer<bool>();
+      var lookupCalls = 0;
+      final report = await runner(
+        isConfigured: () => setup.future,
+        products: (_) async {
+          lookupCalls++;
+          return ids;
+        },
+        storefront: () async {
+          lookupCalls++;
+          return 'SWE';
+        },
+        timeout: const Duration(milliseconds: 5),
+      ).check();
+      expect(report.category, 'store_request_failed');
+      expect(report.setupErrorCode, 'timeout');
+      expect(report.productLookupErrorCode, 'not_started');
+      expect(report.storefrontErrorCode, 'not_started');
+      setup.complete(true);
+      await Future<void>.delayed(Duration.zero);
+      expect(lookupCalls, 0);
+    },
+  );
+
+  test('slow setup and store reads share one overall deadline', () async {
+    final elapsed = Stopwatch()..start();
+    final report = await runner(
+      isConfigured: () async {
+        await Future<void>.delayed(const Duration(milliseconds: 150));
+        return true;
+      },
+      products: (_) => Completer<List<String>>().future,
+      storefront: () => Completer<String?>().future,
+      timeout: const Duration(milliseconds: 200),
+    ).check();
+    expect(report.setupErrorCode, isNull);
+    expect(report.productLookupErrorCode, 'timeout');
+    expect(report.storefrontErrorCode, 'timeout');
+    expect(elapsed.elapsed, lessThan(const Duration(milliseconds: 300)));
+  });
+
+  test(
+    'default SDK adapter does not invoke native lookups while unconfigured',
+    () async {
+      const channel = MethodChannel('purchases_flutter');
+      final calls = <String>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(channel, (call) async {
+        calls.add(call.method);
+        return false;
+      });
+      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+      final report = await SubscriptionPlanDiagnosticsRunner().check();
+      expect(report.setupErrorCode, 'sdk_not_configured');
+      expect(calls, ['isConfigured']);
+    },
+  );
 }

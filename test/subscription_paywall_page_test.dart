@@ -61,8 +61,9 @@ void main() {
             home: SubscriptionPaywallPage(
               service: store,
               userId: 'private-account',
-              diagnostics: SubscriptionPlanDiagnosticsRunner(
-                getProducts: (ids) async {
+          diagnostics: SubscriptionPlanDiagnosticsRunner(
+            isConfigured: () async => true,
+            getProducts: (ids) async {
                   productReads++;
                   expect(ids, ['Ostoora3', 'Ostoora3_Pro_Max']);
                   return [];
@@ -123,8 +124,9 @@ void main() {
                   builder: (_) => SubscriptionPaywallPage(
                     service: store,
                     userId: 'account-1',
-                    diagnostics: SubscriptionPlanDiagnosticsRunner(
-                      getProducts: (_) => products.future,
+                      diagnostics: SubscriptionPlanDiagnosticsRunner(
+                        isConfigured: () async => true,
+                        getProducts: (_) => products.future,
                       getStorefrontCountry: () async => null,
                     ),
                   ),

@@ -23,6 +23,7 @@ class SubscriptionPlanDiagnosticReport {
     required List<String> returnedProductIds,
     required this.storefrontCountryCode,
     required this.originalSupportCode,
+    required this.setupErrorCode,
     required this.productLookupErrorCode,
     required this.storefrontErrorCode,
   }) : returnedProductIds = List.unmodifiable(returnedProductIds);
@@ -38,6 +39,7 @@ class SubscriptionPlanDiagnosticReport {
   );
   final String? storefrontCountryCode;
   final String? originalSupportCode;
+  final String? setupErrorCode;
   final String? productLookupErrorCode;
   final String? storefrontErrorCode;
 
@@ -46,6 +48,7 @@ class SubscriptionPlanDiagnosticReport {
     'Checked at (UTC): ${checkedAtUtc.toIso8601String()}',
     'Result: $category',
     'Original error: ${_describeCode(originalSupportCode, absent: 'not_provided')}',
+    'SDK setup: ${_describeCode(setupErrorCode, absent: 'configured')}',
     'Requested products: ${requestedProductIds.join(', ')}',
     'Returned products: ${_describeIds(returnedProductIds)}',
     'Missing products: ${_describeIds(missingProductIds)}',
@@ -67,16 +70,19 @@ typedef SubscriptionStorefrontLookup = Future<String?> Function();
 
 /// Checks the configured SDK's product response without changing SDK identity.
 ///
-/// The caller must already have configured RevenueCat. This runner does not
+/// Verifies that the caller already configured RevenueCat before store reads.
+/// This runner does not
 /// configure, log in/out, purchase, restore, read receipts or retrieve customers.
 /// SDK reads may use their own cache; this is not proof of a fresh store request.
 class SubscriptionPlanDiagnosticsRunner {
   SubscriptionPlanDiagnosticsRunner({
+    Future<bool> Function()? isConfigured,
     SubscriptionProductLookup? getProducts,
     SubscriptionStorefrontLookup? getStorefrontCountry,
     Duration timeout = const Duration(seconds: 15),
     DateTime Function()? now,
-  }) : _getProducts = getProducts ?? _sdkProducts,
+  }) : _isConfigured = isConfigured ?? (() => Purchases.isConfigured),
+       _getProducts = getProducts ?? _sdkProducts,
        _getStorefrontCountry = getStorefrontCountry ?? _sdkStorefrontCountry,
        _timeout = timeout,
        _now = now ?? DateTime.now {
@@ -87,6 +93,7 @@ class SubscriptionPlanDiagnosticsRunner {
 
   static const knownProductIds = ['Ostoora3', 'Ostoora3_Pro_Max'];
 
+  final Future<bool> Function() _isConfigured;
   final SubscriptionProductLookup _getProducts;
   final SubscriptionStorefrontLookup _getStorefrontCountry;
   final Duration _timeout;
@@ -95,10 +102,29 @@ class SubscriptionPlanDiagnosticsRunner {
   Future<SubscriptionPlanDiagnosticReport> check({
     String? originalSupportCode,
   }) async {
+    final elapsed = Stopwatch()..start();
     final checkedAtUtc = _now().toUtc();
-    // Both reads start before either is awaited. Each independently times out.
-    final productsRead = _read(() => _getProducts(knownProductIds));
-    final storefrontRead = _read(_getStorefrontCountry);
+    final safeOriginalCode = originalSupportCode == null
+        ? null
+        : _safeSupportCode(originalSupportCode) ?? 'unknown_error';
+    // Native store APIs can terminate an unconfigured app before Dart can catch
+    // an exception. Never call either unless this safe SDK guard returns true.
+    final setup = await _read(_isConfigured, elapsed);
+    if (setup.errorCode != null || setup.value != true) {
+      return SubscriptionPlanDiagnosticReport._(
+        categoryKind: SubscriptionPlanDiagnosticCategory.storeRequestFailed,
+        checkedAtUtc: checkedAtUtc,
+        returnedProductIds: const [],
+        storefrontCountryCode: null,
+        originalSupportCode: safeOriginalCode,
+        setupErrorCode: setup.errorCode ?? 'sdk_not_configured',
+        productLookupErrorCode: 'not_started',
+        storefrontErrorCode: 'not_started',
+      );
+    }
+    // The setup check and both parallel reads share one overall deadline.
+    final productsRead = _read(() => _getProducts(knownProductIds), elapsed);
+    final storefrontRead = _read(_getStorefrontCountry, elapsed);
     final products = await productsRead;
     final storefront = await storefrontRead;
 
@@ -118,17 +144,23 @@ class SubscriptionPlanDiagnosticsRunner {
       checkedAtUtc: checkedAtUtc,
       returnedProductIds: returnedProductIds,
       storefrontCountryCode: _safeCountryCode(storefront.value),
-      originalSupportCode: originalSupportCode == null
-          ? null
-          : _safeSupportCode(originalSupportCode) ?? 'unknown_error',
+      originalSupportCode: safeOriginalCode,
+      setupErrorCode: null,
       productLookupErrorCode: products.errorCode,
       storefrontErrorCode: storefront.errorCode,
     );
   }
 
-  Future<_ReadResult<T>> _read<T>(Future<T> Function() read) async {
+  Future<_ReadResult<T>> _read<T>(
+    Future<T> Function() read,
+    Stopwatch elapsed,
+  ) async {
+    final remaining = _timeout - elapsed.elapsed;
+    if (remaining <= Duration.zero) {
+      return const _ReadResult(errorCode: 'timeout');
+    }
     try {
-      return _ReadResult(value: await Future<T>.sync(read).timeout(_timeout));
+      return _ReadResult(value: await Future<T>.sync(read).timeout(remaining));
     } on TimeoutException {
       // A timeout stops waiting; it does not cancel the native SDK request.
       return _ReadResult(errorCode: 'timeout');
