@@ -6,6 +6,7 @@ import {
   enforceSubscriptionAccess,
   isValidRevenueCatWebhookAuthorization,
   processRevenueCatWebhook,
+  readSubscriptionStatus,
   SubscriptionError,
   subscriptionFromRevenueCat,
   syncSubscriptionStatus,
@@ -13,6 +14,7 @@ import {
 import { subscriptionRoutes } from '../routes/subscriptionRoutes.js';
 import { resolveChallengeMembership } from '../services/challengeMembershipService.js';
 import type { AuthenticatedUser } from '../middleware/auth.js';
+import { config } from '../config.js';
 
 const now = Date.parse('2026-09-05T12:00:00Z');
 const ownerId = 'c6e6752e-1ef9-4a7d-a6f3-a9521dadfb88';
@@ -56,6 +58,80 @@ test('sandbox and Test Store purchases need an explicit backend opt-in', () => {
   assert.equal(subscriptionFromRevenueCat(response({ is_sandbox: undefined }), now).isActive, false);
 });
 
+test('access reasons distinguish production policy from expiry and verification failure', () => {
+  const active = subscriptionFromRevenueCat(response(), now);
+  const production = enforceSubscriptionAccess(active, now, false);
+  assert.equal(production.accessReason, 'active');
+  assert.equal(production.environment, 'production');
+
+  const sandbox = subscriptionFromRevenueCat(response({ is_sandbox: true }), now);
+  const denied = enforceSubscriptionAccess(sandbox, now, false);
+  assert.equal(denied.accessReason, 'sandbox_not_allowed');
+  assert.equal(denied.environment, 'sandbox');
+  assert.equal(denied.isActive, false);
+  assert.equal(denied.willRenew, false);
+  assert.equal(sandbox.isActive, true, 'policy must not mutate the upstream subscription');
+  assert.equal(enforceSubscriptionAccess(sandbox, now, true).accessReason, 'active');
+
+  const testStore = enforceSubscriptionAccess(
+    subscriptionFromRevenueCat(response({ store: 'test_store' }), now), now, false,
+  );
+  assert.equal(testStore.accessReason, 'sandbox_not_allowed');
+  assert.equal(testStore.environment, 'sandbox');
+
+  assert.equal(enforceSubscriptionAccess({ ...active, expiresAt: new Date(now).toISOString() }, now).accessReason, 'expired');
+  assert.equal(enforceSubscriptionAccess({ ...active, verifiedAt: null }, now).accessReason, 'verification_required');
+  assert.equal(enforceSubscriptionAccess(active, now + 24 * 60 * 60_000).accessReason, 'verification_required');
+  assert.equal(enforceSubscriptionAccess({ ...active, verifiedAt: new Date(now + 60_001).toISOString() }, now).accessReason, 'verification_required');
+
+  const refunded = enforceSubscriptionAccess(
+    subscriptionFromRevenueCat(response({ refunded_at: '2026-09-04T00:00:00Z' }), now), now,
+  );
+  assert.equal(refunded.accessReason, 'inactive');
+  assert.equal(refunded.environment, 'unknown');
+  const unknown = enforceSubscriptionAccess(subscriptionFromRevenueCat(response({ is_sandbox: undefined }), now), now);
+  assert.equal(unknown.accessReason, 'inactive');
+  assert.equal(unknown.environment, 'unknown');
+  const empty = enforceSubscriptionAccess(emptySubscriptionStatus(), now);
+  assert.equal(empty.accessReason, 'no_entitlement');
+  assert.equal(empty.environment, 'unknown');
+});
+
+test('a cached verified sandbox row is gated by the current policy on every read', async () => {
+  const previousPolicy = config.revenueCat.allowSandbox;
+  const currentTime = Date.now();
+  const row = {
+    is_active: true, product_id: 'Ostoora3_Pro_Max', will_renew: true, is_sandbox: true,
+    expires_at: new Date(currentTime + 60 * 60_000), verified_at: new Date(currentTime),
+  };
+  const execute = async () => ({ rows: [row] });
+  try {
+    config.revenueCat.allowSandbox = true;
+    assert.equal((await readSubscriptionStatus(ownerId, execute)).accessReason, 'active');
+    config.revenueCat.allowSandbox = false;
+    const denied = await readSubscriptionStatus(ownerId, execute);
+    assert.equal(denied.accessReason, 'sandbox_not_allowed');
+    assert.equal(denied.environment, 'sandbox');
+    assert.equal(denied.isActive, false);
+    assert.equal(row.is_active, true, 'cached source is not rewritten as a policy denial');
+    const missing = await readSubscriptionStatus(ownerId, async () => ({ rows: [] }));
+    assert.equal(missing.accessReason, 'no_entitlement');
+  } finally {
+    config.revenueCat.allowSandbox = previousPolicy;
+  }
+});
+
+test('legacy inactive cached records remain inactive and cannot be relabeled as paid production', async () => {
+  const currentTime = Date.now();
+  const status = await readSubscriptionStatus(ownerId, async () => ({ rows: [{
+    is_active: false, product_id: 'Ostoora3_Pro_Max', is_sandbox: true,
+    expires_at: new Date(currentTime + 60 * 60_000), verified_at: new Date(currentTime),
+  }] }));
+  assert.equal(status.isActive, false);
+  assert.equal(status.accessReason, 'inactive');
+  assert.equal(status.environment, 'unknown');
+});
+
 test('missing entitlement, malformed response, and unknown subscription cannot grant paid access', () => {
   assert.equal(subscriptionFromRevenueCat({ subscriber: { entitlements: {} } }, now).isActive, false);
   assert.throws(() => subscriptionFromRevenueCat({ isActive: true }, now), SubscriptionError);
@@ -85,6 +161,34 @@ test('subscription sync persists only paid state, preserving the independent CSV
   assert.equal(result.isActive, false);
   assert.equal(statements.length, 2);
   for (const statement of statements) assert.doesNotMatch(statement, /youtube|user_roles|UPDATE users/);
+});
+
+test('sync preserves verified sandbox entitlement upstream state while denying production access', async () => {
+  const previousPolicy = config.revenueCat.allowSandbox;
+  const customer = response({ is_sandbox: true });
+  customer.subscriber.entitlements.abu_3meer_pro.expires_date = new Date(Date.now() + 60 * 60_000).toISOString();
+  let saved: Record<string, unknown> | undefined;
+  try {
+    config.revenueCat.allowSandbox = false;
+    const status = await syncSubscriptionStatus(ownerId, {
+      fetchCustomer: async () => customer,
+      execute: async (text, parameters = []) => {
+        if (text.startsWith('INSERT')) {
+          saved = { is_active: parameters[1], product_id: parameters[2], expires_at: parameters[3],
+            will_renew: parameters[4], is_sandbox: parameters[5], verified_at: parameters[6] };
+          return { rows: [] };
+        }
+        return { rows: saved ? [saved] : [] };
+      },
+    });
+    assert.equal(saved?.is_active, true);
+    assert.equal(saved?.is_sandbox, true);
+    assert.equal(status.isActive, false);
+    assert.equal(status.accessReason, 'sandbox_not_allowed');
+    assert.equal(status.environment, 'sandbox');
+  } finally {
+    config.revenueCat.allowSandbox = previousPolicy;
+  }
 });
 
 test('a paid member with no YouTube channel receives member content; valid CSV survives paid expiry', async () => {
@@ -121,6 +225,35 @@ test('sync/status endpoints require authentication and reject spoofed customer-i
   assert.equal(actual.statusCode, 200);
   assert.deepEqual(calledIds, [ownerId]);
   assert.equal(actual.json().data.entitlementId, 'abu_3meer_pro');
+  assert.equal(actual.json().data.accessReason, 'no_entitlement');
+  assert.equal(actual.json().data.environment, 'unknown');
+  assert.equal(actual.headers['cache-control'], 'private, no-store');
+});
+
+test('authenticated status exposes a policy reason privately and does not leak lookup failures', async t => {
+  const app = Fastify();
+  let shouldFail = false;
+  await app.register(subscriptionRoutes, {
+    authenticate: async (request: FastifyRequest) => { request.user = { id: ownerId } as AuthenticatedUser; },
+    read: async (userId: string) => {
+      assert.equal(userId, ownerId);
+      if (shouldFail) throw new Error('private database details');
+      return enforceSubscriptionAccess(subscriptionFromRevenueCat(response({ is_sandbox: true }), now), now, false);
+    },
+  });
+  t.after(() => app.close());
+  const result = await app.inject({ method: 'GET', url: '/subscriptions/status' });
+  assert.equal(result.statusCode, 200);
+  assert.equal(result.headers['cache-control'], 'private, no-store');
+  assert.equal(result.json().data.accessReason, 'sandbox_not_allowed');
+  assert.equal(result.json().data.environment, 'sandbox');
+  assert.equal(result.json().data.isActive, false);
+  shouldFail = true;
+  const failure = await app.inject({ method: 'GET', url: '/subscriptions/status' });
+  assert.equal(failure.statusCode, 503);
+  assert.equal(failure.json().code, 'subscription_verification_unavailable');
+  assert.doesNotMatch(failure.body, /private database/);
+  assert.equal(failure.headers['cache-control'], 'private, no-store');
 });
 
 test('webhook authorization denies missing, incorrect, and differently sized secrets', () => {

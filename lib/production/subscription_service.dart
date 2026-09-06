@@ -12,6 +12,49 @@ class SubscriptionException implements Exception {
   String toString() => message;
 }
 
+/// Parsed only from our authenticated server's subscription response. A store
+/// receipt and permission to use production features are separate decisions.
+class SubscriptionAccessResult {
+  const SubscriptionAccessResult({
+    required this.isActive,
+    this.reason = 'unknown',
+    this.environment = 'unknown',
+  });
+
+  final bool isActive;
+  final String reason;
+  final String environment;
+
+  factory SubscriptionAccessResult.fromEnvelope(Object? envelope) {
+    final data = envelope is Map ? envelope['data'] : null;
+    if (data is! Map ||
+        data['entitlementId'] != SubscriptionService.entitlementId) {
+      return const SubscriptionAccessResult(isActive: false);
+    }
+    const reasons = {
+      'active',
+      'sandbox_not_allowed',
+      'no_entitlement',
+      'expired',
+      'verification_required',
+      'inactive',
+    };
+    const environments = {'production', 'sandbox'};
+    return SubscriptionAccessResult(
+      isActive:
+          data['isActive'] == true &&
+          (!reasons.contains(data['accessReason']) ||
+              data['accessReason'] == 'active'),
+      reason: reasons.contains(data['accessReason'])
+          ? data['accessReason'] as String
+          : 'unknown',
+      environment: environments.contains(data['environment'])
+          ? data['environment'] as String
+          : 'unknown',
+    );
+  }
+}
+
 /// Store state is for display only. Protected API access is independently
 /// verified by the backend. No secret RevenueCat key belongs in this class.
 class SubscriptionService extends ChangeNotifier {
@@ -56,18 +99,19 @@ class SubscriptionService extends ChangeNotifier {
         defaultTargetPlatform != TargetPlatform.android) {
       return '';
     }
-    if (_useTestStore) return _testKey;
+    if (_useTestStore && !kReleaseMode) return _testKey;
     final key = defaultTargetPlatform == TargetPlatform.iOS
         ? _iosKey
         : _androidKey;
-    // Test Store is available in debug only unless deliberately enabled above.
-    return key.isEmpty && kDebugMode ? _testKey : key;
+    // Never silently replace a missing store configuration with fake products.
+    // Test Store is opt-in for non-release builds only.
+    return key;
   }
 
   bool get available => validPublicKey(
     apiKey,
     isIOS: defaultTargetPlatform == TargetPlatform.iOS,
-    allowTestStore: kDebugMode || _useTestStore,
+    allowTestStore: !kReleaseMode && _useTestStore,
   );
 
   @visibleForTesting
@@ -83,10 +127,7 @@ class SubscriptionService extends ChangeNotifier {
   /// AbuApiClient preserves the API's {data: ...} envelope. Never mistake
   /// client SDK state or an unrelated entitlement for a server grant.
   static bool serverConfirmedAccess(Object? envelope) {
-    final data = envelope is Map ? envelope['data'] : null;
-    return data is Map &&
-        data['entitlementId'] == entitlementId &&
-        data['isActive'] == true;
+    return SubscriptionAccessResult.fromEnvelope(envelope).isActive;
   }
 
   Future<T> _enqueue<T>(Future<T> Function() action) {

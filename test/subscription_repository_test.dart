@@ -185,6 +185,27 @@ void main() {
   });
 
   test(
+    'detailed sync preserves production denial without granting a badge',
+    () async {
+      client.onSync = () async => {
+        'data': {
+          'entitlementId': 'abu_3meer_pro',
+          'isActive': false,
+          'accessReason': 'sandbox_not_allowed',
+          'environment': 'sandbox',
+        },
+      };
+      final profiles = <AbuUserProfile?>[];
+      await observe(repository.watchProfile('fan-a'), profiles);
+      final result = await repository.syncSubscriptionAccess(_profile());
+      expect(result.isActive, false);
+      expect(result.reason, 'sandbox_not_allowed');
+      expect(result.environment, 'sandbox');
+      expect(profiles.last!.isProSubscriber, false);
+    },
+  );
+
+  test(
     'verified sync updates profile and every opened identity feed',
     () async {
       final profiles = <AbuUserProfile?>[];

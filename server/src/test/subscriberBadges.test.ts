@@ -48,6 +48,7 @@ test('badge lookup uses the same unexpired, recently verified entitlement as acc
   assert.match(sql, /is_active = TRUE/);
   assert.match(sql, /expires_at > clock_timestamp\(\)/);
   assert.match(sql, /verified_at > clock_timestamp\(\) - INTERVAL '24 hours'/);
+  assert.match(sql, /verified_at <= clock_timestamp\(\) \+ INTERVAL '1 minute'/);
   assert.match(sql, /is_sandbox = FALSE/);
   assert.doesNotMatch(sql, /youtube|member_since|user_roles/);
   assert.throws(() => activeSubscriptionSql('u.id; SELECT 1'));

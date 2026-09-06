@@ -32,16 +32,32 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
   bool _working = false;
   String? _activeAction;
   String? _message;
+  String? _accessReason;
+  final _detailsRevision = ValueNotifier<int>(0);
+  bool _detailsOpen = false;
+
+  void _update(VoidCallback change) {
+    if (!mounted) return;
+    setState(change);
+    _detailsRevision.value++;
+  }
+
+  @override
+  void dispose() {
+    _detailsRevision.dispose();
+    super.dispose();
+  }
 
   Future<void> _perform(String action) async {
     final profile = widget.profile;
     if (_working || _store.busy || profile.isGuest) return;
-    setState(() {
+    _update(() {
       _working = true;
       _activeAction = action;
       _message = null;
     });
     var storeCompleted = false;
+    var showDetails = false;
     try {
       if (action == 'plans') {
         final result = await _store.showPaywall(profile.backendUserId);
@@ -62,20 +78,23 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
         await _store.refresh(profile.backendUserId);
       }
       storeCompleted = true;
-      final serverActive = await widget.repository.syncSubscription(profile);
+      final access = await widget.repository.syncSubscriptionAccess(profile);
       if (!mounted || widget.profile.uid != profile.uid) return;
       final entitlement = _store
           .customerInfo
           ?.entitlements
           .active[SubscriptionService.entitlementId];
       final feedback = SubscriptionFeedback.checked(
-        serverActive: serverActive,
+        serverActive: access.isActive,
         storeActive: entitlement != null,
         isSandbox: entitlement?.isSandbox ?? false,
+        accessReason: access.reason,
       );
-      setState(
-        () => _message = abuText(context, feedback.english, feedback.arabic),
-      );
+      _update(() {
+        _accessReason = access.reason;
+        _message = abuText(context, feedback.english, feedback.arabic);
+      });
+      showDetails = action == 'plans' && !access.isActive;
     } catch (error) {
       if (!mounted ||
           widget.profile.uid != profile.uid ||
@@ -83,29 +102,267 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
         return;
       }
       final feedback = SubscriptionFeedback.serverFailure(error);
-      setState(
+      _update(
         () => _message = storeCompleted
             ? abuText(context, feedback.english, feedback.arabic)
             : SubscriptionService.errorMessage(error),
       );
+      showDetails = action == 'plans';
     } finally {
       if (mounted) {
-        setState(() {
+        _update(() {
           _working = false;
           _activeAction = null;
         });
       }
+    }
+    if (showDetails && mounted && widget.profile.uid == profile.uid) {
+      await _openDetails();
     }
   }
 
   @override
   void didUpdateWidget(covariant SubscriptionPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.profile.uid != widget.profile.uid) _message = null;
+    if (oldWidget.profile.uid != widget.profile.uid ||
+        oldWidget.profile.backendUserId != widget.profile.backendUserId) {
+      _message = null;
+      _accessReason = null;
+    }
+    if (!identical(oldWidget.profile, widget.profile)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _detailsRevision.value++;
+      });
+    }
+  }
+
+  Future<void> _openDetails() async {
+    if (_detailsOpen) return;
+    _detailsOpen = true;
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        showDragHandle: true,
+        builder: (sheetContext) => ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * .88,
+          ),
+          child: AnimatedBuilder(
+            animation: Listenable.merge([_store, _detailsRevision]),
+            builder: (sheetContext, _) => Column(
+              key: const Key('subscription-details-sheet'),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          abuText(
+                            sheetContext,
+                            'Subscription details',
+                            'تفاصيل الاشتراك',
+                          ),
+                          style: Theme.of(sheetContext).textTheme.titleLarge,
+                        ),
+                      ),
+                      IconButton(
+                        key: const Key('close-subscription-details'),
+                        tooltip: abuText(sheetContext, 'Close', 'إغلاق'),
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      0,
+                      16,
+                      24 + MediaQuery.viewInsetsOf(sheetContext).bottom,
+                    ),
+                    child: _buildDetails(sheetContext),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } finally {
+      _detailsOpen = false;
+    }
   }
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _store,
+    builder: (context, _) {
+      final profile = widget.profile;
+      final storeActive =
+          _store.userId == profile.backendUserId &&
+          _store.customerInfo?.entitlements.active[SubscriptionService
+                  .entitlementId] !=
+              null;
+      final active = profile.isProSubscriber;
+      final memberAccess = active || profile.isYouTubeMember;
+      final pending = !active && storeActive;
+      final testSubscription =
+          !active && _accessReason == 'sandbox_not_allowed';
+      final accessNotActive =
+          !active &&
+          const [
+            'no_entitlement',
+            'expired',
+            'inactive',
+          ].contains(_accessReason);
+      final showPlans = !memberAccess && !pending && !testSubscription;
+      final working = _working || _store.busy;
+      final enabled =
+          !working &&
+          !profile.isGuest &&
+          profile.backendUserId.isNotEmpty &&
+          _store.available;
+      final title = active
+          ? abuText(context, 'Subscription active', 'الاشتراك نشط')
+          : testSubscription
+          ? abuText(context, 'Test subscription', 'اشتراك تجريبي')
+          : accessNotActive && pending
+          ? abuText(context, 'Access not active', 'الصلاحيات غير مفعّلة')
+          : pending
+          ? abuText(context, 'Activation pending', 'بانتظار التفعيل')
+          : memberAccess
+          ? abuText(context, 'Member access active', 'مزايا العضوية مفعّلة')
+          : abuText(context, 'Ostoora3 membership', 'عضوية الأسطورة');
+      final subtitle = testSubscription
+          ? abuText(context, 'Not active in production', 'غير مفعّل في الإنتاج')
+          : accessNotActive && pending
+          ? abuText(context, 'Review subscription status', 'راجع حالة الاشتراك')
+          : pending
+          ? abuText(
+              context,
+              'Store subscription found',
+              'تم العثور على اشتراك المتجر',
+            )
+          : active
+          ? abuText(
+              context,
+              'Members Zone + member bonuses',
+              'منطقة الأعضاء ومزايا العضوية',
+            )
+          : memberAccess
+          ? abuText(context, 'YouTube membership', 'عضوية يوتيوب')
+          : profile.isGuest
+          ? abuText(context, 'Sign in to subscribe', 'سجّل الدخول للاشتراك')
+          : abuText(
+              context,
+              'Members Zone + member bonuses',
+              'منطقة الأعضاء ومزايا العضوية',
+            );
+      final color = memberAccess ? AbuBrand.lime : AbuBrand.gold;
+      return Container(
+        key: const Key('subscription-summary'),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AbuBrand.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AbuBrand.line),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(
+              pending
+                  ? Icons.schedule_rounded
+                  : Icons.workspace_premium_rounded,
+              color: color,
+              size: 22,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: InkWell(
+                onTap: _openDetails,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        _message != null && !active && !testSubscription
+                            ? abuText(
+                                context,
+                                'Review subscription status',
+                                'راجع حالة الاشتراك',
+                              )
+                            : subtitle,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AbuBrand.muted,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            if (working)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else if (showPlans && enabled)
+              FilledButton(
+                key: const Key('subscription-view-plans'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  minimumSize: const Size(0, 44),
+                ),
+                onPressed: () => _perform('plans'),
+                child: Text(abuText(context, 'View plans', 'عرض الخطط')),
+              )
+            else
+              TextButton(
+                key: const Key('subscription-open-details'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 44),
+                ),
+                onPressed: _openDetails,
+                child: Text(
+                  abuText(
+                    context,
+                    active ? 'Manage' : 'Details',
+                    active ? 'إدارة' : 'التفاصيل',
+                  ),
+                ),
+              ),
+          ],
+        ),
+      );
+    },
+  );
+
+  Widget _buildDetails(BuildContext context) => AnimatedBuilder(
     animation: _store,
     builder: (context, _) {
       final profile = widget.profile;
@@ -122,7 +379,10 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           info?.entitlements.active[SubscriptionService.entitlementId];
       // A known store subscription must not lead the user back to buying it
       // again just because the separate server activation is unavailable.
-      final hasSubscription = profile.isProSubscriber || entitlement != null;
+      final hasSubscription =
+          profile.isProSubscriber ||
+          entitlement != null ||
+          _accessReason == 'sandbox_not_allowed';
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
@@ -197,8 +457,24 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
               Text(
                 abuText(
                   context,
-                  'Store subscription found · activation pending',
-                  'تم العثور على اشتراك المتجر · التفعيل قيد الانتظار',
+                  _accessReason == 'sandbox_not_allowed'
+                      ? 'Test subscription · not active in production'
+                      : const [
+                          'no_entitlement',
+                          'expired',
+                          'inactive',
+                        ].contains(_accessReason)
+                      ? 'Store subscription found · access not active'
+                      : 'Store subscription found · activation pending',
+                  _accessReason == 'sandbox_not_allowed'
+                      ? 'اشتراك تجريبي · غير مفعّل في الإنتاج'
+                      : const [
+                          'no_entitlement',
+                          'expired',
+                          'inactive',
+                        ].contains(_accessReason)
+                      ? 'تم العثور على اشتراك المتجر · الصلاحيات غير مفعّلة'
+                      : 'تم العثور على اشتراك المتجر · التفعيل قيد الانتظار',
                 ),
                 style: const TextStyle(
                   color: AbuBrand.gold,
@@ -272,6 +548,13 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                 ),
               ),
             ),
+            if (hasSubscription)
+              TextButton.icon(
+                key: const Key('subscription-details-view-plans'),
+                onPressed: enabled ? () => _perform('plans') : null,
+                icon: const Icon(Icons.view_carousel_outlined),
+                label: Text(abuText(context, 'View plans', 'عرض الخطط')),
+              ),
             Wrap(
               alignment: WrapAlignment.center,
               spacing: 8,

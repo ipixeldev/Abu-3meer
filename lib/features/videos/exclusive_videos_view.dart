@@ -116,7 +116,9 @@ class _ExclusiveVideosViewState extends State<ExclusiveVideosView> {
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
             itemCount: videos.length + 1,
             itemBuilder: (context, index) {
-              if (index == 0) {
+              // Lead with the actual video; subscription management stays a
+              // compact secondary row, never a screen-sized preamble.
+              if (index == 1) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 18),
                   child: SubscriptionPanel(
@@ -125,7 +127,7 @@ class _ExclusiveVideosViewState extends State<ExclusiveVideosView> {
                   ),
                 );
               }
-              final video = videos[index - 1];
+              final video = videos[index == 0 ? 0 : index - 1];
               return _VideoCard(
                 video: video,
                 isMember: widget.profile.hasMemberAccess,

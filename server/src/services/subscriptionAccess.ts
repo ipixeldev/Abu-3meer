@@ -12,6 +12,7 @@ export function activeSubscriptionSql(userIdColumn: string): string {
       AND subscription_access.is_active = TRUE
       AND subscription_access.expires_at > clock_timestamp()
       AND subscription_access.verified_at > clock_timestamp() - INTERVAL '24 hours'
+      AND subscription_access.verified_at <= clock_timestamp() + INTERVAL '1 minute'
       AND (subscription_access.is_sandbox = FALSE OR ${config.revenueCat.allowSandbox ? 'TRUE' : 'FALSE'})
   )`;
 }

@@ -66,13 +66,15 @@ nano .env
 
 Keep the new `REVENUECAT_SECRET_API_KEY=sk_…` already entered. It must be a RevenueCat REST API v1 server key, not a public `appl_` SDK key. Do not paste it into chat or GitHub.
 
-For this intentional pre-release simulator/TestFlight test deployment, add or change:
+For the requested production-only deployment, add or change:
 
 ```dotenv
-REVENUECAT_ALLOW_SANDBOX=true
+REVENUECAT_ALLOW_SANDBOX=false
 ```
 
-This explicitly permits server-verified test subscriptions to grant test access and badges. Leave it `false` on a paid production deployment unless you intentionally support sandbox access there. It does not grant subscriptions by itself: RevenueCat must confirm the `abu_3meer_pro` entitlement for the signed-in app account.
+This accepts server-verified production purchases only. TestFlight and Xcode subscriptions are test transactions, even when Apple's screen says "Active". They cannot become paid production purchases by changing a key or rebuilding. They will not grant access or the public paid-subscriber badge under this policy.
+
+Only set this to `true` if you deliberately want verified sandbox purchases to unlock access in a test deployment. Apple also uses sandbox purchases during App Review: the reviewer must have a review environment/account where a successful test purchase unlocks the advertised features. Production-only rejection is not a substitute for testing that review path. Do not submit a purchase flow that leaves reviewers locked out.
 
 Keep `REVENUECAT_WEBHOOK_AUTHORIZATION` if already configured. RevenueCat's webhook URL is `https://api.abu3meer.com/api/v1/subscriptions/webhook`; its Authorization value must match that separate secret.
 
@@ -116,4 +118,6 @@ Expect readiness to be healthy and the second command to print **401**, not **40
 
 In the updated app, sign into the account used for the purchase and tap **Refresh access**. If Apple says you are subscribed but RevenueCat has no subscription for this app account, use **Restore purchases** once; do not buy it again. An Xcode `[Environment: Xcode]` alert is a local test-store result, not proof that the live backend has verified this user.
 
-A successful authenticated sync must return `data.isActive: true`, and the refreshed profile must return `user.isProSubscriber: true`. The green badge then appears in the profile and refreshed leaderboards. If verification still fails, check that RevenueCat uses the app's PostgreSQL user ID, the product grants `abu_3meer_pro`, and test access is permitted. Do not manually change database membership flags to hide a verification failure.
+For an active, verified production subscription, the authenticated sync returns `data.isActive: true` and the refreshed profile returns `user.isProSubscriber: true`. The green badge then appears in the profile and refreshed leaderboards. Successful verification can also legitimately deny access: a test subscription is not a production purchase. If an actual production purchase is not confirmed, check that RevenueCat uses the app's PostgreSQL user ID and the product grants `abu_3meer_pro`. Do not manually change database membership flags to hide a verification failure.
+
+The next server update also returns `accessReason` and `environment`. `sandbox_not_allowed` means the server verified a test subscription but production-only policy rejected it. `no_entitlement` means it did not find `abu_3meer_pro` for this app account; this alone does not prove an account mismatch. `expired` and `verification_required` are separate states. These diagnostics do not require a new migration.

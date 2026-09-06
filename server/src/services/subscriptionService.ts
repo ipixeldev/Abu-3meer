@@ -10,7 +10,14 @@ export interface SubscriptionStatus {
   willRenew: boolean;
   isSandbox: boolean;
   verifiedAt: string | null;
+  accessReason: 'active' | 'sandbox_not_allowed' | 'no_entitlement'
+    | 'expired' | 'verification_required' | 'inactive';
+  environment: 'production' | 'sandbox' | 'unknown';
 }
+
+// Policy decisions are derived when reading. Persist the verified upstream
+// subscription, not a sandbox-policy denial that would hide why access stopped.
+type VerifiedSubscriptionStatus = Omit<SubscriptionStatus, 'accessReason' | 'environment'>;
 
 export class SubscriptionError extends Error {
   constructor(public code: string, message: string, public statusCode = 503) {
@@ -32,6 +39,7 @@ export function emptySubscriptionStatus(): SubscriptionStatus {
   return {
     entitlementId: 'abu_3meer_pro', isActive: false, productId: null,
     expiresAt: null, willRenew: false, isSandbox: false, verifiedAt: null,
+    accessReason: 'no_entitlement', environment: 'unknown',
   };
 }
 
@@ -39,7 +47,7 @@ export function emptySubscriptionStatus(): SubscriptionStatus {
 export function subscriptionFromRevenueCat(
   value: unknown,
   now = Date.now(),
-): SubscriptionStatus {
+): VerifiedSubscriptionStatus {
   const subscriber = object(object(value)?.subscriber);
   if (!subscriber || !object(subscriber.entitlements)) {
     throw new SubscriptionError('subscription_response_invalid', 'Subscription verification is temporarily unavailable.');
@@ -72,17 +80,27 @@ export function subscriptionFromRevenueCat(
 }
 
 export function enforceSubscriptionAccess(
-  status: SubscriptionStatus,
+  status: VerifiedSubscriptionStatus,
   now = Date.now(),
   allowSandbox = config.revenueCat.allowSandbox,
 ): SubscriptionStatus {
   const expires = validDate(status.expiresAt);
   const verified = validDate(status.verifiedAt);
-  const active = status.isActive && expires !== null && expires > now
-    && verified !== null && verified <= now + 60_000
-    && verified > now - config.revenueCat.verificationMaxAgeSeconds * 1000
-    && (!status.isSandbox || allowSandbox);
-  return { ...status, isActive: active, willRenew: active && status.willRenew };
+  // An inactive legacy row may not contain enough upstream provenance to
+  // distinguish a refund from malformed data. Do not label that as production.
+  const environment = status.isActive && status.productId && expires !== null && verified !== null
+    ? (status.isSandbox ? 'sandbox' : 'production') : 'unknown';
+  let accessReason: SubscriptionStatus['accessReason'];
+  if (!status.productId) accessReason = 'no_entitlement';
+  else if (expires !== null && expires <= now) accessReason = 'expired';
+  else if (!status.isActive || expires === null) accessReason = 'inactive';
+  else if (verified === null || verified > now + 60_000
+    || verified <= now - config.revenueCat.verificationMaxAgeSeconds * 1000) {
+    accessReason = 'verification_required';
+  } else if (status.isSandbox && !allowSandbox) accessReason = 'sandbox_not_allowed';
+  else accessReason = 'active';
+  const active = accessReason === 'active';
+  return { ...status, isActive: active, willRenew: active && status.willRenew, accessReason, environment };
 }
 
 type SubscriptionQuery = (text: string, params?: unknown[]) => Promise<{rows: JsonObject[]}>;

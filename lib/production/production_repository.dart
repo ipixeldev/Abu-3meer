@@ -2870,23 +2870,31 @@ class ProductionRepository {
 
   /// Server fetches RevenueCat independently using the authenticated user's
   /// database ID. The client never submits an entitlement or receipt verdict.
-  Future<bool> syncSubscription(AbuUserProfile profile) async {
-    if (profile.isGuest || auth.currentUser?.uid != profile.uid) return false;
+  Future<bool> syncSubscription(AbuUserProfile profile) async =>
+      (await syncSubscriptionAccess(profile)).isActive;
+
+  Future<SubscriptionAccessResult> syncSubscriptionAccess(
+    AbuUserProfile profile,
+  ) async {
+    const unconfirmed = SubscriptionAccessResult(isActive: false);
+    if (profile.isGuest || auth.currentUser?.uid != profile.uid) {
+      return unconfirmed;
+    }
     final status = await apiRepo.api.post(
       '/subscriptions/sync',
       body: const {},
       requireAuth: true,
     );
-    if (auth.currentUser?.uid != profile.uid) return false;
+    if (auth.currentUser?.uid != profile.uid) return unconfirmed;
     try {
       // The profile remains server-authoritative. Do not synthesize a badge
       // from SDK CustomerInfo or copy the subscription verdict into a cache.
       await refreshProfile(profile.uid, force: true);
     } catch (_) {
-      if (auth.currentUser?.uid != profile.uid) return false;
+      if (auth.currentUser?.uid != profile.uid) return unconfirmed;
       rethrow;
     }
-    if (auth.currentUser?.uid != profile.uid) return false;
+    if (auth.currentUser?.uid != profile.uid) return unconfirmed;
 
     // A successful POST invalidates the API client's public-profile cache.
     // Force already-open replay feeds as well, so identity badges update in
@@ -2916,8 +2924,8 @@ class ProductionRepository {
           }
         }(),
     ]);
-    if (auth.currentUser?.uid != profile.uid) return false;
-    return SubscriptionService.serverConfirmedAccess(status);
+    if (auth.currentUser?.uid != profile.uid) return unconfirmed;
+    return SubscriptionAccessResult.fromEnvelope(status);
   }
 
   // ── Games Arena Visibility Toggle ───────────────────────────────────────

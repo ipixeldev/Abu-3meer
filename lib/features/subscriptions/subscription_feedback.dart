@@ -61,11 +61,36 @@ class SubscriptionFeedback {
     required bool serverActive,
     required bool storeActive,
     required bool isSandbox,
+    String accessReason = 'unknown',
   }) {
     if (serverActive) {
       return const SubscriptionFeedback(
         'Membership confirmed. Your access and subscriber badge have been refreshed.',
         'تم تأكيد العضوية وتحديث صلاحياتك وشارة الاشتراك.',
+      );
+    }
+    if (accessReason == 'sandbox_not_allowed') {
+      return const SubscriptionFeedback(
+        'This is a TestFlight or Xcode test subscription. This server accepts production purchases only, so it does not activate member access or a subscriber badge. TestFlight purchases cannot become live payments. Do not purchase again.',
+        'هذا اشتراك تجريبي من TestFlight أو Xcode. يقبل هذا الخادم مشتريات الإنتاج فقط، لذلك لا يفعّل صلاحيات الأعضاء أو شارة الاشتراك. لا يمكن تحويل مشتريات TestFlight إلى مدفوعات فعلية. لا تشترِ مرة أخرى.',
+      );
+    }
+    if (accessReason == 'expired') {
+      return const SubscriptionFeedback(
+        'The server found an expired subscription. If your store account shows a current subscription, use Restore purchases to check it. Do not purchase again while checking.',
+        'عثر الخادم على اشتراك منتهي. إذا كان حساب المتجر يعرض اشتراكاً سارياً، استخدم استعادة المشتريات للتحقق منه. لا تشترِ مرة أخرى أثناء التحقق.',
+      );
+    }
+    if (accessReason == 'verification_required') {
+      return const SubscriptionFeedback(
+        'Subscription verification is out of date. Try Refresh access again later or contact support. Do not purchase again.',
+        'تأكيد الاشتراك قديم. حاول تحديث الصلاحيات لاحقاً أو تواصل مع الدعم. لا تشترِ مرة أخرى.',
+      );
+    }
+    if (accessReason == 'no_entitlement' && storeActive) {
+      return const SubscriptionFeedback(
+        'The store found a subscription, but the server did not find the membership entitlement for this app account. Use Restore purchases; if this continues, contact support to check account linking and the RevenueCat project. Do not purchase again.',
+        'عثر المتجر على اشتراك، لكن الخادم لم يعثر على صلاحية العضوية لحساب التطبيق هذا. استخدم استعادة المشتريات، وإذا استمرت المشكلة فتواصل مع الدعم للتحقق من ربط الحساب ومشروع RevenueCat. لا تشترِ مرة أخرى.',
       );
     }
     if (storeActive && isSandbox) {

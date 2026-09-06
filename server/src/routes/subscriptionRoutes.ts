@@ -32,7 +32,15 @@ export async function subscriptionRoutes(
   const read = dependencies.read ?? readSubscriptionStatus;
   fastify.get('/subscriptions/status', { preHandler: [authenticate] }, async (request, reply) => {
     reply.header('Cache-Control', 'private, no-store');
-    return { data: await read(request.user!.id) };
+    try {
+      return { data: await read(request.user!.id) };
+    } catch (error) {
+      request.log.error({ err: error }, 'Subscription status lookup failed');
+      return reply.status(503).send({
+        error: 'SubscriptionUnavailable', code: 'subscription_verification_unavailable',
+        message: 'Subscription verification is temporarily unavailable.',
+      });
+    }
   });
   fastify.post('/subscriptions/sync', {
     preHandler: [authenticate],
