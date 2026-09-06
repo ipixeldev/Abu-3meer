@@ -11,12 +11,13 @@ Expiration/removal takes effect when fresh server data is loaded. Deploy the
 updated server code as well as the Flutter build for public-profile and
 leaderboard badges; older servers safely render no subscriber badge.
 
-Asset: `assets/images/subscriber_badge.png` (true PNG alpha).
-Created with the built-in image editing tool using the user's supplied badge.
-Prompt: Remove only the dark navy rectangular background, making the space
-outside the green circle transparent. Preserve the green circle and rounded
-white five-point star; center with minimal transparent padding. No text,
-border, shadow, or drawn checkerboard.
+Asset: `assets/images/subscriber_badge_source.jpg` (626 × 548).
+This is an unchanged binary copy of the user's replacement JPG. `SubscriberBadge`
+uses a centered circular viewport inside the original green circle, so the
+surrounding black rectangle is not displayed. No generated artwork, pixel edits,
+redrawn star, or vector substitute is used. The viewport diameter is 342 source
+pixels, just inside the circle's antialiased JPEG edge; Flutter scales the source
+and clips it at render time. The old generated PNG is no longer displayed.
 
 `SubscriberName` reserves badge space when a long name is truncated, supports
 RTL layout, and includes a localized accessibility label.

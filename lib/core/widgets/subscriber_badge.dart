@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// The green circle and white star are retained; the surrounding PNG is alpha.
+/// Displays the user's original JPG unchanged through a circular viewport.
+/// The 342px crop sits just inside the green circle's antialiased JPEG edge,
+/// excluding its surrounding black rectangle without redrawing the artwork.
 class SubscriberBadge extends StatelessWidget {
   const SubscriberBadge({super.key, this.size = 18});
 
@@ -12,14 +14,27 @@ class SubscriberBadge extends StatelessWidget {
         ? 'مشترك'
         : 'Subscriber',
     image: true,
-    child: Image.asset(
-      'assets/images/subscriber_badge.png',
+    child: SizedBox(
       width: size,
       height: size,
-      fit: BoxFit.contain,
-      cacheWidth: 96,
-      excludeFromSemantics: true,
-      filterQuality: FilterQuality.medium,
+      child: ClipOval(
+        clipBehavior: Clip.antiAlias,
+        child: OverflowBox(
+          alignment: Alignment.center,
+          minWidth: size * 626 / 342,
+          maxWidth: size * 626 / 342,
+          minHeight: size * 548 / 342,
+          maxHeight: size * 548 / 342,
+          child: Image.asset(
+            'assets/images/subscriber_badge_source.jpg',
+            width: size * 626 / 342,
+            height: size * 548 / 342,
+            fit: BoxFit.fill,
+            excludeFromSemantics: true,
+            filterQuality: FilterQuality.high,
+          ),
+        ),
+      ),
     ),
   );
 }
