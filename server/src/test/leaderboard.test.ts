@@ -24,6 +24,7 @@ describe('XP-only leaderboard periods', () => {
         avatarUrl: null,
         supportedTeam: 'Barcelona',
         isYouTubeMember: false,
+        isProSubscriber: false,
         points: '55',
         rank: '1',
         totalPlayers: '3',
@@ -36,6 +37,7 @@ describe('XP-only leaderboard periods', () => {
         avatarUrl: null,
         supportedTeam: 'Real Madrid',
         isYouTubeMember: false,
+        isProSubscriber: true,
         points: '10',
         rank: '2',
         totalPlayers: '3',
@@ -48,6 +50,7 @@ describe('XP-only leaderboard periods', () => {
         avatarUrl: null,
         supportedTeam: 'Barcelona',
         isYouTubeMember: false,
+        isProSubscriber: false,
         points: '5',
         rank: '3',
         totalPlayers: '3',
@@ -58,6 +61,9 @@ describe('XP-only leaderboard periods', () => {
     const snapshot = assembleRankedLeaderboardRows(rows, 100);
     assert.equal(snapshot.entries[1].points, 10);
     assert.equal(snapshot.currentUser?.points, 10);
+    assert.equal(snapshot.entries[1].isProSubscriber, true);
+    assert.equal(snapshot.currentUser?.isProSubscriber, true);
+    assert.equal(snapshot.entries[0].isProSubscriber, false);
     assert.strictEqual(snapshot.currentUser, snapshot.entries[1]);
   });
 
@@ -70,6 +76,7 @@ describe('XP-only leaderboard periods', () => {
         avatarUrl: null,
         supportedTeam: 'Barcelona',
         isYouTubeMember: false,
+        isProSubscriber: false,
         points: 100,
         rank: 1,
         totalPlayers: 24,
@@ -82,6 +89,7 @@ describe('XP-only leaderboard periods', () => {
         avatarUrl: null,
         supportedTeam: 'Real Madrid',
         isYouTubeMember: false,
+        isProSubscriber: true,
         points: 1,
         rank: 24,
         totalPlayers: 24,
@@ -93,6 +101,7 @@ describe('XP-only leaderboard periods', () => {
     assert.deepEqual(snapshot.entries.map(entry => entry.publicId), ['leader']);
     assert.equal(snapshot.currentUser?.publicId, 'fan24');
     assert.equal(snapshot.currentUser?.rank, 24);
+    assert.equal(snapshot.currentUser?.isProSubscriber, true);
     assert.equal(snapshot.totalPlayers, 24);
   });
 

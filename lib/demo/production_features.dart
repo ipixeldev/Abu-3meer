@@ -52,7 +52,7 @@ class _ProductionChallenges extends StatelessWidget {
               builder: (context, profileSnapshot) => _ProductionChallengeGrid(
                 challenges: challenges,
                 repository: repository,
-                isMember: profileSnapshot.data?.isYouTubeMember ?? false,
+                isMember: profileSnapshot.data?.hasMemberAccess ?? false,
               ),
             );
           },
@@ -3073,7 +3073,10 @@ class _FanWarContributorCard extends StatelessWidget {
                   if (!desktop) {
                     return ListTile(
                       leading: Text('${row.key + 1}', style: _display(18)),
-                      title: Text('@${entry.username}'),
+                      title: SubscriberName(
+                        '@${entry.username}',
+                        isSubscriber: entry.isProSubscriber,
+                      ),
                       subtitle: Text(entry.supportedTeam),
                       trailing: Text(
                         '${entry.seasonPoints}',
@@ -3100,8 +3103,9 @@ class _FanWarContributorCard extends StatelessWidget {
                         ),
                         Expanded(
                           flex: 3,
-                          child: Text(
+                          child: SubscriberName(
                             '@${entry.username}',
+                            isSubscriber: entry.isProSubscriber,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(fontWeight: FontWeight.w800),
@@ -3948,7 +3952,7 @@ class _ProductionRewardsState extends State<_ProductionRewards> {
                   (reward) => _LoyaltyRewardCard(
                     reward: reward,
                     balance: widget.profile.loyaltyPoints,
-                    isMember: widget.profile.isYouTubeMember,
+                    isMember: widget.profile.hasMemberAccess,
                     busy: redeeming,
                     onRedeem: () => _redeem(context, reward),
                   ),
@@ -4347,7 +4351,7 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
           )
         : _CardMonogram(initials: initials);
 
-    final isMember = profile.isYouTubeMember;
+    final isMember = profile.hasMemberAccess;
     final tierTitle = isMember ? 'GOLD' : 'SILVER';
     final tierColor = isMember
         ? const Color(0xFFFFD700)
@@ -4514,8 +4518,9 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Text(
+                            child: SubscriberName(
                               profile.displayName.toUpperCase(),
+                              isSubscriber: profile.isProSubscriber,
                               textAlign: TextAlign.center,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -7669,8 +7674,8 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
             Text(
               abuText(
                 context,
-                'This complete admin-uploaded UTF-8 CSV/TSV is the membership authority. Users securely connect their own Google/YouTube account and the server compares the detected channel with this unexpired snapshot. Always replace it with a complete current export, never a partial list.',
-                'ملف CSV/TSV الكامل الذي يرفعه المسؤول بترميز UTF-8 هو مصدر العضوية. يربط المستخدم حساب Google/YouTube الخاص به بأمان ويقارن الخادم القناة المكتشفة بهذه اللقطة غير المنتهية. استبدلها دائماً بقائمة حالية كاملة، وليس قائمة جزئية.',
+                'This complete UTF-8 CSV/TSV is the YouTube membership authority. Users paste a channel profile link and the server matches its ID with this unexpired snapshot. Public links do not prove ownership. Always replace with a complete current export, never a partial list. Store subscriptions are managed separately.',
+                'ملف CSV/TSV الكامل بترميز UTF-8 هو مصدر عضوية يوتيوب. يلصق المستخدم رابط قناته ويطابق الخادم معرّفها مع هذه اللقطة غير المنتهية. الروابط العامة لا تثبت الملكية. استبدل الملف دائماً بقائمة حالية كاملة وليس قائمة جزئية. تُدار اشتراكات المتجر بشكل منفصل.',
               ),
               style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
             ),
@@ -7744,7 +7749,10 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
                                 ? _productionPrimary(context)
                                 : _muted,
                           ),
-                          title: Text(label),
+                          title: SubscriberName(
+                            label,
+                            isSubscriber: user.isProSubscriber,
+                          ),
                           subtitle: Text(
                             <String>[
                               if (user.username.isNotEmpty) '@${user.username}',
@@ -8041,8 +8049,9 @@ class _AdminRolesDialogState extends State<_AdminRolesDialog> {
                     Row(
                       children: [
                         Flexible(
-                          child: Text(
+                          child: SubscriberName(
                             name,
+                            isSubscriber: user.isProSubscriber,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontWeight: FontWeight.w800),

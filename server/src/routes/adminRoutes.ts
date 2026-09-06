@@ -17,6 +17,7 @@ import {
   listLeaderboardSeasons,
   saveManualLeaderboardSeason,
 } from '../services/leaderboardService.js';
+import { activeSubscriptionSql } from '../services/subscriptionAccess.js';
 
 const manageableRoles = ['fan', 'member', 'moderator', 'admin', 'super_admin'] as const;
 const adminAssignableRoles = ['fan', 'moderator', 'admin', 'super_admin'] as const;
@@ -94,6 +95,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
                 ),
                 FALSE
               ) AS is_youtube_member,
+              ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
               yl.youtube_channel_id, yl.membership_level_id,
               yl.last_verified_at AS youtube_membership_verified_at,
               yl.last_attempted_at AS youtube_membership_last_attempted_at,
@@ -202,6 +204,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
         supportedTeam: row.supported_team,
         supportedTeamLogo: row.supported_team_logo,
         isYouTubeMember: row.is_youtube_member,
+        isProSubscriber: row.is_pro_subscriber === true,
         youtubeChannelLinked: Boolean(row.youtube_channel_id),
         youtubeChannelId: row.youtube_channel_id ?? null,
         youtubeMembershipLevelId: row.membership_level_id ?? null,
@@ -539,9 +542,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
         `SELECT a.id, a.target_id, a.created_at, a.after_state,
                 admin.firebase_uid AS admin_uid,
                 admin.display_name AS admin_display_name,
+                ${activeSubscriptionSql('admin.id')} AS admin_is_pro_subscriber,
                 target.firebase_uid AS target_uid,
                 target.display_name AS target_display_name,
-                target.username AS target_username
+                target.username AS target_username,
+                ${activeSubscriptionSql('target.id')} AS target_is_pro_subscriber
          FROM admin_audit_logs a
          JOIN users admin ON admin.id = a.admin_user_id
          LEFT JOIN users target ON target.id::text = a.target_id
@@ -559,9 +564,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
           id: row.id,
           adminId: row.admin_uid || '',
           adminDisplayName: row.admin_display_name || '',
+          adminIsProSubscriber: row.admin_is_pro_subscriber === true,
           targetUserId: row.target_uid || row.target_id || '',
           targetDisplayName: row.target_display_name || '',
           targetUsername: row.target_username || '',
+          targetIsProSubscriber: row.target_is_pro_subscriber === true,
           delta,
           reason: String(state.reason || ''),
           totalBefore: Math.max(0, totalAfter - delta),

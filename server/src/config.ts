@@ -52,6 +52,17 @@ export const config = {
     privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
   },
 
+  revenueCat: {
+    // A RevenueCat secret REST API v1 key. Never use the SDK's public key here.
+    secretApiKey: (process.env.REVENUECAT_SECRET_API_KEY || '').trim(),
+    entitlementId: 'abu_3meer_pro',
+    webhookAuthorization: (process.env.REVENUECAT_WEBHOOK_AUTHORIZATION || '').trim(),
+    allowSandbox: process.env.REVENUECAT_ALLOW_SANDBOX === 'true',
+    // Webhooks and app foreground/purchase sync refresh this verified lease.
+    // A missing webhook cannot retain revoked access indefinitely.
+    verificationMaxAgeSeconds: 24 * 60 * 60,
+  },
+
   // No implicit production administrator. The first configured address is the
   // protected bootstrap Super Administrator, so it must be explicit in .env.
   adminEmails: (process.env.ADMIN_EMAILS || '')

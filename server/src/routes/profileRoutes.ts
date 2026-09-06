@@ -11,6 +11,7 @@ import {
   eligibleLeaderboardSourceTypes,
   listLeaderboardSeasons,
 } from '../services/leaderboardService.js';
+import { activeSubscriptionSql } from '../services/subscriptionAccess.js';
 
 const eligibleXpSources = [...eligibleLeaderboardSourceTypes];
 
@@ -23,6 +24,7 @@ interface PublicFanProfileRow {
   country: string | null;
   country_code: string | null;
   is_youtube_member: boolean;
+  is_pro_subscriber: boolean;
   total_points: string | number;
   monthly_points: string | number;
   season_points: string | number;
@@ -50,6 +52,7 @@ export function mapPublicFanProfile(row: PublicFanProfileRow) {
     country: row.country,
     countryCode: row.country_code,
     isYouTubeMember: row.is_youtube_member,
+    isProSubscriber: row.is_pro_subscriber === true,
     totalPoints: Number(row.total_points || 0),
     monthlyPoints: Number(row.monthly_points || 0),
     seasonPoints: Number(row.season_points || 0),
@@ -164,6 +167,8 @@ export async function profileRoutes(fastify: FastifyInstance) {
         countryCode: user.countryCode,
         onboardingCompleted: user.onboardingCompleted,
         isYouTubeMember: user.isYouTubeMember,
+        isProSubscriber: user.isProSubscriber,
+        hasMemberAccess: user.hasMemberAccess,
         roles: user.roles,
         isAdmin: user.isAdmin,
         isSuperAdmin: user.isSuperAdmin,
@@ -200,6 +205,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
                 ),
                 FALSE
               ) AS is_youtube_member,
+              ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
               COALESCE(xp.total_points, 0)::integer AS total_points,
               COALESCE(xp.monthly_points, 0)::integer AS monthly_points,
               COALESCE(xp.season_points, 0)::integer AS season_points,
@@ -381,6 +387,8 @@ export async function profileRoutes(fastify: FastifyInstance) {
         onboardingCompleted: row.onboarding_completed,
         locationUpdatedAt: row.location_updated_at,
         isYouTubeMember: user.isYouTubeMember,
+        isProSubscriber: user.isProSubscriber,
+        hasMemberAccess: user.hasMemberAccess,
         accountStatus: row.account_status,
       },
     };

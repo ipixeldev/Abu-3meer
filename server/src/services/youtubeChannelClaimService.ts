@@ -51,8 +51,8 @@ function mapClaim(row: any): YouTubeChannelClaim {
 
 /**
  * Read-only compatibility status for clients upgrading from the claim UI.
- * Channel creation/review mutations are intentionally not exposed: only the
- * Google-token verification service can create an approved ownership link.
+ * Channel creation/review mutations are intentionally not exposed separately:
+ * the membership checker records accepted manual links and their CSV status.
  */
 export async function getMyYouTubeChannelClaim(
   userId: string,

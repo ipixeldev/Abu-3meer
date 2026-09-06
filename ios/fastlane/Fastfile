@@ -32,7 +32,7 @@ platform :ios do
 
     deliver(
       api_key: api_key,
-      app_identifier: "com.abu3meer.app",
+      app_identifier: "omar.abu3meer.app",
       app_version: "1.1.0",
       metadata_path: File.expand_path("metadata", __dir__),
       skip_binary_upload: true,
@@ -43,7 +43,7 @@ platform :ios do
       force: true
     )
 
-    app = Spaceship::ConnectAPI::App.find("com.abu3meer.app")
+    app = Spaceship::ConnectAPI::App.find("omar.abu3meer.app")
     version = app.get_app_store_versions.find { |candidate| candidate.version_string == "1.1.0" }
     UI.user_error!("App Store version 1.1.0 was not found") unless version
     version.fetch_app_store_review_detail.update(
@@ -70,7 +70,7 @@ platform :ios do
   lane :upload_screenshots do
     deliver(
       api_key: abu3meer_api_key,
-      app_identifier: "com.abu3meer.app",
+      app_identifier: "omar.abu3meer.app",
       app_version: "1.1.0",
       platform: "ios",
       screenshots_path: File.expand_path("screenshots", __dir__),
@@ -88,7 +88,7 @@ platform :ios do
   lane :check_testflight do
     abu3meer_api_key
 
-    app = Spaceship::ConnectAPI::App.find("com.abu3meer.app")
+    app = Spaceship::ConnectAPI::App.find("omar.abu3meer.app")
     builds = app.get_builds
     builds.each do |b|
       UI.success("TestFlight Build #{b.version} -> Processing State: #{b.processing_state} | Upload Date: #{b.uploaded_date}")
@@ -99,7 +99,7 @@ platform :ios do
   lane :upload_testflight do |options|
     api_key = abu3meer_api_key
     ipa_path = options[:ipa] || ENV.fetch("IPA_PATH")
-    app = Spaceship::ConnectAPI::App.find("com.abu3meer.app")
+    app = Spaceship::ConnectAPI::App.find("omar.abu3meer.app")
     beta_review = Spaceship::ConnectAPI
       .get_beta_app_review_detail(filter: { app: app.id })
       .to_models
@@ -124,7 +124,7 @@ platform :ios do
     upload_to_testflight(
       api_key: api_key,
       ipa: ipa_path,
-      app_identifier: "com.abu3meer.app",
+      app_identifier: "omar.abu3meer.app",
       localized_app_info: localized_app_info,
       localized_build_info: localized_build_info,
       beta_app_review_info: {
@@ -149,7 +149,7 @@ platform :ios do
   lane :select_app_store_build do |options|
     abu3meer_api_key
     build_number = (options[:build_number] || ENV.fetch("APP_STORE_BUILD_NUMBER")).to_s
-    app = Spaceship::ConnectAPI::App.find("com.abu3meer.app")
+    app = Spaceship::ConnectAPI::App.find("omar.abu3meer.app")
     build = Spaceship::ConnectAPI::Build.all(
       app_id: app.id,
       version: "1.1.0",
@@ -172,7 +172,7 @@ platform :ios do
     build_number = (options[:build_number] || ENV.fetch("APP_STORE_BUILD_NUMBER", "12")).to_s
     deliver(
       api_key: abu3meer_api_key,
-      app_identifier: "com.abu3meer.app",
+      app_identifier: "omar.abu3meer.app",
       app_version: "1.1.0",
       build_number: build_number,
       platform: "ios",

@@ -1,4 +1,5 @@
 import { getClient } from '../db/pool.js';
+import { activeSubscriptionSql } from './subscriptionAccess.js';
 import {
   awardPointsInTransaction,
   invalidatePointCaches,
@@ -116,7 +117,8 @@ export async function submitChallengeAnswer(
                 AND snapshot_import.id IS NOT NULL
                 AND approved_claim.id IS NOT NULL,
                 FALSE
-              ) AS is_youtube_member
+              ) AS is_youtube_member,
+              ${activeSubscriptionSql('user_account.id')} AS is_pro_subscriber
        FROM users user_account
        LEFT JOIN youtube_account_links member_link
          ON member_link.user_id = user_account.id
@@ -132,8 +134,8 @@ export async function submitChallengeAnswer(
        WHERE user_account.id = $1`,
       [userId],
     );
-    const isYouTubeMember =
-      membershipRes.rows[0]?.is_youtube_member === true;
+    const hasMemberAccess = membershipRes.rows[0]?.is_youtube_member === true
+      || membershipRes.rows[0]?.is_pro_subscriber === true;
     const now = new Date();
     if (
       !['open', 'scheduled'].includes(challenge.status) ||
@@ -145,10 +147,10 @@ export async function submitChallengeAnswer(
         'Challenge is currently closed',
       );
     }
-    if (challenge.member_only && !isYouTubeMember) {
+    if (challenge.member_only && !hasMemberAccess) {
       throw new ChallengeSubmissionError(
         'MembershipRequired',
-        'This challenge is available to verified YouTube members only.',
+        'This challenge is available to active members only.',
         403,
       );
     }
@@ -161,7 +163,7 @@ export async function submitChallengeAnswer(
       sourceType,
       sourceId: challengeId,
       basePoints,
-      multiplier: memberMultiplierForSource(sourceType, isYouTubeMember),
+      multiplier: memberMultiplierForSource(sourceType, hasMemberAccess),
       description: `Solved Challenge: ${challenge.title}`,
       idempotencyKey: `challenge:${challengeId}:user:${userId}`,
     };

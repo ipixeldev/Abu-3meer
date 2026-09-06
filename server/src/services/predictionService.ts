@@ -7,6 +7,7 @@ import {
 import { refreshStaleYouTubeMembershipsForUsers } from './csvMembershipService.js';
 import { normalizeChallengeAnswer } from './challengeService.js';
 import { config } from '../config.js';
+import { activeSubscriptionSql } from './subscriptionAccess.js';
 import {
   createNotificationCampaign,
   type CreatedNotificationCampaign,
@@ -267,7 +268,8 @@ async function settleMatchPredictionsUnlocked(
                   AND approved_claim.status = 'approved'
               ),
               FALSE
-            ) AS is_youtube_member
+            ) AS is_youtube_member,
+            ${activeSubscriptionSql('p.user_id')} AS is_pro_subscriber
      FROM predictions p
      LEFT JOIN youtube_account_links yl ON yl.user_id = p.user_id
      WHERE p.match_id = $1 AND NOT p.rewarded`,
@@ -329,7 +331,7 @@ async function settleMatchPredictionsUnlocked(
         basePoints: component.basePoints,
         multiplier: memberMultiplierForSource(
           component.sourceType,
-          pred.is_youtube_member,
+          pred.is_youtube_member === true || pred.is_pro_subscriber === true,
         ),
         description: `${component.label}: ${match.home_team} vs ${match.away_team}`,
         idempotencyKey: `pred_reward:${pred.id}:${component.key}`,

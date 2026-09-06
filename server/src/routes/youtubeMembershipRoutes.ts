@@ -19,10 +19,7 @@ const snapshotImportQuerySchema = z.object({
   confirmLargeDecrease: z.enum(['true']).optional(),
 });
 const membershipCheckSchema = z.object({
-  accessToken: z.string()
-    .min(20)
-    .max(4096)
-    .regex(/^[\x21-\x7e]+$/),
+  profileLink: z.string().trim().min(1).max(2048),
 }).strict();
 
 function sendVerificationError(reply: FastifyReply, error: unknown) {
@@ -78,14 +75,13 @@ export async function youtubeMembershipRoutes(fastify: FastifyInstance) {
       if (!parsed.success) {
         return reply.status(400).send({
           error: 'ValidationError',
-          message: 'A valid short-lived Google access token is required.',
+          message: 'Enter your YouTube channel profile link.',
         });
       }
       try {
         return await checkYouTubeMembership({
           userId: request.user!.id,
-          expectedGoogleSubject: request.user!.googleProviderUid,
-          accessToken: parsed.data.accessToken,
+          profileLink: parsed.data.profileLink,
         });
       } catch (error) {
         return sendVerificationError(reply, error);

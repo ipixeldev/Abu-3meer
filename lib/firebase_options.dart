@@ -65,10 +65,10 @@ class DefaultFirebaseOptions {
   );
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDN6OBPnm4wqgAcILPqWGG8jYFLZHq63G4',
-    appId: '1:701810344443:ios:d6a1af8e1afb3d725a4b5e',
+    appId: '1:701810344443:ios:8ae6ab7d5f63ffa75a4b5e',
     messagingSenderId: '701810344443',
     projectId: 'abu-3meer-9fd70',
     storageBucket: 'abu-3meer-9fd70.firebasestorage.app',
-    iosBundleId: 'com.abu3meer.app',
+    iosBundleId: 'omar.abu3meer.app',
   );
 }

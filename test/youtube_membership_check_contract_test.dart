@@ -86,39 +86,31 @@ void main() {
     );
   });
 
-  test(
-    'mobile performs one-tap read-only verification with no manual input',
-    () {
-      final api = File('lib/production/api_production_repository.dart')
-          .readAsStringSync();
-      final repository = File('lib/production/production_repository.dart')
-          .readAsStringSync();
-      final ui = File('lib/demo/production_ui.dart').readAsStringSync();
-      final admin = File('lib/demo/youtube_membership_snapshot_admin.dart')
-          .readAsStringSync();
+  test('mobile submits the profile link to the CSV endpoint without Google authorization', () {
+    final api = File('lib/production/api_production_repository.dart')
+        .readAsStringSync();
+    final repository = File('lib/production/production_repository.dart')
+        .readAsStringSync();
+    final ui = File('lib/demo/production_ui.dart').readAsStringSync();
+    final admin = File('lib/demo/youtube_membership_snapshot_admin.dart')
+        .readAsStringSync();
 
-      expect(api, contains("'/profile/youtube/membership/check'"));
-      expect(api, contains("'accessToken': accessToken"));
-      expect(
-        repository,
-        contains('https://www.googleapis.com/auth/youtube.readonly'),
-      );
-      expect(repository, contains('.authorizationForScopes('));
-      expect(repository, contains('.authorizeScopes('));
-      expect(repository, contains('linkWithCredential('));
-      expect(repository, contains('getIdToken(true)'));
-      expect(ui, contains("Key('youtube-membership-check-dialog')"));
-      expect(ui, contains('CHECK MEMBERSHIP'));
+    expect(api, contains("'/profile/youtube/membership/check'"));
+    expect(api, contains("'profileLink': profileLink"));
+    expect(repository, isNot(contains('youtubeMembershipGoogleScopes')));
+    expect(repository, isNot(contains('.authorizationForScopes(')));
+    expect(repository, isNot(contains('.authorizeScopes(')));
+    expect(ui, contains("Key('youtube-membership-check-dialog')"));
+    expect(ui, contains('CHECK MEMBERSHIP'));
 
-      final executableClient = '$api\n$repository\n$ui\n$admin';
-      expect(executableClient, isNot(contains('youtube-channel-claim-input')));
-      expect(executableClient, isNot(contains('SUBMIT CHANNEL CLAIM')));
-      expect(executableClient, isNot(contains('SUBMIT FOR REVIEW')));
-      expect(executableClient, isNot(contains("'/profile/youtube/claim'")));
-      expect(
-        executableClient,
-        isNot(contains('profile-review-youtube-channel-claims')),
-      );
-    },
-  );
+    final executableClient = '$api\n$repository\n$ui\n$admin';
+    expect(executableClient, isNot(contains('youtube-channel-claim-input')));
+    expect(executableClient, isNot(contains('SUBMIT CHANNEL CLAIM')));
+    expect(executableClient, isNot(contains('SUBMIT FOR REVIEW')));
+    expect(executableClient, isNot(contains("'/profile/youtube/claim'")));
+    expect(
+      executableClient,
+      isNot(contains('profile-review-youtube-channel-claims')),
+    );
+  });
 }

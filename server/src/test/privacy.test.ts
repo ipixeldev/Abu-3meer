@@ -16,6 +16,7 @@ describe('Public API privacy boundaries', () => {
       avatarUrl: null,
       supportedTeam: 'Real Madrid',
       isYouTubeMember: false,
+      isProSubscriber: true,
       points: 85,
       rank: 4,
       totalPlayers: 42,
@@ -23,6 +24,7 @@ describe('Public API privacy boundaries', () => {
 
     assert.equal(entry.userId, 'fan_handle');
     assert.equal(entry.publicId, 'fan_handle');
+    assert.equal(entry.isProSubscriber, true);
     assert.equal('firebaseUid' in entry, false);
     assert.equal('databaseUserId' in entry, false);
   });
@@ -37,6 +39,7 @@ describe('Public API privacy boundaries', () => {
       country: 'Morocco',
       country_code: 'MA',
       is_youtube_member: false,
+      is_pro_subscriber: true,
       total_points: 100,
       monthly_points: 40,
       season_points: 60,
@@ -51,6 +54,7 @@ describe('Public API privacy boundaries', () => {
 
     assert.equal(profile.id, 'fan_handle');
     assert.equal(profile.publicId, 'fan_handle');
+    assert.equal(profile.isProSubscriber, true);
     assert.equal('firebaseUid' in profile, false);
     assert.equal('streakLastCheckIn' in profile, false);
     assert.equal('streakExpiresAt' in profile, false);

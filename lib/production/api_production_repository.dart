@@ -21,6 +21,27 @@ double parseApiDouble(dynamic value, [double fallback = 0]) {
 }
 
 @visibleForTesting
+LeaderboardEntry parseApiLeaderboardEntry(dynamic value) {
+  final item = value is Map
+      ? Map<String, dynamic>.from(value)
+      : const <String, dynamic>{};
+  final points = parseApiInt(item['points']);
+  return LeaderboardEntry(
+    uid: (item['publicId'] ?? item['userId'] ?? item['firebaseUid'] ?? '')
+        .toString(),
+    username: (item['username'] ?? '').toString(),
+    displayName: (item['displayName'] ?? item['username'] ?? '').toString(),
+    avatarUrl: (item['avatarUrl'] ?? '').toString(),
+    supportedTeam: (item['supportedTeam'] ?? '').toString(),
+    monthlyPoints: points,
+    seasonPoints: points,
+    totalPoints: points,
+    isMember: item['isYouTubeMember'] == true,
+    isProSubscriber: item['isProSubscriber'] == true,
+  );
+}
+
+@visibleForTesting
 UserLeaderboardRanks parseApiUserLeaderboardRanks(dynamic value) {
   if (value is! Map) return const UserLeaderboardRanks.unranked();
   final ranks = Map<String, dynamic>.from(value);
@@ -244,6 +265,7 @@ AbuUserProfile parseAdminUserProfile(dynamic value) {
     // the Firebase UID when present so the same model also works in existing
     // client-side identity comparisons.
     uid: (user['firebaseUid'] ?? user['uid'] ?? user['id'] ?? '').toString(),
+    isProSubscriber: user['isProSubscriber'] == true,
     email: (user['email'] ?? '').toString(),
     username: (user['username'] ?? '').toString(),
     displayName: (user['displayName'] ?? '').toString(),
@@ -293,9 +315,11 @@ AdminPointAdjustment parseAdminPointAdjustment(dynamic value) {
     id: (item['id'] ?? '').toString(),
     adminId: (item['adminId'] ?? '').toString(),
     adminDisplayName: (item['adminDisplayName'] ?? '').toString(),
+    adminIsProSubscriber: item['adminIsProSubscriber'] == true,
     targetUserId: (item['targetUserId'] ?? '').toString(),
     targetDisplayName: (item['targetDisplayName'] ?? '').toString(),
     targetUsername: (item['targetUsername'] ?? '').toString(),
+    targetIsProSubscriber: item['targetIsProSubscriber'] == true,
     delta: parseApiInt(item['delta']),
     reason: (item['reason'] ?? '').toString(),
     totalBefore: parseApiInt(item['totalBefore']),
@@ -390,6 +414,8 @@ class ApiProductionRepository {
       final storedAvatarUrl = (u['avatarUrl'] ?? '').toString().trim();
       return AbuUserProfile(
         uid: u['firebaseUid'] ?? user.uid,
+        backendUserId: (u['id'] ?? '').toString(),
+        isProSubscriber: u['isProSubscriber'] == true,
         email: u['email'] ?? user.email ?? '',
         displayName: u['displayName'] ?? user.displayName ?? '',
         username: u['username'] ?? '',
@@ -1022,22 +1048,7 @@ class ApiProductionRepository {
   }
 
   LeaderboardEntry _leaderboardEntry(dynamic value) {
-    final item = value is Map
-        ? Map<String, dynamic>.from(value)
-        : const <String, dynamic>{};
-    final points = parseApiInt(item['points']);
-    return LeaderboardEntry(
-      uid: (item['publicId'] ?? item['userId'] ?? item['firebaseUid'] ?? '')
-          .toString(),
-      username: (item['username'] ?? '').toString(),
-      displayName: (item['displayName'] ?? item['username'] ?? '').toString(),
-      avatarUrl: (item['avatarUrl'] ?? '').toString(),
-      supportedTeam: (item['supportedTeam'] ?? '').toString(),
-      monthlyPoints: points,
-      seasonPoints: points,
-      totalPoints: points,
-      isMember: item['isYouTubeMember'] == true,
-    );
+    return parseApiLeaderboardEntry(value);
   }
 
   RankedLeaderboardEntry _rankedLeaderboardEntry(dynamic value, int fallback) {
@@ -1195,6 +1206,7 @@ class ApiProductionRepository {
       if (res is Map) {
         return AbuUserProfile(
           uid: res['publicId'] ?? res['firebaseUid'] ?? res['id'] ?? id,
+          isProSubscriber: res['isProSubscriber'] == true,
           email: '',
           displayName: res['displayName'] ?? 'Fan',
           username: res['username'] ?? '',
@@ -1316,11 +1328,11 @@ class ApiProductionRepository {
   }
 
   Future<YouTubeMembershipCheckResult> checkYouTubeMembership(
-    String accessToken,
+    String profileLink,
   ) async {
     final response = await api.post(
       '/profile/youtube/membership/check',
-      body: <String, dynamic>{'accessToken': accessToken},
+      body: <String, dynamic>{'profileLink': profileLink},
       requireAuth: true,
     );
     return parseYouTubeMembershipCheckEnvelope(response);

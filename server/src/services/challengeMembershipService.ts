@@ -1,10 +1,11 @@
 import { query } from '../db/pool.js';
 import { refreshLinkedYouTubeMembership } from './csvMembershipService.js';
+import { activeSubscriptionSql } from './subscriptionAccess.js';
 
 type QueryMembership = (
   text: string,
   params: unknown[],
-) => Promise<{ rows: Array<{ linked: boolean; current_member: boolean }> }>;
+) => Promise<{ rows: Array<{ linked: boolean; current_member: boolean; is_pro_subscriber?: boolean }> }>;
 
 /** Resolve membership before member-gated content or an XP award. */
 export async function resolveChallengeMembership(
@@ -19,6 +20,7 @@ export async function resolveChallengeMembership(
     refreshLinkedYouTubeMembership;
   const read = () => queryMembership(
     `SELECT (yl.user_id IS NOT NULL) AS linked,
+            ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
             COALESCE(
               yl.is_member = TRUE
               AND yl.verification_source = 'admin_snapshot'
@@ -46,6 +48,7 @@ export async function resolveChallengeMembership(
   );
 
   const before = (await read()).rows[0];
+  if (before?.is_pro_subscriber === true) return true;
   if (!before?.linked) return false;
   if (before.current_member) return true;
 
@@ -58,6 +61,7 @@ export async function resolveChallengeMembership(
   }
 
   const after = (await read()).rows[0];
+  if (after?.is_pro_subscriber === true) return true;
   if (!after?.linked) return false;
   return after.current_member === true;
 }

@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../production/app_preferences.dart';
 import '../../production/models.dart';
 import '../../production/production_repository.dart';
+import '../subscriptions/subscription_panel.dart';
 
 const _exclusiveDarkLime = Color(0xFFC8FF38);
 const _exclusiveLightPrimary = Color(0xFF2457D6);
@@ -60,7 +61,7 @@ class _ExclusiveVideosViewState extends State<ExclusiveVideosView> {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.repository, widget.repository) ||
         oldWidget.profile.uid != widget.profile.uid ||
-        oldWidget.profile.isYouTubeMember != widget.profile.isYouTubeMember) {
+        oldWidget.profile.hasMemberAccess != widget.profile.hasMemberAccess) {
       _refreshInBackground();
     }
   }
@@ -88,6 +89,15 @@ class _ExclusiveVideosViewState extends State<ExclusiveVideosView> {
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: SubscriptionPanel(
+                      repository: widget.repository,
+                      profile: widget.profile,
+                    ),
+                  ),
+                ),
                 SliverFillRemaining(
                   hasScrollBody: false,
                   child: _buildEmptyState(context),
@@ -104,12 +114,21 @@ class _ExclusiveVideosViewState extends State<ExclusiveVideosView> {
               parent: BouncingScrollPhysics(),
             ),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
-            itemCount: videos.length,
+            itemCount: videos.length + 1,
             itemBuilder: (context, index) {
-              final video = videos[index];
+              if (index == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 18),
+                  child: SubscriptionPanel(
+                    repository: widget.repository,
+                    profile: widget.profile,
+                  ),
+                );
+              }
+              final video = videos[index - 1];
               return _VideoCard(
                 video: video,
-                isMember: widget.profile.isYouTubeMember,
+                isMember: widget.profile.hasMemberAccess,
                 onTap: () => _openVideo(context, video),
               );
             },
@@ -142,11 +161,7 @@ class _ExclusiveVideosViewState extends State<ExclusiveVideosView> {
             ),
             const SizedBox(height: 18),
             Text(
-              abuText(
-                context,
-                'Exclusive Videos For App Users',
-                'فيديوهات حصرية لمستخدمي التطبيق',
-              ),
+              abuText(context, 'Members Zone', 'منطقة الأعضاء'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: dark ? Colors.white : _exclusiveLightInk,
@@ -175,14 +190,14 @@ class _ExclusiveVideosViewState extends State<ExclusiveVideosView> {
   }
 
   void _openVideo(BuildContext context, ExclusiveVideo video) async {
-    if (video.memberOnly && !widget.profile.isYouTubeMember) {
+    if (video.memberOnly && !widget.profile.hasMemberAccess) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             abuText(
               context,
-              'This video is reserved for verified Gold Channel Members ⭐',
-              'هذا الفيديو مخصص للأعضاء الذهبيين الموثقين فقط ⭐',
+              'This video requires an active subscription or CSV membership.',
+              'يتطلب هذا الفيديو اشتراكاً نشطاً أو عضوية في ملف CSV.',
             ),
           ),
           backgroundColor: const Color(0xFF221A04),

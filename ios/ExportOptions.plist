@@ -7,13 +7,13 @@
 	<key>manageAppVersionAndBuildNumber</key>
 	<true/>
 	<key>method</key>
-	<string>app-store</string>
+	<string>app-store-connect</string>
 	<key>signingStyle</key>
 	<string>automatic</string>
 	<key>stripSwiftSymbols</key>
 	<true/>
 	<key>teamID</key>
-	<string>P9X53J2SQX</string>
+	<string>A4V5S8R8F8</string>
 	<key>uploadSymbols</key>
 	<true/>
 </dict>

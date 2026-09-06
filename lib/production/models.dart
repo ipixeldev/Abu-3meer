@@ -51,9 +51,13 @@ class AbuUserProfile {
     this.youtubeMembershipLevelId = '',
     this.youtubeMembershipVerifiedAt,
     this.youtubeMemberSince,
+    this.backendUserId = '',
+    this.isProSubscriber = false,
   });
 
   final String uid;
+  final String backendUserId;
+  final bool isProSubscriber;
   final String email;
   final String username;
   final String displayName;
@@ -104,6 +108,7 @@ class AbuUserProfile {
       role == 'moderator' || role == 'admin' || role == 'superAdmin';
   bool get canManageRoles => !isGuest && role == 'superAdmin';
   bool get isYouTubeMember => membershipMultiplier > 1;
+  bool get hasMemberAccess => isYouTubeMember || isProSubscriber;
   String get countryFlag {
     final c = countryCode.trim().isNotEmpty
         ? countryCode.trim().toLowerCase()
@@ -196,6 +201,8 @@ class AbuUserProfile {
     DateTime? youtubeMemberSince,
   }) => AbuUserProfile(
     uid: uid,
+    backendUserId: backendUserId,
+    isProSubscriber: isProSubscriber,
     email: email ?? this.email,
     username: username ?? this.username,
     displayName: displayName ?? this.displayName,
@@ -1294,14 +1301,18 @@ class AdminPointAdjustment {
     required this.monthlyPeriod,
     required this.seasonId,
     required this.createdAt,
+    this.adminIsProSubscriber = false,
+    this.targetIsProSubscriber = false,
   });
 
   final String id;
   final String adminId;
   final String adminDisplayName;
+  final bool adminIsProSubscriber;
   final String targetUserId;
   final String targetDisplayName;
   final String targetUsername;
+  final bool targetIsProSubscriber;
   final int delta;
   final String reason;
   final int totalBefore;
@@ -1325,9 +1336,11 @@ class AdminPointAdjustment {
       id: doc.id,
       adminId: data['adminId'] as String? ?? '',
       adminDisplayName: data['adminDisplayName'] as String? ?? '',
+      adminIsProSubscriber: data['adminIsProSubscriber'] == true,
       targetUserId: data['targetUserId'] as String? ?? '',
       targetDisplayName: data['targetDisplayName'] as String? ?? '',
       targetUsername: data['targetUsername'] as String? ?? '',
+      targetIsProSubscriber: data['targetIsProSubscriber'] == true,
       delta: (data['delta'] as num? ?? 0).toInt(),
       reason: data['reason'] as String? ?? '',
       totalBefore: (data['totalBefore'] as num? ?? 0).toInt(),
@@ -1389,6 +1402,7 @@ class LeaderboardEntry {
     required this.monthlyPoints,
     required this.seasonPoints,
     required this.isMember,
+    this.isProSubscriber = false,
     this.displayName = '',
     this.totalPoints = 0,
     this.monthlyPeriod = '',
@@ -1403,6 +1417,7 @@ class LeaderboardEntry {
   final int monthlyPoints;
   final int seasonPoints;
   final bool isMember;
+  final bool isProSubscriber;
   final int totalPoints;
   final String monthlyPeriod;
   final String seasonId;
@@ -1421,6 +1436,7 @@ class LeaderboardEntry {
       monthlyPoints: (data['monthlyPoints'] as num? ?? 0).toInt(),
       seasonPoints: (data['seasonPoints'] as num? ?? 0).toInt(),
       isMember: data['isMember'] as bool? ?? false,
+      isProSubscriber: data['isProSubscriber'] == true,
       totalPoints:
           (data['totalPoints'] as num? ?? data['seasonPoints'] as num? ?? 0)
               .toInt(),

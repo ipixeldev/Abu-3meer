@@ -18,6 +18,33 @@ AbuUserProfile profileWithRole(String role) => AbuUserProfile(
 );
 
 void main() {
+  test('paid membership unlocks member access without claiming CSV ownership or staff roles', () {
+    const profile = AbuUserProfile(
+      uid: 'firebase-user',
+      backendUserId: 'database-user',
+      email: 'fan@example.com',
+      username: 'fan',
+      displayName: 'Fan',
+      country: 'Sweden',
+      supportedTeam: 'Barcelona',
+      avatarUrl: '',
+      role: 'fan',
+      membershipMultiplier: 1,
+      isProSubscriber: true,
+      totalPoints: 0,
+      monthlyPoints: 0,
+      seasonPoints: 0,
+      suspended: false,
+    );
+    expect(profile.hasMemberAccess, true);
+    expect(profile.isYouTubeMember, false);
+    expect(profile.isAdmin, false);
+    expect(profile.canUploadMembershipSnapshot, false);
+    final edited = profile.copyWith(displayName: 'Edited fan');
+    expect(edited.isProSubscriber, true);
+    expect(edited.backendUserId, 'database-user');
+    expect(edited.hasMemberAccess, true);
+  });
   test('super admin has content, CSV upload, and role-management access', () {
     final profile = profileWithRole('superAdmin');
 

@@ -26,6 +26,7 @@ import { healthRoutes } from './routes/healthRoutes.js';
 import { videoRoutes } from './routes/videoRoutes.js';
 import { publicMediaRoutes, uploadRoutes } from './routes/uploadRoutes.js';
 import { youtubeMembershipRoutes } from './routes/youtubeMembershipRoutes.js';
+import { subscriptionRoutes } from './routes/subscriptionRoutes.js';
 import { clampYouTubeMembershipSnapshotExpiryToPolicy } from './services/youtubeMembershipSnapshotService.js';
 import { serializeRequestForLog } from './security/logRedaction.js';
 import { startYouTubeVideoSynchronization } from './services/youtubeVideoSyncService.js';
@@ -158,6 +159,7 @@ async function main() {
     await v1.register(videoRoutes);
     await v1.register(uploadRoutes);
     await v1.register(youtubeMembershipRoutes);
+    await v1.register(subscriptionRoutes);
   }, { prefix: '/api/v1' });
 
   // A server with a stale schema must never advertise itself as healthy. Let

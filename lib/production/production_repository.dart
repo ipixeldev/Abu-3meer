@@ -18,10 +18,7 @@ import 'external_content_service.dart';
 import 'models.dart';
 import 'youtube_membership_check.dart';
 import 'notification_service.dart';
-
-const List<String> youtubeMembershipGoogleScopes = <String>[
-  'https://www.googleapis.com/auth/youtube.readonly',
-];
+import 'subscription_service.dart';
 
 @visibleForTesting
 String footballTeamKeyForMatching(String value) {
@@ -563,9 +560,17 @@ class ProductionRepository {
             initialValue: cached,
             hasInitialValue: cached != null,
             load: () async {
+              // This endpoint returns the currently authenticated profile,
+              // not a profile selected by uid. Never replay another account's
+              // response into a stream opened before an account switch.
+              if (auth.currentUser?.uid != uid) return null;
               final updated = await apiRepo.fetchProfile().timeout(
                 const Duration(seconds: 8),
               );
+              if (auth.currentUser?.uid != uid ||
+                  (updated != null && updated.uid != uid)) {
+                return null;
+              }
               if (updated != null) _localProfiles[uid] = updated;
               return updated;
             },
@@ -1137,6 +1142,7 @@ class ProductionRepository {
       );
     }
     await auth.signOut();
+    unawaited(SubscriptionService.instance.clearIdentity());
     if (!kIsWeb && _googleInitialized) {
       await GoogleSignIn.instance.signOut();
     }
@@ -2845,10 +2851,11 @@ class ProductionRepository {
 
   // ── YouTube membership check ────────────────────────────────────────────
 
-  /// Verifies the selected Google account's own YouTube channel against the
-  /// current server-side membership CSV. The Google access token is used for
-  /// this request only and is never stored by the client.
-  Future<YouTubeMembershipCheckResult> checkYouTubeMembership() async {
+  /// Matches a supplied public channel profile against the current CSV.
+  /// This checks list membership, not ownership of the public profile.
+  Future<YouTubeMembershipCheckResult> checkYouTubeMembership(
+    String profileLink,
+  ) async {
     final user = auth.currentUser;
     if (user == null) {
       throw FirebaseAuthException(
@@ -2856,68 +2863,61 @@ class ProductionRepository {
         message: 'Sign in before checking YouTube membership.',
       );
     }
-    if (kIsWeb) {
-      throw UnsupportedError(
-        'YouTube membership checking is currently available in the mobile app.',
-      );
-    }
-    if (!_googleInitialized) {
-      await GoogleSignIn.instance.initialize();
-      _googleInitialized = true;
-    }
-
-    final googleAccount = await GoogleSignIn.instance.authenticate(
-      scopeHint: youtubeMembershipGoogleScopes,
-    );
-    final linkedGoogleProviders = user.providerData.where(
-      (provider) => provider.providerId == GoogleAuthProvider.PROVIDER_ID,
-    );
-    var linkedGoogleForThisCheck = false;
-    if (linkedGoogleProviders.isEmpty) {
-      final idToken = googleAccount.authentication.idToken;
-      if (idToken == null || idToken.isEmpty) {
-        throw FirebaseAuthException(
-          code: 'missing-google-token',
-          message: 'Google did not return a valid identity token.',
-        );
-      }
-      await user.linkWithCredential(
-        GoogleAuthProvider.credential(idToken: idToken),
-      );
-      linkedGoogleForThisCheck = true;
-    } else if (linkedGoogleProviders.first.uid != googleAccount.id) {
-      // Clear only the transient Google Sign-In selection. The Firebase
-      // account stays signed in and its linked identity is unchanged.
-      await GoogleSignIn.instance.signOut();
-      throw FirebaseAuthException(
-        code: 'youtube-google-account-mismatch',
-        message: 'Choose the Google account already linked to this Abu 3meer account.',
-      );
-    }
-
-    var authorization = await googleAccount.authorizationClient
-        .authorizationForScopes(youtubeMembershipGoogleScopes);
-    authorization ??= await googleAccount.authorizationClient.authorizeScopes(
-      youtubeMembershipGoogleScopes,
-    );
-    final accessToken = authorization.accessToken.trim();
-    if (accessToken.isEmpty) {
-      throw FirebaseAuthException(
-        code: 'missing-youtube-access-token',
-        message: 'Google did not authorize YouTube membership checking.',
-      );
-    }
-
-    await user.reload();
-    if (linkedGoogleForThisCheck) {
-      // Refresh once so the authenticated API can bind the Google access-token
-      // subject to the newly linked Firebase identity. Already-linked accounts
-      // keep their cached token and stable server rate-limit bucket.
-      await user.getIdToken(true);
-    }
-    final result = await apiRepo.checkYouTubeMembership(accessToken);
+    final result = await apiRepo.checkYouTubeMembership(profileLink.trim());
     await refreshProfile(user.uid, force: true);
     return result;
+  }
+
+  /// Server fetches RevenueCat independently using the authenticated user's
+  /// database ID. The client never submits an entitlement or receipt verdict.
+  Future<bool> syncSubscription(AbuUserProfile profile) async {
+    if (profile.isGuest || auth.currentUser?.uid != profile.uid) return false;
+    final status = await apiRepo.api.post(
+      '/subscriptions/sync',
+      body: const {},
+      requireAuth: true,
+    );
+    if (auth.currentUser?.uid != profile.uid) return false;
+    try {
+      // The profile remains server-authoritative. Do not synthesize a badge
+      // from SDK CustomerInfo or copy the subscription verdict into a cache.
+      await refreshProfile(profile.uid, force: true);
+    } catch (_) {
+      if (auth.currentUser?.uid != profile.uid) return false;
+      rethrow;
+    }
+    if (auth.currentUser?.uid != profile.uid) return false;
+
+    // A successful POST invalidates the API client's public-profile cache.
+    // Force already-open replay feeds as well, so identity badges update in
+    // leaderboards and staff user lists without waiting for their normal TTL.
+    // Optional content failures must not turn a verified subscription sync
+    // into a purchase/activation error. Each resource retains its last good
+    // value and can be retried independently by its normal refresh flow.
+    final resources = <_ReplayResource<dynamic>>[
+      ..._leaderboardResources.values,
+      ..._leaderboardViewResources.values,
+      ..._adminUserResources.values,
+      if (_exclusiveVideosResource != null &&
+          _exclusiveVideosResourceUserId == profile.uid)
+        _exclusiveVideosResource!,
+    ];
+    await Future.wait([
+      for (final resource in resources)
+        () async {
+          if (auth.currentUser?.uid != profile.uid) return;
+          try {
+            await resource.refresh(force: true);
+          } catch (error) {
+            debugPrint(
+              '[Subscriptions] Optional identity/content refresh failed: '
+              '$error',
+            );
+          }
+        }(),
+    ]);
+    if (auth.currentUser?.uid != profile.uid) return false;
+    return SubscriptionService.serverConfirmedAccess(status);
   }
 
   // ── Games Arena Visibility Toggle ───────────────────────────────────────

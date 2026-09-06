@@ -5,11 +5,10 @@ enum YouTubeMembershipCheckStatus {
   noYouTubeChannel,
 }
 
-/// Result of a one-time, server-verified YouTube membership check.
+/// Result of comparing a channel profile link with the current server CSV.
 ///
-/// The Google access token used for the check is deliberately not represented
-/// here: it is short-lived, sent directly to the API, and never persisted by
-/// the app.
+/// The server resolves public @handle links to stable channel IDs. No Google
+/// access token is used, and a supplied link does not prove channel ownership.
 class YouTubeMembershipCheckResult {
   const YouTubeMembershipCheckResult({
     required this.status,

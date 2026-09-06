@@ -1,4 +1,5 @@
 import { getClient, query } from '../db/pool.js';
+import { activeSubscriptionSql } from './subscriptionAccess.js';
 
 export const eligibleLeaderboardSourceTypes = [
   'signup_bonus',
@@ -25,6 +26,7 @@ export interface LeaderboardEntry {
   avatarUrl: string | null;
   supportedTeam: string;
   isYouTubeMember: boolean;
+  isProSubscriber: boolean;
 }
 
 export interface LeaderboardSeason {
@@ -82,6 +84,7 @@ export interface RankedRow {
   avatarUrl: string | null;
   supportedTeam: string;
   isYouTubeMember: boolean;
+  isProSubscriber: boolean;
   points: string | number;
   rank: string | number;
   totalPlayers: string | number;
@@ -624,6 +627,7 @@ export function mapPublicLeaderboardEntry(row: RankedRow): LeaderboardEntry {
     avatarUrl: row.avatarUrl,
     supportedTeam: row.supportedTeam,
     isYouTubeMember: row.isYouTubeMember,
+    isProSubscriber: row.isProSubscriber === true,
   };
 }
 
@@ -674,6 +678,7 @@ async function rankedRows(
                 AND approved_claim.id IS NOT NULL,
                 FALSE
               ) AS is_youtube_member,
+              ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
               u.created_at AS account_created_at,
               SUM(pt.final_points)::bigint AS points
        FROM point_transactions pt
@@ -703,6 +708,7 @@ async function rankedRows(
               avatar_url AS "avatarUrl",
               supported_team AS "supportedTeam",
               is_youtube_member AS "isYouTubeMember",
+              is_pro_subscriber AS "isProSubscriber",
               points,
               ROW_NUMBER() OVER (
                 ORDER BY points DESC, account_created_at ASC, database_user_id ASC
@@ -716,6 +722,7 @@ async function rankedRows(
             "avatarUrl",
             "supportedTeam",
             "isYouTubeMember",
+            "isProSubscriber",
             points,
             rank,
             "totalPlayers",

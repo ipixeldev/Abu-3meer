@@ -9,6 +9,7 @@ import {
 } from '../services/pointsService.js';
 import { redactRequestUrl } from '../security/logRedaction.js';
 import { googleProviderSubjectFromFirebaseIdentities } from '../services/firebaseIdentityService.js';
+import { activeSubscriptionSql } from '../services/subscriptionAccess.js';
 
 export interface AuthenticatedUser {
   id: string;
@@ -23,6 +24,8 @@ export interface AuthenticatedUser {
   countryCode: string | null;
   onboardingCompleted: boolean;
   isYouTubeMember: boolean;
+  isProSubscriber: boolean;
+  hasMemberAccess: boolean;
   accountStatus: 'active' | 'suspended' | 'banned' | 'pending_deletion';
   roles: string[];
   permissions: Set<string>;
@@ -100,6 +103,7 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
                 ),
                 FALSE
               ) AS is_youtube_member,
+              ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
               u.account_status, u.onboarding_completed,
               p.is_guest,
               COALESCE(
@@ -330,6 +334,8 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
       countryCode: row.country_code || null,
       onboardingCompleted: row.onboarding_completed === true,
       isYouTubeMember: row.is_youtube_member,
+      isProSubscriber: row.is_pro_subscriber === true,
+      hasMemberAccess: row.is_youtube_member === true || row.is_pro_subscriber === true,
       accountStatus: row.account_status,
       roles,
       permissions,

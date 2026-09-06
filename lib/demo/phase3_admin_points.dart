@@ -248,11 +248,12 @@ class _AdminPointAdjustmentDialogState
                     (user) => DropdownMenuItem<String>(
                       value: user.uid,
                       enabled: !user.suspended,
-                      child: Text(
+                      child: SubscriberName(
                         '${user.displayName.isEmpty ? user.username : user.displayName}'
                         '  ·  @${user.username}'
                         '${user.email.isEmpty ? '' : '  ·  ${user.email}'}'
                         '${user.suspended ? '  ·  ${abuText(context, 'SUSPENDED', 'موقوف')}' : ''}',
+                        isSubscriber: user.isProSubscriber,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -543,8 +544,9 @@ class _AdminPointAdjustmentDialogState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              SubscriberName(
                 '${user.displayName} · @${user.username}',
+                isSubscriber: user.isProSubscriber,
                 style: _display(19),
               ),
               const SizedBox(height: 10),
@@ -697,8 +699,9 @@ class _PointAdjustmentAuditTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    SubscriberName(
                       userLabel,
+                      isSubscriber: adjustment.targetIsProSubscriber,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontWeight: FontWeight.w800),
@@ -764,12 +767,14 @@ class _PointAdjustmentAuditTile extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(
+          SubscriberName(
             abuText(
               context,
               'By ${adjustment.adminDisplayName.isEmpty ? adjustment.adminId : adjustment.adminDisplayName}',
               'بواسطة ${adjustment.adminDisplayName.isEmpty ? adjustment.adminId : adjustment.adminDisplayName}',
             ),
+            isSubscriber: adjustment.adminIsProSubscriber,
+            badgeSize: 13,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: _muted, fontSize: 10),

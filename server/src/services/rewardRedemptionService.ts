@@ -58,6 +58,7 @@ export interface RedeemingUser {
   username: string;
   displayName: string;
   isYouTubeMember: boolean;
+  isProSubscriber?: boolean;
 }
 
 function idComponent(value: string): string {
@@ -575,7 +576,7 @@ export async function redeemLoyaltyReward(
           'This reward is no longer available.',
         );
       }
-      if (reward.memberOnly === true && !user.isYouTubeMember) {
+      if (reward.memberOnly === true && !user.isYouTubeMember && !user.isProSubscriber) {
         throw new LoyaltyRedemptionError(
           'members-only',
           'This reward is for verified members.',
@@ -642,7 +643,8 @@ export async function redeemLoyaltyReward(
           username: user.username,
           displayName: user.displayName,
           isYouTubeMember: user.isYouTubeMember,
-          membershipMultiplier: user.isYouTubeMember ? 2 : 1,
+          isProSubscriber: user.isProSubscriber === true,
+          membershipMultiplier: user.isYouTubeMember || user.isProSubscriber ? 2 : 1,
           loyaltyPoints: next.remainingBalance,
           updatedAt: createdAt,
           ...(userDoc.exists ? {} : { createdAt }),

@@ -9,331 +9,280 @@ import {
 import {
   YouTubeMembershipVerificationError,
   checkYouTubeMembership,
-  fetchOwnedYouTubeChannelIds,
-  inspectGoogleAccessToken,
-  planUnmatchedPriorLink,
-  reconcileUnmatchedOwnedChannels,
-  selectYouTubeChannelForSnapshot,
-  youtubeReadonlyScope,
 } from '../services/youtubeMembershipVerificationService.js';
+import { YouTubeProfileResolutionError } from '../services/youtubeProfileResolver.js';
 
 const channelId = `UC${'aB_9-'.repeat(5).slice(0, 22)}`;
+const otherChannelId = `UC${'bC_8-'.repeat(5).slice(0, 22)}`;
+const userId = '00000000-0000-4000-8000-000000000001';
+const snapshotId = '00000000-0000-4000-8000-000000000002';
+const now = new Date('2026-09-05T12:00:00.000Z');
+const snapshotExpiresAt = new Date('2026-09-12T12:00:00.000Z');
 
-test('accepts only stable UC IDs and exact HTTPS /channel/ URLs', () => {
+test('accepts stable IDs and exact HTTPS YouTube profile links, including mobile/share links', () => {
   assert.equal(youtubeChannelIdPattern.test(channelId), true);
-  assert.equal(normalizeYouTubeChannelId(channelId), channelId);
-  assert.equal(
-    normalizeYouTubeChannelId(`https://www.youtube.com/channel/${channelId}`),
+  for (const link of [
     channelId,
-  );
-  assert.equal(
-    normalizeYouTubeChannelId(`https://m.youtube.com/channel/${channelId}/videos`),
-    null,
-  );
-  assert.equal(normalizeYouTubeChannelId('https://youtube.com/@someone'), null);
-  assert.equal(
-    normalizeYouTubeChannelId(`https://youtube.example/channel/${channelId}`),
-    null,
-  );
-  assert.equal(normalizeYouTubeChannelId(`http://youtube.com/channel/${channelId}`), null);
+    `https://www.youtube.com/channel/${channelId}`,
+    `https://m.youtube.com/channel/${channelId}/?si=share-token`,
+    ` https://youtube.com/channel/${channelId} `,
+  ]) {
+    assert.equal(normalizeYouTubeChannelId(link), channelId);
+  }
 });
 
-test('token inspection uses a form body, requires readonly scope, and returns the Google subject', async () => {
-  const token = 'ya29.test-token-that-must-not-enter-the-url';
-  let requestUrl = '';
-  let requestBody = '';
-  const tokenInfo = await inspectGoogleAccessToken(token, {
-    fetchImplementation: async (input, init) => {
-      requestUrl = String(input);
-      requestBody = String(init?.body ?? '');
-      assert.equal(init?.method, 'POST');
-      return new Response(JSON.stringify({
-        sub: 'google-subject-123',
-        scope: `openid email ${youtubeReadonlyScope}`,
-        expires_in: '3599',
-      }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    },
-  });
-  assert.equal(tokenInfo.subject, 'google-subject-123');
-  assert.equal(tokenInfo.scopes.has(youtubeReadonlyScope), true);
-  assert.doesNotMatch(requestUrl, /ya29|access_token/i);
-  assert.match(requestBody, /^access_token=/);
-
-  await assert.rejects(
-    () => inspectGoogleAccessToken(token, {
-      fetchImplementation: async () => new Response(JSON.stringify({
-        sub: 'google-subject-123',
-        scope: 'openid email',
-        expires_in: 3599,
-      }), { status: 200 }),
-    }),
-    (error: unknown) =>
-      error instanceof YouTubeMembershipVerificationError &&
-      error.code === 'youtube_readonly_scope_required' &&
-      error.httpStatus === 403,
-  );
+test('rejects ambiguous channel links, credentials, unexpected ports, and non-YouTube hosts', () => {
+  for (const link of [
+    'https://youtube.com/@someone',
+    `https://m.youtube.com/channel/${channelId}/videos`,
+    `https://youtube.example/channel/${channelId}`,
+    `https://www.youtube.com.example.com/channel/${channelId}`,
+    `http://youtube.com/channel/${channelId}`,
+    `https://attacker@youtube.com/channel/${channelId}`,
+    `https://youtube.com:8443/channel/${channelId}`,
+    `https://youtube.com//channel/${channelId}`,
+    `https://youtube.com/channel/UCshort`,
+    'Jane Smith',
+    'javascript:alert(1)',
+  ]) {
+    assert.equal(normalizeYouTubeChannelId(link), null, link);
+  }
 });
 
-test('owned-channel lookup uses channels.list mine=true and never puts the token in the URL', async () => {
-  const token = 'ya29.another-private-access-token';
-  let requestUrl = '';
-  let authorization = '';
-  const ids = await fetchOwnedYouTubeChannelIds(token, {
-    fetchImplementation: async (input, init) => {
-      requestUrl = String(input);
-      authorization = new Headers(init?.headers).get('authorization') ?? '';
-      return new Response(JSON.stringify({
-        items: [
-          { id: channelId },
-          { id: channelId },
-          { id: 'not-a-channel' },
-        ],
-      }), { status: 200 });
-    },
-  });
-  const url = new URL(requestUrl);
-  assert.equal(url.origin + url.pathname, 'https://www.googleapis.com/youtube/v3/channels');
-  assert.equal(url.searchParams.get('part'), 'id');
-  assert.equal(url.searchParams.get('mine'), 'true');
-  assert.equal(url.searchParams.get('maxResults'), '50');
-  assert.doesNotMatch(requestUrl, /ya29|access_token/i);
-  assert.equal(authorization, `Bearer ${token}`);
-  assert.deepEqual(ids, [channelId]);
-});
-
-test('membership check binds the access token subject to the Firebase Google identity', async () => {
-  let calls = 0;
-  await assert.rejects(
-    () => checkYouTubeMembership({
-      userId: '00000000-0000-4000-8000-000000000001',
-      expectedGoogleSubject: 'firebase-google-subject',
-      accessToken: 'ya29.private-access-token-for-test',
-    }, {
-      fetchImplementation: async () => {
-        calls += 1;
-        return new Response(JSON.stringify({
-          sub: 'different-google-subject',
-          scope: youtubeReadonlyScope,
-          expires_in: 3599,
-        }), { status: 200 });
-      },
-    }),
-    (error: unknown) =>
-      error instanceof YouTubeMembershipVerificationError &&
-      error.code === 'youtube_google_identity_mismatch' &&
-      error.httpStatus === 403,
-  );
-  // Identity mismatch fails before any YouTube API or database operation.
-  assert.equal(calls, 1);
-});
-
-test('multiple owned channels need no manual selection when none is in the CSV', () => {
-  const secondChannelId = `UC${'zY_8-'.repeat(5).slice(0, 22)}`;
-  assert.deepEqual(
-    selectYouTubeChannelForSnapshot([channelId, secondChannelId], []),
-    { kind: 'not_in_snapshot', channelId: null, isMember: false },
-  );
-  assert.deepEqual(
-    selectYouTubeChannelForSnapshot(
-      [channelId, secondChannelId],
-      [secondChannelId],
-    ),
-    { kind: 'selected', channelId: secondChannelId, isMember: true },
-  );
-  assert.throws(
-    () => selectYouTubeChannelForSnapshot(
-      [channelId, secondChannelId],
-      [channelId, secondChannelId],
-    ),
-    (error: unknown) =>
-      error instanceof YouTubeMembershipVerificationError &&
-      error.code === 'youtube_channel_ambiguous',
-  );
-});
-
-test('prior active channel A is released when Google now owns only B and C', async () => {
-  const priorChannelA = channelId;
-  const currentChannelB = `UC${'bB_7-'.repeat(5).slice(0, 22)}`;
-  const currentChannelC = `UC${'cC_6-'.repeat(5).slice(0, 22)}`;
-  assert.deepEqual(
-    planUnmatchedPriorLink(
-      priorChannelA,
-      [currentChannelB, currentChannelC],
-    ),
-    { action: 'revoke', channelId: priorChannelA },
-  );
-  assert.deepEqual(
-    planUnmatchedPriorLink(
-      priorChannelA,
-      [priorChannelA, currentChannelB],
-    ),
-    { action: 'preserve', channelId: priorChannelA },
-  );
-
-  const statements: Array<{ sql: string; params: unknown[] }> = [];
-  const legacyClaimId = '11111111-1111-4111-8111-111111111111';
-  const fakeClient = {
+type RecordedQuery = { sql: string; params: unknown[] };
+function databaseScenario(options: {
+  snapshot?: boolean;
+  member?: boolean;
+  claimConflict?: boolean;
+  linkConflict?: boolean;
+  prior?: { youtube_channel_id: string; is_member: boolean };
+  claims?: Array<{ id: string; youtube_channel_id: string; status: string }>;
+  failLinkWrite?: boolean;
+} = {}) {
+  const statements: RecordedQuery[] = [];
+  let released = false;
+  const client = {
     async query(sql: string, params: unknown[] = []) {
       const normalized = sql.replace(/\s+/g, ' ').trim();
       statements.push({ sql: normalized, params });
-      if (normalized.includes('UNION')) {
-        return { rows: [{ youtube_channel_id: priorChannelA }], rowCount: 1 };
-      }
-      if (
-        normalized.startsWith('SELECT youtube_channel_id, is_member') &&
-        normalized.includes('FROM youtube_account_links')
-      ) {
+      if (normalized.startsWith('SELECT snapshot_import.id')) {
+        assert.ok(normalized.includes('snapshot_import.expires_at > $1'));
+        assert.deepEqual(params, [now]);
         return {
-          rows: [{ youtube_channel_id: priorChannelA, is_member: true }],
-          rowCount: 1,
+          rows: options.snapshot === false ? [] : [{ id: snapshotId, expires_at: snapshotExpiresAt }],
+          rowCount: options.snapshot === false ? 0 : 1,
         };
       }
-      if (
-        normalized.startsWith('SELECT id, youtube_channel_id') &&
-        normalized.includes('FROM youtube_channel_claims')
-      ) {
-        return {
-          rows: [{ id: legacyClaimId, youtube_channel_id: priorChannelA }],
-          rowCount: 1,
-        };
+      if (normalized.startsWith('SELECT user_id')) {
+        const conflict = normalized.includes('youtube_channel_claims')
+          ? options.claimConflict
+          : options.linkConflict;
+        return { rows: conflict ? [{ user_id: 'another-user' }] : [], rowCount: conflict ? 1 : 0 };
       }
-      return { rows: [], rowCount: 0 };
-    },
-  };
-  const reconciliationPlan = await reconcileUnmatchedOwnedChannels({
-    client: fakeClient as any,
-    userId: '22222222-2222-4222-8222-222222222222',
-    ownedChannelIds: [currentChannelB, currentChannelC],
-    snapshotId: '33333333-3333-4333-8333-333333333333',
-    now: new Date('2026-09-02T10:00:00.000Z'),
-  });
-  assert.deepEqual(reconciliationPlan, {
-    action: 'revoke',
-    channelId: priorChannelA,
-  });
-  assert.ok(statements.some(({ sql, params }) =>
-    sql.startsWith('UPDATE youtube_channel_claims') &&
-    sql.includes("status = 'revoked'") &&
-    (params[0] as string[]).includes(legacyClaimId)
-  ));
-  assert.ok(statements.some(({ sql, params }) =>
-    sql.startsWith('DELETE FROM youtube_account_links') &&
-    params[1] === priorChannelA
-  ));
-  assert.ok(statements.some(({ sql, params }) =>
-    sql.startsWith('UPDATE users') && params[1] === null
-  ));
-  assert.ok(statements.some(({ sql }) =>
-    sql.startsWith('DELETE FROM user_roles')
-  ));
-  assert.ok(statements.some(({ sql, params }) =>
-    sql.startsWith('INSERT INTO membership_history') &&
-    params.includes('google_oauth_owned_channels_changed')
-  ));
-
-  const service = fs.readFileSync(
-    path.resolve(
-      process.cwd(),
-      'src/services/youtubeMembershipVerificationService.ts',
-    ),
-    'utf8',
-  );
-  const reconciliation = service.slice(
-    service.indexOf('async function reconcileUnmatchedOwnedChannels'),
-    service.indexOf('async function linkVerifiedChannelAgainstSnapshot'),
-  );
-  assert.match(reconciliation, /status = 'revoked'/);
-  assert.match(reconciliation, /approved_snapshot_import_id = NULL/);
-  assert.match(reconciliation, /DELETE FROM youtube_account_links/);
-  assert.match(reconciliation, /SET is_youtube_member = FALSE/);
-  assert.match(reconciliation, /DELETE FROM user_roles/);
-  assert.match(reconciliation, /INSERT INTO membership_history/);
-  assert.match(reconciliation, /google_oauth_owned_channels_changed/);
-
-  const unmatchedBranch = service.slice(
-    service.indexOf("if (selection.kind === 'not_in_snapshot')"),
-    service.indexOf('const channelId = selection.channelId'),
-  );
-  assert.match(unmatchedBranch, /reconcileUnmatchedOwnedChannels/);
-  assert.match(unmatchedBranch, /await client\.query\('COMMIT'\)/);
-});
-
-test('an unmatched prior link is preserved when Google still reports it as owned', async () => {
-  const priorChannelA = channelId;
-  const currentChannelB = `UC${'dD_5-'.repeat(5).slice(0, 22)}`;
-  const claimId = '44444444-4444-4444-8444-444444444444';
-  const statements: Array<{ sql: string; params: unknown[] }> = [];
-  const fakeClient = {
-    async query(sql: string, params: unknown[] = []) {
-      const normalized = sql.replace(/\s+/g, ' ').trim();
-      statements.push({ sql: normalized, params });
-      if (normalized.includes('UNION')) {
-        return { rows: [{ youtube_channel_id: priorChannelA }], rowCount: 1 };
+      if (normalized.startsWith('SELECT youtube_channel_id, membership_level')) {
+        assert.deepEqual(params, [snapshotId, channelId]);
+        return {
+          rows: options.member === false ? [] : [{
+            youtube_channel_id: channelId,
+            membership_level: 'الأستوووراع',
+            joined_at: new Date('2026-09-01T10:00:00.000Z'),
+          }],
+          rowCount: options.member === false ? 0 : 1,
+        };
       }
       if (normalized.startsWith('SELECT youtube_channel_id, is_member')) {
-        return {
-          rows: [{ youtube_channel_id: priorChannelA, is_member: true }],
-          rowCount: 1,
-        };
+        return { rows: options.prior ? [options.prior] : [], rowCount: options.prior ? 1 : 0 };
       }
-      if (normalized.startsWith('SELECT id, youtube_channel_id')) {
-        return {
-          rows: [{ id: claimId, youtube_channel_id: priorChannelA }],
-          rowCount: 1,
-        };
+      if (normalized.startsWith('SELECT id, youtube_channel_id, status')) {
+        return { rows: options.claims ?? [], rowCount: options.claims?.length ?? 0 };
+      }
+      if (normalized.startsWith('INSERT INTO youtube_account_links') && options.failLinkWrite) {
+        throw Object.assign(new Error('unique channel constraint'), { code: '23505' });
       }
       return { rows: [], rowCount: 0 };
     },
+    release() { released = true; },
   };
-  const plan = await reconcileUnmatchedOwnedChannels({
-    client: fakeClient as any,
-    userId: '55555555-5555-4555-8555-555555555555',
-    ownedChannelIds: [priorChannelA, currentChannelB],
-    snapshotId: '66666666-6666-4666-8666-666666666666',
-    now: new Date('2026-09-02T10:05:00.000Z'),
+  return {
+    clientFactory: async () => client as any,
+    statements,
+    wasReleased: () => released,
+  };
+}
+
+test('manual CSV check grants current matching membership without a Google account or credential', async () => {
+  const db = databaseScenario();
+  const result = await checkYouTubeMembership({
+    userId,
+    profileLink: `https://youtube.com/channel/${channelId}`,
+  }, { now, clientFactory: db.clientFactory });
+  assert.deepEqual(result.membership, {
+    status: 'active',
+    isMember: true,
+    youtubeChannelId: channelId,
+    membershipLevelId: 'الأستوووراع',
+    memberSince: '2026-09-01T10:00:00.000Z',
+    verifiedAt: now.toISOString(),
+    snapshotExpiresAt: snapshotExpiresAt.toISOString(),
+    verificationMethod: 'manual_profile_link',
   });
-  assert.deepEqual(plan, { action: 'preserve', channelId: priorChannelA });
-  assert.equal(
-    statements.some(({ sql }) =>
-      sql.startsWith('DELETE FROM youtube_account_links')
-    ),
-    false,
-  );
-  assert.ok(statements.some(({ sql, params }) =>
-    sql.startsWith('UPDATE youtube_account_links') &&
-    sql.includes('SET is_member = FALSE') &&
-    params[2] === priorChannelA
-  ));
-  assert.ok(statements.some(({ sql, params }) =>
-    sql.startsWith('UPDATE users') && params[1] === priorChannelA
-  ));
-  assert.ok(statements.some(({ sql, params }) =>
-    sql.startsWith('UPDATE youtube_channel_claims') &&
-    sql.includes('Ownership reverified by Google') &&
-    params[0] === claimId
-  ));
+  const claim = db.statements.find(({ sql }) => sql.startsWith('INSERT INTO youtube_channel_claims'));
+  assert.ok(claim);
+  assert.match(claim.sql, /manual_profile_link/);
+  assert.doesNotMatch(claim.sql, /google_oauth/);
+  assert.match(claim.sql, /ownership not independently verified/);
+  const savedLink = db.statements.find(({ sql }) => sql.startsWith('INSERT INTO youtube_account_links'));
+  assert.deepEqual(savedLink?.params.slice(0, 3), [userId, channelId, true]);
+  assert.equal(savedLink?.params[6], snapshotId);
+  assert.ok(db.statements.some(({ sql }) => sql.startsWith('INSERT INTO user_roles')));
+  assert.equal(db.statements.at(-1)?.sql, 'COMMIT');
+  assert.equal(db.wasReleased(), true);
 });
 
-test('automatic channel linking is serialized against CSV replacement and commits authority atomically', () => {
-  const service = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/services/youtubeMembershipVerificationService.ts'),
+test('a non-matching link removes former member access and records inactive history', async () => {
+  const db = databaseScenario({
+    member: false,
+    prior: { youtube_channel_id: channelId, is_member: true },
+    claims: [{ id: 'claim-id', youtube_channel_id: channelId, status: 'approved' }],
+  });
+  const result = await checkYouTubeMembership({ userId, profileLink: channelId }, {
+    now, clientFactory: db.clientFactory,
+  });
+  assert.equal(result.membership.status, 'not_in_snapshot');
+  assert.equal(result.membership.isMember, false);
+  const savedLink = db.statements.find(({ sql }) => sql.startsWith('INSERT INTO youtube_account_links'));
+  assert.equal(savedLink?.params[2], false);
+  assert.equal(savedLink?.params[6], null);
+  assert.ok(db.statements.some(({ sql }) => sql.startsWith('DELETE FROM user_roles')));
+  const history = db.statements.find(({ sql }) => sql.startsWith('INSERT INTO membership_history'));
+  assert.equal(history?.params[1], 'inactive');
+  assert.equal(history?.params[3], now);
+});
+
+test('no usable snapshot returns unavailable and does not create a link or grant a role', async () => {
+  const db = databaseScenario({ snapshot: false });
+  const result = await checkYouTubeMembership({ userId, profileLink: channelId }, {
+    now, clientFactory: db.clientFactory,
+  });
+  assert.equal(result.membership.status, 'snapshot_unavailable');
+  assert.equal(result.membership.isMember, false);
+  assert.equal(db.statements.some(({ sql }) => /^(INSERT|UPDATE|DELETE)/.test(sql)), false);
+  assert.equal(db.statements.at(-1)?.sql, 'COMMIT');
+  assert.equal(db.wasReleased(), true);
+});
+
+test('another user cannot claim an already accepted or linked channel', async () => {
+  for (const conflict of [{ claimConflict: true }, { linkConflict: true }]) {
+    const db = databaseScenario(conflict);
+    await assert.rejects(
+      () => checkYouTubeMembership({ userId, profileLink: channelId }, {
+        now, clientFactory: db.clientFactory,
+      }),
+      (error: unknown) =>
+        error instanceof YouTubeMembershipVerificationError &&
+        error.code === 'youtube_channel_already_linked' &&
+        error.httpStatus === 409,
+    );
+    assert.equal(db.statements.some(({ sql }) => /^(INSERT|UPDATE|DELETE)/.test(sql)), false);
+    assert.equal(db.statements.at(-1)?.sql, 'ROLLBACK');
+    assert.equal(db.wasReleased(), true);
+  }
+});
+
+test('switching channel releases previous approval before saving the new channel', async () => {
+  const db = databaseScenario({
+    prior: { youtube_channel_id: otherChannelId, is_member: true },
+    claims: [{ id: 'old-claim-id', youtube_channel_id: otherChannelId, status: 'approved' }],
+  });
+  await checkYouTubeMembership({ userId, profileLink: channelId }, {
+    now, clientFactory: db.clientFactory,
+  });
+  const supersededAt = db.statements.findIndex(({ sql }) =>
+    sql.startsWith('UPDATE youtube_channel_claims') && sql.includes("status = 'superseded'")
+  );
+  const newClaimAt = db.statements.findIndex(({ sql }) => sql.startsWith('INSERT INTO youtube_channel_claims'));
+  assert.ok(supersededAt >= 0 && supersededAt < newClaimAt);
+  assert.deepEqual(db.statements[supersededAt].params[0], ['old-claim-id']);
+  const history = db.statements.find(({ sql }) => sql.startsWith('INSERT INTO membership_history'));
+  assert.equal(history?.params[6], otherChannelId);
+});
+
+test('unique constraint races roll back membership writes and become a channel conflict', async () => {
+  const db = databaseScenario({ failLinkWrite: true });
+  await assert.rejects(
+    () => checkYouTubeMembership({ userId, profileLink: channelId }, {
+      now, clientFactory: db.clientFactory,
+    }),
+    (error: unknown) =>
+      error instanceof YouTubeMembershipVerificationError &&
+      error.code === 'youtube_channel_already_linked',
+  );
+  assert.equal(db.statements.at(-1)?.sql, 'ROLLBACK');
+  assert.equal(db.statements.some(({ sql }) => sql.startsWith('UPDATE users')), false);
+  assert.equal(db.wasReleased(), true);
+});
+
+test('malformed profile links fail before accessing the database', async () => {
+  let accessed = false;
+  await assert.rejects(
+    () => checkYouTubeMembership({ userId, profileLink: 'https://youtube.com/watch?v=someone' }, {
+      clientFactory: async () => { accessed = true; throw new Error('must not run'); },
+    }),
+    (error: unknown) =>
+      error instanceof YouTubeMembershipVerificationError &&
+      error.code === 'youtube_profile_link_invalid',
+  );
+  assert.equal(accessed, false);
+});
+
+test('handle links resolve to stable IDs before the same CSV eligibility check', async () => {
+  for (const member of [true, false]) {
+    const db = databaseScenario({ member });
+    const result = await checkYouTubeMembership({ userId, profileLink: 'https://youtube.com/@aeyaall?si=share' }, {
+      now,
+      clientFactory: db.clientFactory,
+      channelResolver: async (link) => {
+        assert.equal(link, 'https://youtube.com/@aeyaall?si=share');
+        return channelId;
+      },
+    });
+    assert.equal(result.membership.youtubeChannelId, channelId);
+    assert.equal(result.membership.status, member ? 'active' : 'not_in_snapshot');
+    assert.equal(result.membership.isMember, member);
+  }
+});
+
+test('resolver outages remain retriable errors and never change membership', async () => {
+  let accessed = false;
+  await assert.rejects(() => checkYouTubeMembership({ userId, profileLink: 'https://youtube.com/@aeyaall' }, {
+    clientFactory: async () => { accessed = true; throw new Error('must not run'); },
+    channelResolver: async () => {
+      throw new YouTubeProfileResolutionError('youtube_profile_lookup_unavailable', 503, 'Try again later.');
+    },
+  }), (error: unknown) => error instanceof YouTubeMembershipVerificationError && error.httpStatus === 503);
+  assert.equal(accessed, false);
+});
+
+test('routes accept profile links with a stable per-user quota and no OAuth credential', () => {
+  const routes = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/routes/youtubeMembershipRoutes.ts'),
     'utf8',
   );
-  assert.match(service, /pg_advisory_xact_lock_shared\([\s\S]*youtube-membership-snapshot-import/);
-  assert.match(service, /snapshot_import\.expires_at > \$1/);
-  assert.match(service, /youtube_channel_id = ANY\(\$2::varchar\[\]\)/);
-  assert.match(service, /INSERT INTO youtube_channel_claims/);
-  assert.match(service, /'Channel ownership verified by Google OAuth\.'/);
-  assert.match(service, /ownership_verification_source = 'google_oauth'/);
-  assert.match(service, /INSERT INTO youtube_account_links/);
-  assert.match(service, /UPDATE users/);
-  assert.match(service, /INSERT INTO user_roles/);
-  assert.match(service, /INSERT INTO membership_history/);
-  assert.match(service, /await client\.query\('COMMIT'\)/);
-  assert.doesNotMatch(service, /accessToken[^\n]*INSERT|accessToken[^\n]*UPDATE/);
+  assert.match(routes, /profileLink: parsed\.data\.profileLink/);
+  assert.match(routes, /hook: 'preHandler'/);
+  assert.match(routes, /youtube-membership-check:user:\$\{request\.user\?\.id \?\? request\.ip\}/);
+  assert.match(routes, /membership_snapshots\.manage/);
+  assert.doesNotMatch(routes, /expectedGoogleSubject|accessToken|creator\/connect/);
+});
+
+test('manual-link migration preserves existing ownership history and adds a distinct accepted source', () => {
+  const migration = fs.readFileSync(
+    path.resolve(process.cwd(), 'migrations/040_manual_profile_membership.sql'),
+    'utf8',
+  );
+  assert.match(migration, /'legacy_manual', 'google_oauth', 'manual_profile_link'/);
+  assert.match(migration, /status <> 'approved'/);
+  assert.doesNotMatch(migration, /DELETE FROM|TRUNCATE|UPDATE youtube_channel_claims/i);
 });
 
 test('migration revokes legacy OAuth trust and enforces unique approvals', () => {
@@ -374,26 +323,6 @@ test('Google ownership migration revokes every legacy manual link before enablin
     migration,
     /status <> 'approved'[\s\S]*ownership_verification_source = 'google_oauth'/,
   );
-});
-
-test('routes expose automatic checks and snapshots but no manual claim mutation or staff decision', () => {
-  const routes = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/routes/youtubeMembershipRoutes.ts'),
-    'utf8',
-  );
-  assert.match(routes, /'\/profile\/youtube\/membership\/check'/);
-  assert.match(routes, /expectedGoogleSubject: request\.user!\.googleProviderUid/);
-  assert.match(routes, /accessToken: parsed\.data\.accessToken/);
-  assert.match(routes, /hook: 'preHandler'/);
-  assert.match(
-    routes,
-    /youtube-membership-check:user:\$\{request\.user\?\.id \?\? request\.ip\}/,
-  );
-  assert.match(routes, /fastify\.get\([\s\S]*'\/profile\/youtube\/claim'/);
-  assert.match(routes, /membership_snapshots\.manage/);
-  assert.doesNotMatch(routes, /fastify\.post\([\s\S]{0,80}'\/profile\/youtube\/claim'/);
-  assert.doesNotMatch(routes, /claims\/:claimId\/decision/);
-  assert.doesNotMatch(routes, /creator\/connect|connect\/start/i);
 });
 
 test('CSV reconciliation requires approval and expires safely to x1', () => {

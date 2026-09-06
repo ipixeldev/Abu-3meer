@@ -1,26 +1,33 @@
-Abu 3meer supports Arabic and English.
+Abu 3meer supports Arabic and English. This is the full app, not a standalone paywall demonstration.
+
+Subscription review:
+- Sign in, then open Profile or Settings and select View plans. The Members Zone tab also provides access to membership plans.
+- Ostoora3 (product ID: Ostoora3) is an auto-renewable monthly subscription. Ostoora3 Pro Max (product ID: Ostoora3_Pro_Max) is an auto-renewable yearly subscription. Both unlock the same member benefits; only the billing period differs.
+- The paywall shows App Store-localized prices and billing periods before purchase. RevenueCat manages the native purchase flow. The backend verifies the abu_3meer_pro entitlement for member access.
+- Restore purchases and subscription management are available in the subscription panel. Subscribers receive Members Zone access, eligible member bonuses, and a green subscriber badge beside their names.
+- Subscriptions renew automatically unless cancelled through the App Store. Deleting an app account does not cancel its App Store subscription.
 
 Authentication and account controls:
 - Sign in with Apple is available on iOS as an equivalent option alongside Google and email.
 - Account deletion is available in Settings > Account > Delete Account.
 - Email and password changes are available in Settings > Account for accounts using email/password authentication.
-- YouTube membership has no manual channel-ID field. When the user taps Check membership, the app asks for the standard read-only YouTube scope. The authenticated API validates that the short-lived Google token belongs to the Google identity linked to the same Firebase account, calls `channels.list(mine=true)`, and compares the returned channel ID with the current membership snapshot. The access token is used once and is never stored.
-- A moderator, admin, or super admin uploads the complete YouTube Studio current-members export through the authenticated app API as UTF-8 CSV/TSV. This file is the membership authority; Google authorization proves channel ownership only. The raw file and YouTube display names are not retained, and one verified channel cannot be attached to multiple app accounts.
+- The separate YouTube membership check accepts a channel profile link entered by the user. The API compares its channel ID with the current complete membership CSV/TSV uploaded by staff. This is a list match, not proof that the user owns the channel. It does not request Google/YouTube OAuth permission.
+- A moderator, admin, or super admin uploads the complete YouTube Studio current-members export through the authenticated app API as UTF-8 CSV/TSV. This file is the membership authority. One channel cannot be attached to multiple app accounts.
 - IDs present in the latest unexpired complete export are active; IDs missing from the next complete export become lapsed. Because YouTube provides no automatic export or cancellation webhook, the staff screen shows when the latest list is stale. No creator-members API or restricted membership scope is used.
 - Pending, rejected, lapsed, and non-member accounts retain all normal fan functionality.
 
 XP and rankings:
-- The app is completely free. It has no purchases, paid entry, betting, wagering, prizes, rewards, or leaderboard winners.
+- Predictions and video questions have no entry fee, stake, wager, or cash prize. Subscriptions are optional and do not buy XP.
 - Users receive 50 XP once at signup, 5 XP for the first login each UTC day, and XP for correct football predictions and correct video-question or player-guess answers.
-- Verified YouTube channel members receive 2× XP only on eligible prediction and video-answer actions. Signup and daily-login XP are never doubled.
-- XP has no monetary value, cannot be bought, transferred, or redeemed, and unlocks nothing.
+- Eligible members receive the configured member bonus only on eligible prediction and video-answer actions. Signup and daily-login XP are never doubled.
+- XP has no monetary value and cannot be bought, transferred, or redeemed.
 - Current-month, previous-month, and season leaderboards show fan progress for recognition only. Monthly totals reset while the previous month is preserved, and completed seasons remain available as archived rankings.
 - XP and leaderboard rules are available in Settings > Legal & Privacy and at https://ipixeldev.github.io/Abu-3meer/competition-rules/.
-- Apple is not a sponsor of, involved in, or responsible for any competition.
 
 Data and content behavior:
 - Location permission is optional and is used once to suggest a country; users can select a country manually.
 - Match facts, lineups, tables, and results appear only when the official football data provider publishes them.
 - Notification permission is optional.
+- Public channel uploads are shown on Home, separately from members-only content in Members Zone.
 
 Legal and support pages are available in Settings and at https://ipixeldev.github.io/Abu-3meer/.

@@ -15,6 +15,7 @@ import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:glass_liquid_navbar/glass_liquid_navbar.dart' as glass_nav;
 
 import '../production/brand.dart';
+import '../core/widgets/subscriber_badge.dart';
 import '../production/api_client.dart';
 import '../production/admin_dashboard_stats.dart';
 import '../production/app_preferences.dart';
@@ -29,6 +30,9 @@ import '../production/youtube_membership_snapshot.dart';
 import '../production/youtube_membership_check.dart';
 import '../features/match/screens/match_facts_screen.dart';
 import '../features/videos/exclusive_videos_view.dart';
+import '../features/membership/manual_membership_dialog.dart';
+import '../features/subscriptions/subscription_panel.dart';
+import '../production/subscription_service.dart';
 
 part 'fan_league_extended.dart';
 part 'trivia_arena.dart';
@@ -831,10 +835,12 @@ class _PageFrame extends StatelessWidget {
     required this.title,
     required this.kicker,
     required this.child,
+    this.isSubscriberTitle = false,
   });
   final String title;
   final String kicker;
   final Widget child;
+  final bool isSubscriberTitle;
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
@@ -888,7 +894,12 @@ class _PageFrame extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 7),
-                          Text(title, style: _display(44)),
+                          SubscriberName(
+                            title,
+                            isSubscriber: isSubscriberTitle,
+                            style: _display(44),
+                            badgeSize: 28,
+                          ),
                         ],
                       ),
                     ),
@@ -936,7 +947,12 @@ class _PageFrame extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 7),
-                Text(title, style: _display(compact ? 32 : 38)),
+                SubscriberName(
+                  title,
+                  isSubscriber: isSubscriberTitle,
+                  style: _display(compact ? 32 : 38),
+                  badgeSize: 26,
+                ),
               ],
               SizedBox(
                 height: compact

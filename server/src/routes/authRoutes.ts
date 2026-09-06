@@ -20,6 +20,8 @@ export async function authRoutes(fastify: FastifyInstance) {
         countryCode: user.countryCode,
         onboardingCompleted: user.onboardingCompleted,
         isYouTubeMember: user.isYouTubeMember,
+        isProSubscriber: user.isProSubscriber,
+        hasMemberAccess: user.hasMemberAccess,
         accountStatus: user.accountStatus,
         roles: user.roles,
         permissions: [...user.permissions],

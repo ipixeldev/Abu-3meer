@@ -2049,6 +2049,7 @@ class _ProductionShellState extends State<_ProductionShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_refreshSubscriptions());
     unawaited(_listenForLaunchAnnouncements());
     notificationTapSubscription = NotificationService.instance.notificationTaps
         .listen(_handleNotificationTap);
@@ -2099,7 +2100,7 @@ class _ProductionShellState extends State<_ProductionShell>
       widget.repository
           .checkUnseenCompletedPredictions(
             widget.profile.uid,
-            isYouTubeMember: widget.profile.isYouTubeMember,
+            isYouTubeMember: widget.profile.hasMemberAccess,
           )
           .then((outcomes) {
             if (outcomes.isNotEmpty && mounted) {
@@ -2116,6 +2117,35 @@ class _ProductionShellState extends State<_ProductionShell>
               });
             }
           });
+    }
+  }
+
+  Future<void> _refreshSubscriptions() async {
+    final profile = widget.profile;
+    final store = SubscriptionService.instance;
+    if (profile.isGuest) {
+      await store.clearIdentity();
+      return;
+    }
+    if (!store.available || profile.backendUserId.isEmpty || store.busy) return;
+    try {
+      await store.refresh(profile.backendUserId);
+      if (!mounted || widget.profile.uid != profile.uid) return;
+      await widget.repository.syncSubscription(profile);
+    } catch (_) {
+      // Existing expiry-checked server access remains authoritative. The user
+      // can retry from the subscription panel without blocking app startup.
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProductionShell oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.profile.uid != widget.profile.uid ||
+        oldWidget.profile.backendUserId != widget.profile.backendUserId) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_refreshSubscriptions());
+      });
     }
   }
 
@@ -2228,6 +2258,11 @@ class _ProductionShellState extends State<_ProductionShell>
       return;
     }
     if (state != AppLifecycleState.resumed) return;
+    if (_backgroundedAt != null &&
+        DateTime.now().difference(_backgroundedAt!) >=
+            const Duration(seconds: 30)) {
+      unawaited(_refreshSubscriptions());
+    }
     final backgroundedAt = _backgroundedAt;
     _backgroundedAt = null;
     if (backgroundedAt == null ||
@@ -2279,7 +2314,7 @@ class _ProductionShellState extends State<_ProductionShell>
       (Icons.bolt_rounded, abuText(context, 'Challenges', 'التحديات')),
       (
         Icons.play_circle_fill_rounded,
-        abuText(context, 'Exclusive', 'فيديوهات حصرية'),
+        abuText(context, 'Members Zone', 'منطقة الأعضاء'),
       ),
       (Icons.leaderboard_rounded, abuText(context, 'Leaders', 'الترتيب')),
       (Icons.person_rounded, abuText(context, 'Profile', 'حسابي')),
@@ -2746,8 +2781,9 @@ class _ProductionDesktopScaffold extends StatelessWidget {
                     style: TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ),
-                title: Text(
+                title: SubscriberName(
                   profile.displayName,
+                  isSubscriber: profile.isProSubscriber,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontWeight: FontWeight.w800),
@@ -2959,6 +2995,7 @@ class _ProductionHome extends StatelessWidget {
               'Welcome, ${profile.displayName}',
               'مرحباً، ${profile.displayName}',
             ),
+      isSubscriberTitle: profile.isProSubscriber,
       child: LayoutBuilder(
         builder: (context, box) {
           if (box.maxWidth < 850) {
@@ -3175,7 +3212,7 @@ class _DirectChallengeInlineCardState
       final basePoints = widget.challenge.rewardPoints > 0
           ? widget.challenge.rewardPoints
           : 10;
-      final memberEligible = widget.profile.isYouTubeMember;
+      final memberEligible = widget.profile.hasMemberAccess;
       final points = result['points'] ?? basePoints * (memberEligible ? 2 : 1);
       final alreadyAwarded = result['alreadyAwarded'] == true;
       if (correct) {
@@ -3245,7 +3282,7 @@ class _DirectChallengeInlineCardState
   Widget build(BuildContext context) {
     final challenge = widget.challenge;
     final isPlayerCard = challenge.canonicalKind == 'playerCard';
-    final isMember = widget.profile.isYouTubeMember;
+    final isMember = widget.profile.hasMemberAccess;
     final basePoints = challenge.rewardPoints > 0 ? challenge.rewardPoints : 10;
     final memberEligible = isMember;
     final pointsText = memberEligible
@@ -3892,7 +3929,7 @@ class _ProductionLatestVideoCardState
               challenge != null &&
               !challenge.solved &&
               challenge.attemptsRemaining > 0 &&
-              (!challenge.memberOnly || widget.profile.isYouTubeMember);
+              (!challenge.memberOnly || widget.profile.hasMemberAccess);
           return Card(
             clipBehavior: Clip.antiAlias,
             child: InkWell(
@@ -4048,7 +4085,7 @@ class _ProductionLatestVideoCardState
                                       : challenge.solved
                                       ? abuText(context, 'COMPLETED', 'مكتمل')
                                       : challenge.memberOnly &&
-                                            !widget.profile.isYouTubeMember
+                                            !widget.profile.hasMemberAccess
                                       ? abuText(
                                           context,
                                           'MEMBERS ONLY',
@@ -4128,7 +4165,7 @@ class _ProductionPointsHero extends StatelessWidget {
               ),
             ),
             const Spacer(),
-            if (profile.isYouTubeMember)
+            if (profile.hasMemberAccess)
               _LiveDot(text: abuText(context, '2× MEMBER', 'عضو ×٢')),
           ],
         ),
@@ -4364,8 +4401,10 @@ class _ProductionHomeRankingCardState
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
+                                SubscriberName(
                                   currentUser.entry.displayName,
+                                  isSubscriber:
+                                      currentUser.entry.isProSubscriber,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
@@ -4508,7 +4547,7 @@ class _HomeRankingEntryRow extends StatelessWidget {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
+              child: SubscriberName(
                 mine
                     ? abuText(
                         context,
@@ -4516,6 +4555,7 @@ class _HomeRankingEntryRow extends StatelessWidget {
                         '${entry.displayName} (أنت)',
                       )
                     : entry.displayName,
+                isSubscriber: entry.isProSubscriber,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -7706,6 +7746,7 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                 displayName: entry.displayName,
                 supportedTeam: entry.supportedTeam,
                 isMember: entry.isMember,
+                isProSubscriber: entry.isProSubscriber,
                 points: ranked.points,
                 isMine: mine,
                 avatarUrl: entry.avatarUrl,
@@ -8189,8 +8230,9 @@ class _PodiumColumn extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 6),
-          Text(
+          SubscriberName(
             entry.displayName,
+            isSubscriber: entry.isProSubscriber,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -8257,6 +8299,7 @@ class _LeaderboardRowCard extends StatelessWidget {
     required this.displayName,
     required this.supportedTeam,
     required this.isMember,
+    required this.isProSubscriber,
     required this.points,
     required this.isMine,
     required this.avatarUrl,
@@ -8268,6 +8311,7 @@ class _LeaderboardRowCard extends StatelessWidget {
   final String displayName;
   final String supportedTeam;
   final bool isMember;
+  final bool isProSubscriber;
   final int points;
   final bool isMine;
   final String avatarUrl;
@@ -8360,8 +8404,9 @@ class _LeaderboardRowCard extends StatelessWidget {
                     Row(
                       children: [
                         Flexible(
-                          child: Text(
+                          child: SubscriberName(
                             displayName.isNotEmpty ? displayName : username,
+                            isSubscriber: isProSubscriber,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -8550,8 +8595,9 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Flexible(
-                      child: Text(
+                      child: SubscriberName(
                         profile.displayName,
+                        isSubscriber: profile.isProSubscriber,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -8916,8 +8962,9 @@ class _ProductionLeaderboardDesktopRow extends StatelessWidget {
                     ),
                     const SizedBox(width: 11),
                     Flexible(
-                      child: Text(
+                      child: SubscriberName(
                         '@${entry.username}',
+                        isSubscriber: entry.isProSubscriber,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -10355,6 +10402,7 @@ class _ProductionProfileState extends State<_ProductionProfile> {
         '${profile.role.toUpperCase()} · بطاقة مشجع تفاعلية',
       ),
       title: '@${profile.username}',
+      isSubscriberTitle: profile.isProSubscriber,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -10458,6 +10506,8 @@ class _ProductionProfileState extends State<_ProductionProfile> {
             seasonRank: userRanks?.season,
             accuracy: userAccuracy,
           ),
+          const SizedBox(height: 24),
+          SubscriptionPanel(repository: widget.repository, profile: profile),
           if (profile.canUploadMembershipSnapshot) ...[
             const SizedBox(height: 24),
             MembershipSnapshotProfilePanel(repository: widget.repository),
@@ -10858,9 +10908,13 @@ Future<YouTubeMembershipCheckResult?> _openYouTubeMembershipCheck(
   BuildContext context, {
   required ProductionRepository repository,
 }) async {
-  // Start Google authorization directly from the user's button tap. Presenting
-  // a Flutter dialog first can race the native iOS account picker.
-  final result = await repository.checkYouTubeMembership();
+  final result = await showDialog<YouTubeMembershipCheckResult>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) =>
+        ManualMembershipDialog(onCheck: repository.checkYouTubeMembership),
+  );
+  if (result == null) return null;
   if (!context.mounted) return result;
   await showDialog<void>(
     context: context,
@@ -10880,12 +10934,8 @@ String _youtubeMembershipResultMessage(
   ),
   YouTubeMembershipCheckStatus.notInSnapshot => abuText(
     context,
-    result.youtubeChannelId == null
-        ? 'None of the channels owned by this Google account are in the latest membership list.'
-        : 'Your channel was found, but it is not in the latest membership list.',
-    result.youtubeChannelId == null
-        ? 'لا توجد أي قناة يملكها حساب Google هذا في أحدث قائمة عضويات.'
-        : 'تم العثور على قناتك، لكنها غير موجودة في أحدث قائمة عضويات.',
+    'This channel is not in the current members list, so it is not eligible for YouTube member benefits.',
+    'هذه القناة غير موجودة في قائمة الأعضاء الحالية، لذلك لا تستحق مزايا أعضاء يوتيوب.',
   ),
   YouTubeMembershipCheckStatus.snapshotUnavailable => abuText(
     context,
@@ -10915,12 +10965,8 @@ class _YouTubeMembershipCheckDialog extends StatelessWidget {
       ),
       YouTubeMembershipCheckStatus.notInSnapshot => abuText(
         context,
-        result.youtubeChannelId == null
-            ? 'None of the channels owned by this Google account are in the latest membership list.'
-            : 'We found your YouTube channel, but it is not in the latest membership list. If you recently joined, try again after staff uploads a new list.',
-        result.youtubeChannelId == null
-            ? 'لا توجد أي قناة يملكها حساب Google هذا في أحدث قائمة عضويات.'
-            : 'عثرنا على قناتك في يوتيوب، لكنها غير موجودة في أحدث قائمة عضويات. إذا انضممت مؤخراً، حاول مجدداً بعد رفع قائمة جديدة.',
+        'This channel is not in the current members list, so it is not eligible for YouTube member benefits. If you recently joined, try again after staff uploads a new list.',
+        'هذه القناة غير موجودة في قائمة الأعضاء الحالية، لذلك لا تستحق مزايا أعضاء يوتيوب. إذا انضممت مؤخراً، حاول مجدداً بعد رفع قائمة جديدة.',
       ),
       YouTubeMembershipCheckStatus.snapshotUnavailable => abuText(
         context,
@@ -11171,8 +11217,9 @@ class _ProductionSettings extends StatelessWidget {
                       ),
                     ),
                   ),
-                  title: Text(
+                  title: SubscriberName(
                     profile.displayName,
+                    isSubscriber: profile.isProSubscriber,
                     style: TextStyle(fontWeight: FontWeight.w800),
                   ),
                   subtitle: Text(
@@ -11464,8 +11511,8 @@ class _ProductionSettings extends StatelessWidget {
                   title: abuText(context, 'New challenges', 'التحديات الجديدة'),
                   subtitle: abuText(
                     context,
-                    'Video questions, player guesses, and Exclusive videos.',
-                    'أسئلة الفيديو وتخمين اللاعبين والفيديوهات الحصرية.',
+                    'Video questions, player guesses, and Members Zone videos.',
+                    'أسئلة الفيديو وتخمين اللاعبين وفيديوهات منطقة الأعضاء.',
                   ),
                   value: preferences.challengeNotifications,
                   onChanged: preferences.setChallengeNotifications,
@@ -11490,8 +11537,8 @@ class _ProductionSettings extends StatelessWidget {
                       Text(
                         abuText(
                           context,
-                          'Choose the Google account that owns your YouTube channel. The server securely finds its channel and compares it with the latest membership list. We request read-only YouTube access and never ask you to type a channel ID.',
-                          'اختر حساب Google الذي يملك قناة يوتيوب الخاصة بك. يعثر الخادم على القناة بأمان ويقارنها بأحدث قائمة عضويات. نطلب صلاحية قراءة فقط ولا نطلب منك كتابة معرّف القناة.',
+                          'Paste your YouTube channel profile link. The server compares its stable channel ID with the latest uploaded CSV. No Google authorization is needed for this check.',
+                          'ألصق رابط ملف قناتك على يوتيوب. يقارن الخادم معرّف القناة الثابت بأحدث ملف CSV مرفوع. لا يحتاج هذا التحقق إلى تفويض Google.',
                         ),
                         style: TextStyle(color: _muted, height: 1.45),
                       ),
@@ -11658,6 +11705,11 @@ class _ProductionSettings extends StatelessWidget {
                         const SizedBox(height: 18),
                         membership,
                         const SizedBox(height: 18),
+                        SubscriptionPanel(
+                          repository: repository,
+                          profile: profile,
+                        ),
+                        const SizedBox(height: 18),
                         legal,
                       ],
                     )
@@ -11670,6 +11722,11 @@ class _ProductionSettings extends StatelessWidget {
                         notifications,
                         const SizedBox(height: 14),
                         membership,
+                        const SizedBox(height: 14),
+                        SubscriptionPanel(
+                          repository: repository,
+                          profile: profile,
+                        ),
                         const SizedBox(height: 14),
                         legal,
                       ],
@@ -11927,8 +11984,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Sharing', 'المشاركة'),
       abuText(
         context,
-        'We use service providers such as Firebase, Google sign-in, Apple sign-in, public YouTube feeds, push-notification delivery, hosting, and football data providers. When you choose Check Membership, Google provides a short-lived read-only YouTube access token so our server can identify your own channel and compare it with the latest unexpired complete CSV/TSV. The token is never stored. We do not sell personal data.',
-        'نستخدم مزودي خدمات مثل Firebase وتسجيل الدخول عبر Google وApple وخلاصات يوتيوب العامة وتسليم الإشعارات والاستضافة ومزودي بيانات كرة القدم. عند اختيار التحقق من العضوية، توفر Google رمز وصول قصير المدة وبصلاحية قراءة فقط كي يتعرف خادمنا على قناتك ويقارنها بأحدث ملف CSV/TSV كامل وغير منتهي الصلاحية. لا نخزن الرمز ولا نبيع البيانات الشخصية.',
+        'We use Firebase, Google and Apple sign-in, RevenueCat, app stores, public YouTube feeds, push delivery, hosting, and football data providers. Membership checking compares the channel profile link you supply with the latest complete unexpired CSV/TSV; it does not request Google access. RevenueCat processes purchase records and an opaque account identifier to manage subscriptions. We do not sell personal data.',
+        'نستخدم Firebase وتسجيل الدخول عبر Google وApple وRevenueCat ومتاجر التطبيقات وخلاصات يوتيوب والإشعارات والاستضافة وبيانات كرة القدم. يقارن فحص العضوية رابط القناة الذي تقدمه بأحدث ملف CSV/TSV كامل وغير منتهي دون طلب صلاحية Google. يعالج RevenueCat سجلات الشراء ومعرّف حساب غير مباشر لإدارة الاشتراكات. لا نبيع البيانات الشخصية.',
       ),
     ),
     (
@@ -12028,8 +12085,8 @@ _LegalDocument _termsLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Accounts', 'الحسابات'),
       abuText(
         context,
-        'Use accurate account information and keep your sign-in secure. You may sign in with email, Google, or Apple where available. To check YouTube membership, choose the Google account that owns your channel and grant read-only YouTube access for the one-time server check against the current membership snapshot.',
-        'استخدم معلومات حساب صحيحة وحافظ على أمان تسجيل الدخول. يمكنك تسجيل الدخول بالبريد الإلكتروني أو Google أو Apple حيثما توفر ذلك. للتحقق من عضوية يوتيوب، اختر حساب Google الذي يملك قناتك وامنح صلاحية قراءة فقط لإجراء فحص واحد على الخادم مقابل لقطة العضويات الحالية.',
+        'Use accurate account information and keep your sign-in secure. You may sign in with email, Google, or Apple where available. For CSV membership, submit only your own YouTube channel profile link. The server compares it with the current uploaded member list; do not claim another person’s channel. Store subscriptions renew automatically unless cancelled in the store. Deleting your app account does not cancel a store subscription.',
+        'استخدم معلومات حساب صحيحة وحافظ على أمان تسجيل الدخول. يمكنك الدخول بالبريد أو Google أو Apple. لعضوية CSV أدخل رابط قناتك أنت فقط ليقارنه الخادم بالقائمة المرفوعة؛ لا تدّعِ ملكية قناة شخص آخر. تتجدد اشتراكات المتجر تلقائياً حتى تلغيها من المتجر. حذف حساب التطبيق لا يلغي اشتراك المتجر.',
       ),
     ),
     (
@@ -12285,11 +12342,7 @@ class _ProductionAdmin extends StatelessWidget {
                     onPressed: () => _showExclusiveVideosManager(context),
                     icon: Icon(Icons.video_library_rounded),
                     label: Text(
-                      abuText(
-                        context,
-                        'EXCLUSIVE VIDEOS',
-                        'الفيديوهات الحصرية',
-                      ),
+                      abuText(context, 'MEMBERS ZONE', 'منطقة الأعضاء'),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -13650,11 +13703,7 @@ class _ProductionAdmin extends StatelessWidget {
             borderRadius: BorderRadius.circular(24),
           ),
           title: Text(
-            abuText(
-              context,
-              'Manage Exclusive Videos',
-              'إدارة الفيديوهات الحصرية',
-            ),
+            abuText(context, 'Manage Members Zone', 'إدارة منطقة الأعضاء'),
           ),
           content: SizedBox(
             width: 580,

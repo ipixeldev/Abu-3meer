@@ -1,0 +1,117 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "A54B5F06",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6808717649",
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_developerTeamID" : "A4V5S8R8F8",
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 810342812.01409304,
+    "_locale" : "en_US",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+
+    ],
+    "_timeRate" : 0
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "22361224",
+      "localizations" : [
+
+      ],
+      "name" : "Ostoora3",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "3.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6808962204",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Members Zone access and member bonuses.",
+              "displayName" : "Ostoora3",
+              "locale" : "en_US"
+            },
+            {
+              "description" : "الوصول إلى منطقة المنتسبين ومكافآت المنتسبين.",
+              "displayName" : "الأستووووراع",
+              "locale" : "ar"
+            }
+          ],
+          "productID" : "Ostoora3",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Ostoora3",
+          "subscriptionGroupID" : "22361224",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "39.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "6808962291",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Members Zone access and member bonuses.",
+              "displayName" : "Ostoora3 Pro Max",
+              "locale" : "en_US"
+            },
+            {
+              "description" : "الوصول إلى منطقة المنتسبين ومكافآت المنتسبين.",
+              "displayName" : "الأستووووراع برو ماكس",
+              "locale" : "ar"
+            }
+          ],
+          "productID" : "Ostoora3_Pro_Max",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Ostoora3 Pro Max",
+          "subscriptionGroupID" : "22361224",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}
