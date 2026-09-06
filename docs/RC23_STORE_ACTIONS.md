@@ -67,12 +67,16 @@ copy the sample's fixture prices in response to `RC-23`.
 
 ## Next product-lookup action
 
-1. Allow up to 24 hours from the Paid Applications activation for Apple's store
-   catalog to propagate.
-2. Install/open the current TestFlight build, then use **Members → View plans →
+The full Runner app, without a local StoreKit catalog, loaded both App Store
+products and RevenueCat's published paywall on 6 September after the agreement
+change. The remaining check is to confirm the same result on the physical
+TestFlight device:
+
+1. Install/open TestFlight build 24, then use **Members → View plans →
    Check store connection → Copy report**. This is a read-only product lookup;
    it does not charge, restore, or grant access.
-3. If both products are still absent after that propagation window, retain the
+2. If both products are still absent after the 24-hour propagation window,
+   retain the
    sanitized report with the app version/build, exact UTC time, storefront,
    bundle ID, and both product IDs. Escalate that evidence to Apple Developer
    Support and RevenueCat Support. Do not share API keys, `.p8` files, receipts,
@@ -122,18 +126,16 @@ versions. Apple would not accept the app version into that draft because these
 owner actions remain:
 
 - answer and publish App Privacy;
-- upload the required 12.9-inch iPad Pro screenshots, or explicitly decide to
-  remove iPad support in a future build;
 - enter reviewer first name, last name, email, phone country code, and phone;
 - enter the exact copyright holder;
 - make the accurate third-party content-rights declaration; and
 - wait for/resolve the Digital Services Act status shown as **In Review** if
   Apple requires it for EU distribution.
 
-The dedicated review login is already stored and must remain private. Once the
-manual blockers are cleared and the final processed build is selected, the app
-version must join the subscription group/items because these are the first
-subscriptions.
+Fresh iPad screenshots are already uploaded in both locales, and build 24 is
+processed and selected. The dedicated review login is already stored and must
+remain private. Once the manual blockers are cleared, the app version must join
+the subscription group/items because these are the first subscriptions.
 
 Do not submit Beta App Review, public App Review, or release the app without
 explicit owner authorization. No App Review submission is authorized by this

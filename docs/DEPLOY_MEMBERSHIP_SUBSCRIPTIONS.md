@@ -209,12 +209,13 @@ keys. See [SUBSCRIPTION_PRODUCTION_DIAGNOSTICS.md](SUBSCRIPTION_PRODUCTION_DIAGN
 ## App Store boundary
 
 The first subscriptions must be reviewed with an app version. The review draft
-already contains the subscription group and both subscription versions, but the
-app version cannot be added until the owner completes App Privacy, the required
-12.9-inch iPad screenshots, reviewer contact details, copyright, and the
-content-rights declaration. The current Digital Services Act status is also
-**In Review**. These are App Store Connect owner/legal actions, not server
-deployment commands.
+already contains the subscription group and both subscription versions. Build
+1.1.0 (24) is valid, selected for the app version, and available to internal
+TestFlight testers; current iPad screenshots are uploaded in English and Arabic.
+The app version cannot be added to the review draft until the owner completes
+App Privacy, reviewer contact details, copyright, and the content-rights
+declaration. The current Digital Services Act status is also **In Review**.
+These are App Store Connect owner/legal actions, not server deployment commands.
 
 Do not submit Beta App Review, public App Review, or release the app without the
 owner's explicit authorization after those items and the purchase-to-access

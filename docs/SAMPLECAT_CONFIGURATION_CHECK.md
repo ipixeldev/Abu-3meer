@@ -76,11 +76,13 @@ response.
 - The public key is masked in the screenshot. The exact comparison comes from
   the supplied sample and app source, not from guessing the hidden dots.
 
-The screenshots do not prove an end-to-end TestFlight product fetch. App Store
-Connect separately confirms both products have prices and availability in 175
-territories, including Turkey, and are **Ready to Submit**. Paid Applications,
-banking, and tax became Active on 6 September 2026, so allow up to 24 hours for
-store catalog propagation before escalating the unchanged result.
+The screenshots alone did not prove an end-to-end TestFlight product fetch. App
+Store Connect separately confirms both products have prices and availability in
+175 territories, including Turkey, and are **Ready to Submit**. After Paid
+Applications, banking, and tax became Active on 6 September 2026, the full
+Runner app (without the sample's local StoreKit catalog) loaded both products
+and the published RevenueCat paywall. Build 24 still needs the same confirmation
+on the physical TestFlight device before review.
 
 ## Consequence for RC-23
 

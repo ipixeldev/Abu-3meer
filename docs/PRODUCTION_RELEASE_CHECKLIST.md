@@ -87,7 +87,7 @@ shadowed by test data, and sandbox access remains unavailable to every other
 production user. Do not set the global sandbox switch to `true` for the public
 deployment.
 
-## Current RC-23/store state
+## Current store and release state
 
 - Both subscriptions have prices, 175-territory availability, localizations,
   and review images in App Store Connect. Their current state is
@@ -95,13 +95,22 @@ deployment.
 - The RevenueCat `default` offering contains both products and the published
   paywall. The public SDK key, bundle identifier, product identifiers,
   entitlement, and the displayed Apple credential panels match.
-- The affected TestFlight phone returned zero StoreKit products, including in
-  the enabled Turkey storefront. That is the immediate cause of the paywall's
-  `RC-23` screen; it is not evidence that the app forgot the public key.
+- The earlier TestFlight phone returned zero StoreKit products in the Turkey
+  storefront, which caused `RC-23`. After the agreement/catalog propagation,
+  the full Runner app (with no local StoreKit catalog attached) loaded both
+  products and RevenueCat's published paywall on 6 September 2026. Retest build
+  24 on the physical TestFlight device before review, but no client
+  configuration mismatch remains.
 - Paid Applications, banking, and tax were activated on 6 September 2026. Apple
   catalog changes can take time to propagate. Wait up to 24 hours from that
   activation before treating the unchanged zero-product result as final, then
   retry on a current TestFlight build and copy the sanitized store report.
+- Full production build **1.1.0 (24)** is processed, valid, attached to the App
+  Store version, and available to internal TestFlight testers. It was not
+  submitted to Beta App Review or App Review.
+- Fresh 2064x2752 iPad screenshots from the current build are uploaded and
+  complete for both English and Arabic. TestFlight app descriptions and build
+  24 What to Test notes are also populated in both locales.
 
 The supplied sample app succeeds locally because its Xcode Run scheme enables a
 local `.storekit` catalog. That confirms its UI path, not TestFlight catalog
@@ -111,32 +120,33 @@ and [RC23_STORE_ACTIONS.md](RC23_STORE_ACTIONS.md).
 ## App Store Connect actions that still require the account owner
 
 The review draft currently contains the subscription group and both
-subscription versions, but the app version could not be added. Complete these
-items in App Store Connect without inventing legal or contact information:
+subscription versions. Build 24 is selected for the app version, but the app
+version cannot join that draft until the owner completes these items without
+inventing legal or contact information:
 
 1. Answer and publish **App Privacy** for the current app.
-2. Upload the required **12.9-inch iPad Pro** screenshot set. The app currently
-   declares iPhone and iPad support; dropping iPad instead requires an explicit
-   product decision and a new build.
-3. Fill the App Review contact first name, last name, email, phone country code,
+2. Fill the App Review contact first name, last name, email, phone country code,
    and phone number. A review demo login is already stored; do not expose it in
    chat or source control.
-4. Enter the exact copyright holder text.
-5. Set the content-rights declaration accurately. Football logos and videos
+3. Enter the exact copyright holder text.
+4. Set the content-rights declaration accurately. Football logos and videos
    mean third-party content rights must not be guessed.
-6. Wait for or resolve the **Digital Services Act** status currently shown as
+5. Wait for or resolve the **Digital Services Act** status currently shown as
    **In Review** if Apple requires completion for EU distribution.
-7. After the final build finishes processing, select it for the app version and
-   add that app version to the same review submission as the first subscription
-   group/items.
+6. Add the app version to the same review submission as the first subscription
+   group/items after those owner fields are complete.
+
+External TestFlight review separately needs the same four contact fields.
+Internal TestFlight already has build 24 and does not require Beta App Review.
 
 Apple currently refuses editing the draft version's **What's New** field in its
 present state; this is not a reason to invent release notes through another
 field. Optional promotional images are not release blockers.
 
 The App Store Connect API cannot truthfully answer App Privacy, content-rights,
-copyright, reviewer identity, or DSA legal questions for the owner, and it
-cannot manufacture a missing iPad screenshot. Those require manual owner input.
+copyright, reviewer identity, or DSA legal questions for the owner. Those
+require manual owner input; the build, screenshots, and non-legal localized
+metadata are already filled through the API.
 
 ## Release authorization boundary
 
