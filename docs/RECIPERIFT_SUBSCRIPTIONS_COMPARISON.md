@@ -40,4 +40,3 @@ No `AGENTS.md`, tracked StoreKit configuration, or shared `.xcscheme` appears in
 No RecipeRift app, account, settings, entitlement, or key was changed. Keys in viewed source were redacted before output and were not copied into Abu. The repository root lists a tracked `AuthKey_*.p8` filename; its contents were not fetched or used. No other private project was downloaded or inspected.
 
 The precise physical-device RC-23 root cause is still not proven by this comparison. The client account's Business agreement status and the failing phone's underlying native StoreKit error remain the useful next checks.
-
