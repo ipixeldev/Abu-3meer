@@ -2038,15 +2038,21 @@ class ProductionRepository {
     required int videoQuestion,
     required int playerCard,
     required double memberMultiplier,
-  }) => firestore.collection('platformSettings').doc('points').set({
+    int? signUpBonus,
+    int? dailyStreak,
+    int? firstMembershipActivation,
+    int? membershipRenewal,
+  }) => apiRepo.updatePointRules({
     'exactPrediction': exactPrediction,
     'firstScorer': firstScorer,
     'winnerOutcome': winnerOutcome,
     'videoQuestion': videoQuestion,
     'playerCard': playerCard,
     'memberMultiplier': memberMultiplier,
-    'updatedBy': auth.currentUser!.uid,
-    'updatedAt': FieldValue.serverTimestamp(),
+    'signUpBonus': ?signUpBonus,
+    'dailyStreak': ?dailyStreak,
+    'firstMembershipActivation': ?firstMembershipActivation,
+    'membershipRenewal': ?membershipRenewal,
   });
 
   Future<String> uploadAnnouncementImage(XFile file) async {
@@ -2335,36 +2341,18 @@ class ProductionRepository {
       'winnerOutcome': PointRuleDefaults.winnerOutcome,
       'videoQuestion': PointRuleDefaults.videoQuestion,
       'playerCard': PointRuleDefaults.playerCard,
+      'signUpBonus': PointRuleDefaults.signUpBonus,
+      'dailyStreak': PointRuleDefaults.dailyStreak,
+      'firstMembershipActivation': PointRuleDefaults.firstMembershipActivation,
+      'membershipRenewal': PointRuleDefaults.membershipRenewal,
       'memberMultiplier': PointRuleDefaults.memberMultiplier,
     };
 
     try {
-      final doc = await firestore
-          .collection('platformSettings')
-          .doc('points')
-          .get();
-      final data = doc.data();
-      if (doc.exists && data != null) {
-        return {
-          'exactPrediction':
-              (data['exactPrediction'] as num?) ?? defaults['exactPrediction']!,
-          'firstScorer':
-              (data['firstScorer'] as num?) ?? defaults['firstScorer']!,
-          'winnerOutcome':
-              (data['winnerOutcome'] as num?) ?? defaults['winnerOutcome']!,
-          'videoQuestion':
-              (data['videoQuestion'] as num?) ?? defaults['videoQuestion']!,
-          'playerCard': (data['playerCard'] as num?) ?? defaults['playerCard']!,
-          'memberMultiplier':
-              (data['memberMultiplier'] as num?) ??
-              defaults['memberMultiplier']!,
-        };
-      }
+      return {...defaults, ...await apiRepo.fetchPointRules()};
     } catch (error) {
-      // The PostgreSQL API remains usable while a newly migrated Firebase
-      // project is waiting for its Firestore database to be provisioned.
-      // Point rules have safe product defaults, so this optional remote
-      // override must never block sign-in, profile loading, or predictions.
+      // Keep safe product defaults if the authoritative PostgreSQL API is
+      // temporarily unavailable; Admin Studio never writes visual-only rules.
       if (kDebugMode) {
         debugPrint('[PointRules] Using defaults: $error');
       }

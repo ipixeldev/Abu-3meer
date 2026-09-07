@@ -10,13 +10,15 @@ enum PointSource {
 }
 
 abstract final class PointRuleDefaults {
-  static const exactPrediction = 30;
+  static const exactPrediction = 50;
   static const firstScorer = 20;
   static const winnerOutcome = 10;
-  static const videoQuestion = 10;
-  static const playerCard = 10;
+  static const videoQuestion = 15;
+  static const playerCard = 15;
   static const dailyStreak = 5;
   static const signUpBonus = 50;
+  static const firstMembershipActivation = 150;
+  static const membershipRenewal = 50;
   static const normalMultiplier = 1.0;
   static const memberMultiplier = 2.0;
 
@@ -35,9 +37,9 @@ abstract final class PointRuleDefaults {
 bool isMemberMultiplierEligible(PointSource source) => switch (source) {
   PointSource.exactPrediction ||
   PointSource.firstScorer ||
-  PointSource.winnerOutcome ||
+  PointSource.winnerOutcome => true,
   PointSource.videoQuestion ||
-  PointSource.playerCard => true,
+  PointSource.playerCard ||
   PointSource.dailyStreak ||
   PointSource.signUpBonus ||
   PointSource.adminAdjustment => false,

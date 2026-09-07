@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -5,6 +7,21 @@ plugins {
     // END: FlutterFire Configuration
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val releaseKeyProperties = Properties()
+val releaseKeyPropertiesFile = rootProject.file("key.properties")
+val releaseBuildRequested = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
+if (releaseBuildRequested && !releaseKeyPropertiesFile.exists()) {
+    error(
+        "Release signing is not configured. Copy android/key.properties.example " +
+            "to android/key.properties and provide the private upload-key values."
+    )
+}
+if (releaseKeyPropertiesFile.exists()) {
+    releaseKeyPropertiesFile.inputStream().use(releaseKeyProperties::load)
 }
 
 android {
@@ -47,12 +64,26 @@ android {
                 keyPassword = "android"
             }
         }
+        if (releaseKeyPropertiesFile.exists()) {
+            create("release") {
+                val storePath = releaseKeyProperties.getProperty("storeFile")
+                    ?: error("android/key.properties is missing storeFile")
+                storeFile = rootProject.file(storePath)
+                storePassword = releaseKeyProperties.getProperty("storePassword")
+                    ?: error("android/key.properties is missing storePassword")
+                keyAlias = releaseKeyProperties.getProperty("keyAlias")
+                    ?: error("android/key.properties is missing keyAlias")
+                keyPassword = releaseKeyProperties.getProperty("keyPassword")
+                    ?: error("android/key.properties is missing keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            // Replace this with the production Play signing configuration before release.
-            signingConfig = signingConfigs.getByName("debug")
+            // Debug builds never need the upload key. Release tasks fail above
+            // with a clear message rather than silently creating an unsigned AAB.
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 }

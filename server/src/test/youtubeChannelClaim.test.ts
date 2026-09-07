@@ -58,6 +58,7 @@ function databaseScenario(options: {
   prior?: { youtube_channel_id: string; is_member: boolean };
   claims?: Array<{ id: string; youtube_channel_id: string; status: string }>;
   failLinkWrite?: boolean;
+  totalTimeAsMemberMonths?: number | null;
 } = {}) {
   const statements: RecordedQuery[] = [];
   let released = false;
@@ -69,7 +70,10 @@ function databaseScenario(options: {
         assert.ok(normalized.includes('snapshot_import.expires_at > $1'));
         assert.deepEqual(params, [now]);
         return {
-          rows: options.snapshot === false ? [] : [{ id: snapshotId, expires_at: snapshotExpiresAt }],
+          rows: options.snapshot === false ? [] : [{
+            id: snapshotId,
+            expires_at: snapshotExpiresAt,
+          }],
           rowCount: options.snapshot === false ? 0 : 1,
         };
       }
@@ -86,6 +90,10 @@ function databaseScenario(options: {
             youtube_channel_id: channelId,
             membership_level: 'الأستوووراع',
             joined_at: new Date('2026-09-01T10:00:00.000Z'),
+            total_time_as_member_months:
+              options.totalTimeAsMemberMonths === undefined
+                ? 7
+                : options.totalTimeAsMemberMonths,
           }],
           rowCount: options.member === false ? 0 : 1,
         };
@@ -124,6 +132,9 @@ test('manual CSV check grants current matching membership without a Google accou
     memberSince: '2026-09-01T10:00:00.000Z',
     verifiedAt: now.toISOString(),
     snapshotExpiresAt: snapshotExpiresAt.toISOString(),
+    accessSource: 'youtube',
+    willRenew: false,
+    recheckRequiredAt: snapshotExpiresAt.toISOString(),
     verificationMethod: 'manual_profile_link',
   });
   const claim = db.statements.find(({ sql }) => sql.startsWith('INSERT INTO youtube_channel_claims'));
@@ -139,6 +150,51 @@ test('manual CSV check grants current matching membership without a Google accou
   assert.equal(db.wasReleased(), true);
 });
 
+test('manual CSV check records one stable reward cycle before committing', async () => {
+  const db = databaseScenario();
+  const cycles: Array<Record<string, unknown>> = [];
+  await checkYouTubeMembership({ userId, profileLink: channelId }, {
+    now,
+    clientFactory: db.clientFactory,
+    recordMembershipCycle: async (_client, params) => {
+      assert.notEqual(db.statements.at(-1)?.sql, 'COMMIT');
+      cycles.push(params);
+      return { activationPoints: 150, renewalPoints: 0, cycleChanged: false };
+    },
+    invalidateCaches: async () => undefined,
+  });
+
+  assert.deepEqual(cycles, [{
+    userId,
+    provider: 'youtube',
+    cycleKey: 'tenure:months:7',
+    cycleSequence: 7,
+    observedAt: now,
+  }]);
+  assert.equal(db.statements.at(-1)?.sql, 'COMMIT');
+});
+
+test('missing YouTube tenure provides a stable activation-only reward baseline', async () => {
+  const db = databaseScenario({ totalTimeAsMemberMonths: null });
+  const cycles: Array<Record<string, unknown>> = [];
+  await checkYouTubeMembership({ userId, profileLink: channelId }, {
+    now,
+    clientFactory: db.clientFactory,
+    recordMembershipCycle: async (_client, params) => {
+      cycles.push(params);
+      return { activationPoints: 150, renewalPoints: 0, cycleChanged: false };
+    },
+    invalidateCaches: async () => undefined,
+  });
+  assert.deepEqual(cycles, [{
+    userId,
+    provider: 'youtube',
+    cycleKey: 'tenure:unknown',
+    cycleSequence: 0,
+    observedAt: now,
+  }]);
+});
+
 test('a non-matching link removes former member access and records inactive history', async () => {
   const db = databaseScenario({
     member: false,
@@ -150,6 +206,9 @@ test('a non-matching link removes former member access and records inactive hist
   });
   assert.equal(result.membership.status, 'not_in_snapshot');
   assert.equal(result.membership.isMember, false);
+  assert.equal(result.membership.accessSource, 'none');
+  assert.equal(result.membership.willRenew, false);
+  assert.equal(result.membership.recheckRequiredAt, null);
   const savedLink = db.statements.find(({ sql }) => sql.startsWith('INSERT INTO youtube_account_links'));
   assert.equal(savedLink?.params[2], false);
   assert.equal(savedLink?.params[6], null);
@@ -166,6 +225,9 @@ test('no usable snapshot returns unavailable and does not create a link or grant
   });
   assert.equal(result.membership.status, 'snapshot_unavailable');
   assert.equal(result.membership.isMember, false);
+  assert.equal(result.membership.accessSource, 'none');
+  assert.equal(result.membership.willRenew, false);
+  assert.equal(result.membership.recheckRequiredAt, null);
   assert.equal(db.statements.some(({ sql }) => /^(INSERT|UPDATE|DELETE)/.test(sql)), false);
   assert.equal(db.statements.at(-1)?.sql, 'COMMIT');
   assert.equal(db.wasReleased(), true);
@@ -331,12 +393,33 @@ test('CSV reconciliation requires approval and expires safely to x1', () => {
     'utf8',
   );
   assert.match(service, /claim\.status = 'approved'/);
+  assert.match(
+    service,
+    /claim\.approved_snapshot_import_id = active_snapshot\.active_import_id/,
+  );
   assert.match(service, /snapshot_import\.expires_at > \$2/);
   assert.match(service, /snapshot_import_id = CASE[\s\S]*ELSE NULL/);
   assert.match(service, /INSERT INTO membership_history/);
   assert.match(service, /admin_snapshot_reconciliation/);
   assert.match(service, /unavailable: 0/);
   assert.match(service, /membershipApiRequests: 0/);
+
+  const importer = fs.readFileSync(
+    path.resolve(
+      process.cwd(),
+      'src/services/youtubeMembershipSnapshotService.ts',
+    ),
+    'utf8',
+  );
+  assert.match(
+    importer,
+    /approved_claim\.approved_snapshot_import_id = \$1/,
+  );
+  assert.match(
+    importer,
+    /SET is_member = observed\.is_member[\s\S]*snapshot_import_id = CASE[\s\S]*ELSE NULL/,
+  );
+  assert.doesNotMatch(importer, /recordMembershipRewardCycleInTransaction/);
 });
 
 test('every award and leaderboard read rechecks approved unexpired authority', () => {
@@ -352,18 +435,25 @@ test('every award and leaderboard read rechecks approved unexpired authority', (
     path.resolve(process.cwd(), 'src/services/leaderboardService.ts'),
     'utf8',
   );
-  assert.match(prediction, /snapshot_import\.expires_at > CURRENT_TIMESTAMP/);
-  assert.match(prediction, /approved_claim\.status = 'approved'/);
+  const access = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/services/subscriptionAccess.ts'),
+    'utf8',
+  );
+  assert.match(prediction, /activeMemberAccessSql\('p\.user_id'\)/);
+  assert.match(access, /snapshot_import\.expires_at > clock_timestamp\(\)/);
+  assert.match(access, /approved_claim\.status = 'approved'/);
+  assert.match(
+    access,
+    /approved_claim\.approved_snapshot_import_id = snapshot_state\.active_import_id/,
+  );
   assert.match(
     prediction,
     /pg_advisory_lock_shared\([\s\S]*youtube-membership-snapshot-import[\s\S]*settleMatchPredictionsUnlocked/,
   );
   assert.match(prediction, /pg_advisory_unlock_shared/);
   assert.match(challenge, /pg_advisory_xact_lock_shared/);
-  assert.match(challenge, /snapshot_import\.expires_at > clock_timestamp\(\)/);
-  assert.match(challenge, /approved_claim\.status = 'approved'/);
-  assert.match(leaderboard, /snapshot_import\.expires_at > CURRENT_TIMESTAMP/);
-  assert.match(leaderboard, /approved_claim\.status = 'approved'/);
+  assert.match(challenge, /activeMemberAccessSql\('user_account\.id'\)/);
+  assert.match(leaderboard, /activeYouTubeMembershipSql\('u\.id'\)/);
 });
 
 test('deployment configuration contains no membership OAuth secret', () => {

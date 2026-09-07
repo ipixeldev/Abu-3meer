@@ -10,17 +10,18 @@ void main() {
       expect(isMemberMultiplierEligible(PointSource.dailyStreak), isFalse);
     });
 
-    test('normal and member exact predictions award 100 and 200', () {
-      expect(calculatePoints(basePoints: 100, multiplier: 1), 100);
+    test('normal and member exact predictions award 50 and 100', () {
+      expect(PointRuleDefaults.exactPrediction, 50);
+      expect(calculatePoints(basePoints: 50, multiplier: 1), 50);
       expect(
         calculatePoints(
-          basePoints: 100,
+          basePoints: 50,
           multiplier: memberMultiplierForSource(
             source: PointSource.exactPrediction,
             isMember: true,
           ),
         ),
-        200,
+        100,
       );
     });
 
@@ -38,32 +39,34 @@ void main() {
       );
     });
 
-    test('normal and member video questions award 40 and 80', () {
-      expect(calculatePoints(basePoints: 40, multiplier: 1), 40);
+    test('correct word remains 15 XP for members', () {
+      expect(PointRuleDefaults.videoQuestion, 15);
       expect(
         calculatePoints(
-          basePoints: 40,
+          basePoints: PointRuleDefaults.videoQuestion,
           multiplier: memberMultiplierForSource(
             source: PointSource.videoQuestion,
             isMember: true,
           ),
         ),
-        80,
+        15,
       );
     });
 
-    test('Player Cards receive the channel-member video reward multiplier', () {
+    test('correct player remains 15 XP for members', () {
+      expect(PointRuleDefaults.playerCard, 15);
       expect(
         calculatePoints(
-          basePoints: 20,
+          basePoints: PointRuleDefaults.playerCard,
           multiplier: memberMultiplierForSource(
             source: PointSource.playerCard,
             isMember: true,
           ),
         ),
-        40,
+        15,
       );
-      expect(isMemberMultiplierEligible(PointSource.playerCard), isTrue);
+      expect(isMemberMultiplierEligible(PointSource.videoQuestion), isFalse);
+      expect(isMemberMultiplierEligible(PointSource.playerCard), isFalse);
       expect(isMemberMultiplierEligible(PointSource.dailyStreak), isFalse);
       expect(isMemberMultiplierEligible(PointSource.signUpBonus), isFalse);
       expect(
@@ -80,6 +83,11 @@ void main() {
         ),
         1,
       );
+    });
+
+    test('membership activation and renewal use the published XP values', () {
+      expect(PointRuleDefaults.firstMembershipActivation, 150);
+      expect(PointRuleDefaults.membershipRenewal, 50);
     });
 
     test('negative point inputs are rejected', () {

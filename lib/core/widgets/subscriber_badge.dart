@@ -40,8 +40,9 @@ class SubscriberBadge extends StatelessWidget {
 }
 
 /// Reserve space for the badge so long names cannot push it off a mobile row.
-/// This is display-only: callers must use the server's verified subscription
-/// flag, never a role, typed profile link, or purchase-history entry.
+/// This is display-only: callers must use the server's effective member-access
+/// verdict (verified YouTube membership, store subscription, or admin grant),
+/// never a role, typed profile link, or unverified purchase-history entry.
 class SubscriberName extends StatelessWidget {
   const SubscriberName(
     this.name, {

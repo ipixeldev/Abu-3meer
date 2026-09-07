@@ -256,6 +256,10 @@ String localizedPointTransactionReason({
       isArabic ? 'إكمال تحدي الفيديو' : 'Video challenge completed',
     _PointTransactionKind.playerCard =>
       isArabic ? 'إجابة تخمين اللاعب' : 'Player Guess answered',
+    _PointTransactionKind.membershipActivation =>
+      isArabic ? 'مكافأة تفعيل العضوية' : 'First membership activation',
+    _PointTransactionKind.membershipRenewal =>
+      isArabic ? 'مكافأة تجديد العضوية' : 'Membership renewal',
     _PointTransactionKind.achievement =>
       isArabic ? 'مكافأة إنجاز' : 'Achievement bonus',
     _PointTransactionKind.adminAdjustment =>
@@ -289,6 +293,10 @@ String localizedPointSourceLabel({
       isArabic ? 'تحدي الفيديو' : 'Video challenge',
     _PointTransactionKind.playerCard =>
       isArabic ? 'تخمين اللاعب' : 'Player Guess',
+    _PointTransactionKind.membershipActivation =>
+      isArabic ? 'تفعيل العضوية' : 'Membership activation',
+    _PointTransactionKind.membershipRenewal =>
+      isArabic ? 'تجديد العضوية' : 'Membership renewal',
     _PointTransactionKind.achievement => isArabic ? 'إنجاز' : 'Achievement',
     _PointTransactionKind.adminAdjustment =>
       isArabic ? 'تعديل نقاط' : 'Points adjustment',
@@ -304,6 +312,8 @@ enum _PointTransactionKind {
   matchWinner,
   videoChallenge,
   playerCard,
+  membershipActivation,
+  membershipRenewal,
   achievement,
   adminAdjustment,
   unknown,
@@ -350,6 +360,15 @@ _PointTransactionKind _pointTransactionKind(String sourceType, String reason) {
       normalizedReason.contains('solved challenge') ||
       normalizedReason.contains('challenge completed')) {
     return _PointTransactionKind.videoChallenge;
+  }
+  if ({'membershipactivation', 'firstmembershipactivation'}.contains(source) ||
+      normalizedReason.contains('first membership activation')) {
+    return _PointTransactionKind.membershipActivation;
+  }
+  if ({'membershiprenewal', 'subscriptionrenewal'}.contains(source) ||
+      normalizedReason.contains('membership renewal') ||
+      normalizedReason.contains('subscription renewal')) {
+    return _PointTransactionKind.membershipRenewal;
   }
   if ({'achievement', 'achievementbonus'}.contains(source) ||
       normalizedReason.startsWith('achievement:')) {

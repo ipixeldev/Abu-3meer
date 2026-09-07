@@ -2825,7 +2825,7 @@ class _ProductionDesktopScaffold extends StatelessWidget {
                 ),
                 title: SubscriberName(
                   profile.displayName,
-                  isSubscriber: profile.isProSubscriber,
+                  isSubscriber: profile.hasMemberAccess,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontWeight: FontWeight.w800),
@@ -3023,11 +3023,11 @@ class _ProductionHome extends StatelessWidget {
       },
     );
     return _PageFrame(
-      kicker: profile.isYouTubeMember
+      kicker: profile.hasMemberAccess
           ? abuText(
               context,
-              'YouTube Member · 2× predictions & video challenges',
-              'عضو يوتيوب · ×٢ للتوقعات وتحديات الفيديو',
+              'Member · prediction bonus active',
+              'عضو · مكافأة التوقعات مفعّلة',
             )
           : abuText(context, AbuBrand.appName, 'أبو عمير'),
       title: profile.isGuest
@@ -3037,7 +3037,7 @@ class _ProductionHome extends StatelessWidget {
               'Welcome, ${profile.displayName}',
               'مرحباً، ${profile.displayName}',
             ),
-      isSubscriberTitle: profile.isProSubscriber,
+      isSubscriberTitle: profile.hasMemberAccess,
       child: LayoutBuilder(
         builder: (context, box) {
           if (box.maxWidth < 850) {
@@ -3170,7 +3170,11 @@ class _HomeDirectChallengeActionSection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(99),
                   ),
                   child: Text(
-                    abuText(context, '10 XP EACH', '١٠ نقاط لكل تحدٍ'),
+                    abuText(
+                      context,
+                      'XP FOR CORRECT ANSWERS',
+                      'XP للإجابات الصحيحة',
+                    ),
                     style: TextStyle(
                       color: _productionPrimary(context),
                       fontSize: 10,
@@ -3253,9 +3257,8 @@ class _DirectChallengeInlineCardState
       final correct = result['correct'] == true;
       final basePoints = widget.challenge.rewardPoints > 0
           ? widget.challenge.rewardPoints
-          : 10;
-      final memberEligible = widget.profile.hasMemberAccess;
-      final points = result['points'] ?? basePoints * (memberEligible ? 2 : 1);
+          : 15;
+      final points = result['points'] ?? basePoints;
       final alreadyAwarded = result['alreadyAwarded'] == true;
       if (correct) {
         setState(() => _solved = true);
@@ -3324,12 +3327,8 @@ class _DirectChallengeInlineCardState
   Widget build(BuildContext context) {
     final challenge = widget.challenge;
     final isPlayerCard = challenge.canonicalKind == 'playerCard';
-    final isMember = widget.profile.hasMemberAccess;
-    final basePoints = challenge.rewardPoints > 0 ? challenge.rewardPoints : 10;
-    final memberEligible = isMember;
-    final pointsText = memberEligible
-        ? '+${basePoints * 2} XP (2×)'
-        : '+$basePoints XP';
+    final basePoints = challenge.rewardPoints > 0 ? challenge.rewardPoints : 15;
+    final pointsText = '+$basePoints XP';
     final cardTitle = isPlayerCard
         ? abuText(context, 'GUESS THE PLAYER', 'احزر اللاعب')
         : abuText(context, 'SECRET VIDEO PHRASE', 'العبارة السرية في الفيديو');
@@ -4208,7 +4207,7 @@ class _ProductionPointsHero extends StatelessWidget {
             ),
             const Spacer(),
             if (profile.hasMemberAccess)
-              _LiveDot(text: abuText(context, '2× MEMBER', 'عضو ×٢')),
+              _LiveDot(text: abuText(context, 'MEMBER', 'عضو')),
           ],
         ),
         const SizedBox(height: 8),
@@ -4446,7 +4445,7 @@ class _ProductionHomeRankingCardState
                                 SubscriberName(
                                   currentUser.entry.displayName,
                                   isSubscriber:
-                                      currentUser.entry.isProSubscriber,
+                                      currentUser.entry.hasMemberAccess,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
@@ -4597,7 +4596,7 @@ class _HomeRankingEntryRow extends StatelessWidget {
                         '${entry.displayName} (أنت)',
                       )
                     : entry.displayName,
-                isSubscriber: entry.isProSubscriber,
+                isSubscriber: entry.hasMemberAccess,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -6444,11 +6443,7 @@ class _ProductionMatchCard extends StatelessWidget {
                       border: Border.all(color: _red.withValues(alpha: .4)),
                     ),
                     child: Text(
-                      abuText(
-                        context,
-                        'EL CLÁSICO · 2× XP',
-                        'الكلاسيكو · نقاط مضاعفة',
-                      ),
+                      abuText(context, 'EL CLÁSICO', 'الكلاسيكو'),
                       style: TextStyle(
                         color: _red,
                         fontSize: 9,
@@ -6933,20 +6928,34 @@ class _PredictionVictoryCard extends StatelessWidget {
               if (exactMatch)
                 _correctPill(
                   context,
-                  '${abuText(context, 'Exact score (30 XP)', 'النتيجة الدقيقة (٣٠ نقطة)')}: ${prediction.homeScore}–${prediction.awayScore}',
+                  '${abuText(context, 'Exact score', 'النتيجة الدقيقة')}: ${prediction.homeScore}–${prediction.awayScore}',
                 ),
               if (firstScorerMatch)
                 _correctPill(
                   context,
-                  '${abuText(context, 'Who scored (20 XP)', 'صاحب الهدف (٢٠ نقطة)')}: ${prediction.firstScorer}',
+                  '${abuText(context, 'First goalscorer', 'أول مسجل')}: ${prediction.firstScorer}',
                 ),
               if (winnerMatch)
                 _correctPill(
                   context,
-                  '${abuText(context, 'Winner team (10 XP)', 'الفريق الفائز (١٠ نقاط)')}: ${prediction.homeScore > prediction.awayScore ? event.homeTeam : (prediction.awayScore > prediction.homeScore ? event.awayTeam : abuText(context, 'Draw', 'تعادل'))}',
+                  '${abuText(context, 'Match result', 'نتيجة المباراة')}: ${prediction.homeScore > prediction.awayScore ? event.homeTeam : (prediction.awayScore > prediction.homeScore ? event.awayTeam : abuText(context, 'Draw', 'تعادل'))}',
                 ),
             ],
           ),
+          if (prediction.pointsAwarded > 0) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: Text(
+                '+${prediction.pointsAwarded} XP',
+                style: TextStyle(
+                  color: _productionPrimary(context),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -8274,7 +8283,7 @@ class _PodiumColumn extends StatelessWidget {
           const SizedBox(height: 6),
           SubscriberName(
             entry.displayName,
-            isSubscriber: entry.isProSubscriber,
+            isSubscriber: entry.hasMemberAccess,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             textAlign: TextAlign.center,
@@ -8448,7 +8457,7 @@ class _LeaderboardRowCard extends StatelessWidget {
                         Flexible(
                           child: SubscriberName(
                             displayName.isNotEmpty ? displayName : username,
-                            isSubscriber: isProSubscriber,
+                            isSubscriber: isMember || isProSubscriber,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -8462,27 +8471,6 @@ class _LeaderboardRowCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (isMember) ...[
-                          const SizedBox(width: 5),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 5,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: _gold.withValues(alpha: .2),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              '2×',
-                              style: TextStyle(
-                                color: _gold,
-                                fontSize: 8,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                          ),
-                        ],
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -8639,7 +8627,7 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
                     Flexible(
                       child: SubscriberName(
                         profile.displayName,
-                        isSubscriber: profile.isProSubscriber,
+                        isSubscriber: profile.hasMemberAccess,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -9006,7 +8994,7 @@ class _ProductionLeaderboardDesktopRow extends StatelessWidget {
                     Flexible(
                       child: SubscriberName(
                         '@${entry.username}',
-                        isSubscriber: entry.isProSubscriber,
+                        isSubscriber: entry.hasMemberAccess,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -9041,7 +9029,7 @@ class _ProductionLeaderboardDesktopRow extends StatelessWidget {
               SizedBox(
                 width: 92,
                 child: entry.isMember
-                    ? _LiveDot(text: abuText(context, '2× MEMBER', 'عضو ×٢'))
+                    ? _LiveDot(text: abuText(context, 'MEMBER', 'عضو'))
                     : const Text('—', style: TextStyle(color: _muted)),
               ),
               SizedBox(
@@ -10444,7 +10432,7 @@ class _ProductionProfileState extends State<_ProductionProfile> {
         '${profile.role.toUpperCase()} · بطاقة مشجع تفاعلية',
       ),
       title: '@${profile.username}',
-      isSubscriberTitle: profile.isProSubscriber,
+      isSubscriberTitle: profile.hasMemberAccess,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -10968,28 +10956,41 @@ Future<YouTubeMembershipCheckResult?> _openYouTubeMembershipCheck(
 String _youtubeMembershipResultMessage(
   BuildContext context,
   YouTubeMembershipCheckResult result,
-) => switch (result.status) {
-  YouTubeMembershipCheckStatus.active => abuText(
-    context,
-    'Membership verified. Member bonuses are now active.',
-    'تم التحقق من العضوية. مزايا الأعضاء مفعلة الآن.',
-  ),
-  YouTubeMembershipCheckStatus.notInSnapshot => abuText(
-    context,
-    'This channel is not in the current members list, so it is not eligible for YouTube member benefits.',
-    'هذه القناة غير موجودة في قائمة الأعضاء الحالية، لذلك لا تستحق مزايا أعضاء يوتيوب.',
-  ),
-  YouTubeMembershipCheckStatus.snapshotUnavailable => abuText(
-    context,
-    'A current membership list has not been uploaded yet.',
-    'لم يتم رفع قائمة عضويات حالية بعد.',
-  ),
-  YouTubeMembershipCheckStatus.noYouTubeChannel => abuText(
-    context,
-    'No YouTube channel was found for the selected Google account.',
-    'لم يتم العثور على قناة يوتيوب للحساب المحدد.',
-  ),
-};
+) {
+  final expiry = result.recheckRequiredAt ?? result.snapshotExpiresAt;
+  final expiryLabel = expiry == null
+      ? null
+      : MaterialLocalizations.of(context).formatMediumDate(expiry.toLocal());
+  return switch (result.status) {
+    YouTubeMembershipCheckStatus.active =>
+      expiryLabel == null
+          ? abuText(
+              context,
+              'YouTube membership verified. Your account status has been refreshed.',
+              'تم التحقق من عضوية يوتيوب وتحديث حالة حسابك.',
+            )
+          : abuText(
+              context,
+              'YouTube membership verified through $expiryLabel. Your account status has been refreshed.',
+              'تم التحقق من عضوية يوتيوب حتى $expiryLabel وتحديث حالة حسابك.',
+            ),
+    YouTubeMembershipCheckStatus.notInSnapshot => abuText(
+      context,
+      'This channel is not in the current members list, so it is not eligible for YouTube member benefits.',
+      'هذه القناة غير موجودة في قائمة الأعضاء الحالية، لذلك لا تستحق مزايا أعضاء يوتيوب.',
+    ),
+    YouTubeMembershipCheckStatus.snapshotUnavailable => abuText(
+      context,
+      'A current membership list has not been uploaded yet.',
+      'لم يتم رفع قائمة عضويات حالية بعد.',
+    ),
+    YouTubeMembershipCheckStatus.noYouTubeChannel => abuText(
+      context,
+      'No YouTube channel was found for the selected Google account.',
+      'لم يتم العثور على قناة يوتيوب للحساب المحدد.',
+    ),
+  };
+}
 
 class _YouTubeMembershipCheckDialog extends StatelessWidget {
   const _YouTubeMembershipCheckDialog({required this.result});
@@ -10999,12 +11000,24 @@ class _YouTubeMembershipCheckDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isMember = result.isYouTubeMember;
+    final expiresAt = result.recheckRequiredAt ?? result.snapshotExpiresAt;
+    final expiryLabel = expiresAt == null
+        ? null
+        : MaterialLocalizations.of(context)
+              .formatMediumDate(expiresAt.toLocal());
     final statusBody = switch (result.status) {
-      YouTubeMembershipCheckStatus.active => abuText(
-        context,
-        'Membership verified. Your channel is active in the latest membership list and member bonuses are enabled.',
-        'تم التحقق من العضوية. قناتك نشطة في أحدث قائمة عضويات وتم تفعيل مزايا الأعضاء.',
-      ),
+      YouTubeMembershipCheckStatus.active =>
+        expiryLabel == null
+            ? abuText(
+                context,
+                'Your channel was found in the current members list. The app will refresh your effective account access after you close this message. This does not auto-renew through the app; check again when requested.',
+                'تم العثور على قناتك في قائمة الأعضاء الحالية. سيحدّث التطبيق صلاحيات حسابك الفعلية بعد إغلاق هذه الرسالة. لا تتجدد هذه العضوية عبر التطبيق؛ أعد التحقق عندما يُطلب منك.',
+              )
+            : abuText(
+                context,
+                'Your channel was found in the current members list through $expiryLabel. The app will refresh your effective account access after you close this message. This does not auto-renew through the app; check again after that date.',
+                'تم العثور على قناتك في قائمة الأعضاء الحالية حتى $expiryLabel. سيحدّث التطبيق صلاحيات حسابك الفعلية بعد إغلاق هذه الرسالة. لا تتجدد هذه العضوية عبر التطبيق؛ أعد التحقق بعد ذلك التاريخ.',
+              ),
       YouTubeMembershipCheckStatus.notInSnapshot => abuText(
         context,
         'This channel is not in the current members list, so it is not eligible for YouTube member benefits. If you recently joined, try again after staff uploads a new list.',
@@ -11261,7 +11274,7 @@ class _ProductionSettings extends StatelessWidget {
                   ),
                   title: SubscriberName(
                     profile.displayName,
-                    isSubscriber: profile.isProSubscriber,
+                    isSubscriber: profile.hasMemberAccess,
                     style: TextStyle(fontWeight: FontWeight.w800),
                   ),
                   subtitle: Text(
@@ -11567,7 +11580,9 @@ class _ProductionSettings extends StatelessWidget {
               title: abuText(context, 'YOUTUBE MEMBERSHIP', 'عضوية يوتيوب'),
               trailing: _LiveDot(
                 text: profile.isYouTubeMember
-                    ? abuText(context, 'VERIFIED · 2×', 'موثق · 2×')
+                    ? abuText(context, 'VERIFIED', 'موثق')
+                    : profile.youtubeMembershipRecheckRequired
+                    ? abuText(context, 'RECHECK REQUIRED', 'يلزم إعادة التحقق')
                     : abuText(context, 'NOT VERIFIED', 'غير موثق'),
               ),
               children: [
@@ -11577,11 +11592,29 @@ class _ProductionSettings extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        abuText(
-                          context,
-                          'Paste your YouTube channel profile link. The server compares its stable channel ID with the latest uploaded CSV. No Google authorization is needed for this check.',
-                          'ألصق رابط ملف قناتك على يوتيوب. يقارن الخادم معرّف القناة الثابت بأحدث ملف CSV مرفوع. لا يحتاج هذا التحقق إلى تفويض Google.',
-                        ),
+                        profile.isYouTubeMember
+                            ? profile.youtubeMembershipExpiresAt == null
+                                  ? abuText(
+                                      context,
+                                      'Your channel membership is active. It does not auto-renew through the app; check again when requested.',
+                                      'عضوية قناتك مفعّلة. لا تتجدد عبر التطبيق؛ أعد التحقق عندما يُطلب منك.',
+                                    )
+                                  : abuText(
+                                      context,
+                                      'Your channel membership is active through ${MaterialLocalizations.of(context).formatMediumDate(profile.youtubeMembershipExpiresAt!.toLocal())}. Check again after that date.',
+                                      'عضوية قناتك مفعّلة حتى ${MaterialLocalizations.of(context).formatMediumDate(profile.youtubeMembershipExpiresAt!.toLocal())}. أعد التحقق بعد ذلك التاريخ.',
+                                    )
+                            : profile.youtubeMembershipRecheckRequired
+                            ? abuText(
+                                context,
+                                'Your previous check expired. Check your channel again to reactivate membership, or choose a store subscription below.',
+                                'انتهت صلاحية التحقق السابق. تحقق من قناتك مجدداً لإعادة تفعيل العضوية، أو اختر اشتراكاً من المتجر أدناه.',
+                              )
+                            : abuText(
+                                context,
+                                'Paste your YouTube channel profile link. The server compares its stable channel ID with the latest uploaded CSV. No Google authorization is needed for this check.',
+                                'ألصق رابط ملف قناتك على يوتيوب. يقارن الخادم معرّف القناة الثابت بأحدث ملف CSV مرفوع. لا يحتاج هذا التحقق إلى تفويض Google.',
+                              ),
                         style: TextStyle(color: _muted, height: 1.45),
                       ),
                       const SizedBox(height: 14),
@@ -11596,6 +11629,11 @@ class _ProductionSettings extends StatelessWidget {
                                         repository: repository,
                                       );
                                   if (result != null && context.mounted) {
+                                    await repository.refreshProfile(
+                                      profile.uid,
+                                      force: true,
+                                    );
+                                    if (!context.mounted) return;
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(
@@ -11622,8 +11660,16 @@ class _ProductionSettings extends StatelessWidget {
                         label: Text(
                           abuText(
                             context,
-                            'CHECK MEMBERSHIP',
-                            'تحقق من العضوية',
+                            profile.isYouTubeMember
+                                ? 'CHECK AGAIN'
+                                : profile.youtubeMembershipRecheckRequired
+                                ? 'RECHECK MEMBERSHIP'
+                                : 'CHECK MEMBERSHIP',
+                            profile.isYouTubeMember
+                                ? 'تحقق مجدداً'
+                                : profile.youtubeMembershipRecheckRequired
+                                ? 'أعد التحقق من العضوية'
+                                : 'تحقق من العضوية',
                           ),
                         ),
                       ),
@@ -12084,16 +12130,16 @@ _LegalDocument _competitionLegalDocument(BuildContext context) =>
           abuText(context, 'How XP Is Earned', 'كيف تُكتسب XP'),
           abuText(
             context,
-            'XP is awarded for account signup (50 XP once), the first app login each UTC day (5 XP), correct football predictions, and correct video-question answers including player guesses.',
-            'تُمنح XP عند التسجيل (50 XP مرة واحدة)، وأول دخول للتطبيق كل يوم UTC (5 XP)، والتوقعات الكروية الصحيحة، وإجابات أسئلة الفيديو الصحيحة بما فيها تخمين اللاعب.',
+            'XP is awarded using the current server-configured rules for account signup, the first app login each UTC day, correct football predictions, correct word and player answers, first membership activation, and proven membership renewals.',
+            'تُمنح XP وفق القواعد الحالية المضبوطة على الخادم عند التسجيل وأول دخول كل يوم UTC والتوقعات الكروية الصحيحة وإجابات الكلمة واللاعب الصحيحة وأول تفعيل للعضوية والتجديدات المثبتة.',
           ),
         ),
         (
-          abuText(context, 'YouTube Member Multiplier', 'مضاعف أعضاء يوتيوب'),
+          abuText(context, 'Member Multiplier', 'مضاعف الأعضاء'),
           abuText(
             context,
-            'Verified members of the Abu 3meer YouTube channel receive 2× XP only on eligible correct predictions and video-question answers. Signup and daily-login XP always stay at their base amounts. The multiplier changes only a recognition score and never produces money, goods, access, prizes, or any redeemable benefit.',
-            'يحصل أعضاء قناة أبو عمير الموثقون على XP مضاعف فقط للتوقعات وإجابات الفيديو الصحيحة المؤهلة. تبقى XP التسجيل والدخول اليومي بقيمتها الأساسية دائماً. يغيّر المضاعف درجة ترتيب تقديرية فقط ولا ينتج مالاً أو سلعاً أو وصولاً أو جوائز أو أي منفعة قابلة للاستبدال.',
+            'Verified members receive the configured member multiplier only for correct match-result, first-goalscorer, and exact-score predictions. Correct-word, correct-player, signup, daily-login, activation, and renewal XP stay at their configured base amounts. The multiplier changes only a recognition score and never produces money, goods, access, prizes, or any redeemable benefit.',
+            'يحصل الأعضاء الموثقون على مضاعف العضوية المضبوط فقط لتوقع نتيجة المباراة وأول مسجل والنتيجة الدقيقة. تبقى نقاط الكلمة الصحيحة واللاعب الصحيح والتسجيل والدخول اليومي والتفعيل والتجديد بقيمها الأساسية المضبوطة. يغيّر المضاعف درجة ترتيب تقديرية فقط ولا ينتج مالاً أو سلعاً أو وصولاً أو جوائز أو أي منفعة قابلة للاستبدال.',
           ),
         ),
         (
@@ -14071,7 +14117,7 @@ class _ProductionAdmin extends StatelessWidget {
     final current = await repository.loadPointRules();
     if (!context.mounted) return;
     final prediction = TextEditingController(
-      text: (current['exactPrediction'] ?? 30).toInt().toString(),
+      text: (current['exactPrediction'] ?? 50).toInt().toString(),
     );
     final firstScorer = TextEditingController(
       text: (current['firstScorer'] ?? 20).toInt().toString(),
@@ -14080,10 +14126,22 @@ class _ProductionAdmin extends StatelessWidget {
       text: (current['winnerOutcome'] ?? 10).toInt().toString(),
     );
     final question = TextEditingController(
-      text: (current['videoQuestion'] ?? 10).toInt().toString(),
+      text: (current['videoQuestion'] ?? 15).toInt().toString(),
     );
     final card = TextEditingController(
-      text: (current['playerCard'] ?? 10).toInt().toString(),
+      text: (current['playerCard'] ?? 15).toInt().toString(),
+    );
+    final signUp = TextEditingController(
+      text: (current['signUpBonus'] ?? 50).toInt().toString(),
+    );
+    final daily = TextEditingController(
+      text: (current['dailyStreak'] ?? 5).toInt().toString(),
+    );
+    final activation = TextEditingController(
+      text: (current['firstMembershipActivation'] ?? 150).toInt().toString(),
+    );
+    final renewal = TextEditingController(
+      text: (current['membershipRenewal'] ?? 50).toInt().toString(),
     );
     final multiplier = TextEditingController(
       text: (current['memberMultiplier'] ?? 2.0).toString(),
@@ -14102,8 +14160,8 @@ class _ProductionAdmin extends StatelessWidget {
                 decoration: InputDecoration(
                   labelText: abuText(
                     context,
-                    'Exact-score prediction (30 XP)',
-                    'توقع النتيجة الدقيقة (٣٠ نقطة)',
+                    'Exact-score prediction XP',
+                    'نقاط توقع النتيجة الدقيقة',
                   ),
                 ),
               ),
@@ -14114,8 +14172,8 @@ class _ProductionAdmin extends StatelessWidget {
                 decoration: InputDecoration(
                   labelText: abuText(
                     context,
-                    'First-scorer prediction (20 XP)',
-                    'توقع أول مسجل (٢٠ نقطة)',
+                    'First-scorer prediction XP',
+                    'نقاط توقع أول مسجل',
                   ),
                 ),
               ),
@@ -14126,8 +14184,8 @@ class _ProductionAdmin extends StatelessWidget {
                 decoration: InputDecoration(
                   labelText: abuText(
                     context,
-                    'Winner outcome (10 XP)',
-                    'الفريق الفائز (١٠ نقاط)',
+                    'Winner-outcome prediction XP',
+                    'نقاط توقع الفريق الفائز',
                   ),
                 ),
               ),
@@ -14138,8 +14196,8 @@ class _ProductionAdmin extends StatelessWidget {
                 decoration: InputDecoration(
                   labelText: abuText(
                     context,
-                    'Video phrase question (10 XP)',
-                    'سؤال العبارة السرية (١٠ نقاط)',
+                    'Correct-word XP',
+                    'نقاط الكلمة الصحيحة',
                   ),
                 ),
               ),
@@ -14150,8 +14208,56 @@ class _ProductionAdmin extends StatelessWidget {
                 decoration: InputDecoration(
                   labelText: abuText(
                     context,
-                    'Player Guess (10 XP)',
-                    'تخمين اللاعب (١٠ نقاط)',
+                    'Correct-player XP',
+                    'نقاط اللاعب الصحيح',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: signUp,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: abuText(
+                    context,
+                    'Sign-up bonus XP',
+                    'نقاط مكافأة التسجيل',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: daily,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: abuText(
+                    context,
+                    'Daily-login XP',
+                    'نقاط الدخول اليومي',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: activation,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: abuText(
+                    context,
+                    'First membership activation XP',
+                    'نقاط أول تفعيل للعضوية',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: renewal,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: abuText(
+                    context,
+                    'Membership renewal XP',
+                    'نقاط تجديد العضوية',
                   ),
                 ),
               ),
@@ -14164,8 +14270,8 @@ class _ProductionAdmin extends StatelessWidget {
                 decoration: InputDecoration(
                   labelText: abuText(
                     context,
-                    'Member multiplier (2x)',
-                    'مضاعف نقاط الأعضاء (٢×)',
+                    'Member prediction multiplier',
+                    'مضاعف توقعات الأعضاء',
                   ),
                 ),
               ),
@@ -14193,6 +14299,10 @@ class _ProductionAdmin extends StatelessWidget {
         videoQuestion: int.parse(question.text),
         playerCard: int.parse(card.text),
         memberMultiplier: double.parse(multiplier.text),
+        signUpBonus: int.parse(signUp.text),
+        dailyStreak: int.parse(daily.text),
+        firstMembershipActivation: int.parse(activation.text),
+        membershipRenewal: int.parse(renewal.text),
       );
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

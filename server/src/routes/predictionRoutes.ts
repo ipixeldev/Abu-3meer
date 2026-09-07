@@ -10,13 +10,20 @@ export async function predictionRoutes(fastify: FastifyInstance) {
   const pointRulesHandler = async () => {
     const rules = await getPointRules();
     return {
+      signUpBonus: rules.signUpBonus ?? config.pointDefaults.signUpBonus,
+      dailyStreak: rules.dailyStreak ?? config.pointDefaults.dailyStreak,
       exactPrediction: rules.exactPrediction ?? config.pointDefaults.exactScore,
       firstScorer: rules.firstScorer ?? config.pointDefaults.firstScorer,
       winnerOutcome: rules.winnerOutcome ?? config.pointDefaults.winnerOutcome,
       videoQuestion: rules.videoQuestion ?? config.pointDefaults.videoPhrase,
       playerCard: rules.playerCard ?? config.pointDefaults.playerCard,
-      dailyStreak: rules.dailyStreak ?? config.pointDefaults.dailyStreak,
-      memberMultiplier: config.pointDefaults.memberMultiplier,
+      firstMembershipActivation:
+        rules.firstMembershipActivation ??
+        config.pointDefaults.firstMembershipActivation,
+      membershipRenewal:
+        rules.membershipRenewal ?? config.pointDefaults.membershipRenewal,
+      memberMultiplier:
+        rules.memberMultiplier ?? config.pointDefaults.memberMultiplier,
     };
   };
 

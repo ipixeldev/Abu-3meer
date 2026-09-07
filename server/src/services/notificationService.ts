@@ -1,5 +1,5 @@
 import { getClient, query } from '../db/pool.js';
-import { activeSubscriptionSql } from './subscriptionAccess.js';
+import { activeMemberAccessSql } from './subscriptionAccess.js';
 import {
   firebaseMessagingIsConfigured,
   sendPushNotification,
@@ -544,28 +544,7 @@ export async function processNotificationCampaign(campaignId: string) {
       : '';
     const audienceFilters: Record<string, string> = {
       all: '',
-      members_only: `AND (EXISTS (
-        SELECT 1
-        FROM youtube_account_links member_link
-        WHERE member_link.user_id = u.id
-          AND member_link.is_member = TRUE
-          AND member_link.verification_source = 'admin_snapshot'
-          AND EXISTS (
-            SELECT 1
-            FROM youtube_membership_snapshot_state snapshot_state
-            JOIN youtube_membership_snapshot_imports snapshot_import
-              ON snapshot_import.id = snapshot_state.active_import_id
-             AND snapshot_import.expires_at > CURRENT_TIMESTAMP
-            WHERE snapshot_state.singleton = TRUE
-              AND snapshot_state.active_import_id = member_link.snapshot_import_id
-          )
-          AND EXISTS (
-            SELECT 1 FROM youtube_channel_claims claim
-            WHERE claim.user_id = u.id
-              AND claim.youtube_channel_id = member_link.youtube_channel_id
-              AND claim.status = 'approved'
-          )
-      ) OR ${activeSubscriptionSql('u.id')})`,
+      members_only: `AND ${activeMemberAccessSql('u.id')}`,
       team_specific: 'AND LOWER(u.supported_team) = LOWER($2)',
       inactive_users: "AND d.last_seen_at < CURRENT_TIMESTAMP - INTERVAL '14 days'",
       user_specific: 'AND u.id = $2',

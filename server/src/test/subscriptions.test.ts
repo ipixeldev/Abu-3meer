@@ -5,6 +5,8 @@ import {
   emptySubscriptionStatus,
   enforceSubscriptionAccess,
   fetchRevenueCatCustomer,
+  applySubscriptionAccessOverride,
+  applyYouTubeMembershipAccess,
   isValidRevenueCatWebhookAuthorization,
   processRevenueCatWebhook,
   readSubscriptionStatus,
@@ -44,20 +46,108 @@ test('verified recurring entitlement grants access; cancellation retains paid te
   assert.equal(subscriptionFromRevenueCat(response({ refunded_at: '2026-09-04T00:00:00Z' }), now).isActive, false);
 });
 
-test('expiry and verification lease are enforced without a client refresh or webhook', () => {
+test('an unexpired verified store entitlement remains active beyond 24 hours until its actual expiry', () => {
   const active = subscriptionFromRevenueCat(response(), now);
-  assert.equal(enforceSubscriptionAccess(active, now + 24 * 60 * 60_000).isActive, false);
+  const cached = enforceSubscriptionAccess(active, now + 48 * 60 * 60_000);
+  assert.equal(cached.isActive, true);
+  assert.equal(cached.accessReason, 'active');
+  const blocked = applySubscriptionAccessOverride(cached, { mode: 'inactive' }, now);
+  assert.equal(blocked.isActive, false);
+  assert.equal(blocked.accessReason, 'admin_revoked');
   assert.equal(enforceSubscriptionAccess({ ...active, expiresAt: new Date(now).toISOString() }, now).isActive, false);
   assert.equal(enforceSubscriptionAccess({ ...active, expiresAt: null }, now).isActive, false);
 });
 
-test('sandbox and Test Store purchases need an explicit backend opt-in', () => {
+test('Apple and Google sandbox purchases grant test-track access while Test Store needs opt-in', () => {
   const sandbox = subscriptionFromRevenueCat(response({ is_sandbox: true }), now);
-  assert.equal(enforceSubscriptionAccess(sandbox, now, false).isActive, false);
+  assert.equal(enforceSubscriptionAccess(sandbox, now, false).isActive, true);
   assert.equal(enforceSubscriptionAccess(sandbox, now, true).isActive, true);
+  const playSandbox = subscriptionFromRevenueCat(response({ is_sandbox: true, store: 'play_store' }), now);
+  assert.equal(enforceSubscriptionAccess(playSandbox, now, false).isActive, true);
   const testStore = subscriptionFromRevenueCat(response({ store: 'test_store' }), now);
   assert.equal(enforceSubscriptionAccess(testStore, now, false).isActive, false);
+  assert.equal(enforceSubscriptionAccess(testStore, now, true).isActive, true);
   assert.equal(subscriptionFromRevenueCat(response({ is_sandbox: undefined }), now).isActive, false);
+});
+
+test('verified YouTube membership grants access without pretending to be a renewable subscription', () => {
+  const snapshotExpiry = new Date(now + 7 * 24 * 60 * 60_000).toISOString();
+  const deniedSandbox = enforceSubscriptionAccess(
+    subscriptionFromRevenueCat(response({ store: 'test_store' }), now),
+    now,
+    false,
+  );
+  const effective = applyYouTubeMembershipAccess(deniedSandbox, {
+    isActive: true,
+    verifiedAt: new Date(now).toISOString(),
+    expiresAt: snapshotExpiry,
+  }, now);
+  assert.equal(effective.isActive, false, 'YouTube must not fabricate a store subscription');
+  assert.equal(effective.accessReason, 'sandbox_not_allowed');
+  assert.equal(effective.accessSource, 'store');
+  assert.equal(effective.willRenew, false);
+  assert.equal(effective.hasMemberAccess, true);
+  assert.equal(effective.memberAccessSource, 'youtube');
+  assert.equal(effective.memberAccessReason, 'youtube_verified');
+  assert.equal(effective.memberAccessExpiresAt, snapshotExpiry);
+  assert.equal(effective.youtubeMembershipActive, true);
+  assert.equal(effective.youtubeMembershipRecheckRequired, false);
+});
+
+test('expired YouTube verification requires recheck and cannot outlive its snapshot', () => {
+  const expiredAt = new Date(now - 1).toISOString();
+  const effective = applyYouTubeMembershipAccess(emptySubscriptionStatus(), {
+    isActive: true,
+    verifiedAt: new Date(now - 60_000).toISOString(),
+    expiresAt: expiredAt,
+    recheckRequired: true,
+  }, now);
+  assert.equal(effective.hasMemberAccess, false);
+  assert.equal(effective.memberAccessSource, 'none');
+  assert.equal(effective.youtubeMembershipActive, false);
+  assert.equal(effective.youtubeMembershipExpiresAt, expiredAt);
+  assert.equal(effective.youtubeMembershipRecheckRequired, true);
+  assert.equal(effective.willRenew, false);
+});
+
+test('an active store or admin decision remains distinct when YouTube is also current', () => {
+  const snapshotExpiry = new Date(now + 7 * 24 * 60 * 60_000).toISOString();
+  const youtube = {
+    isActive: true,
+    verifiedAt: new Date(now).toISOString(),
+    expiresAt: snapshotExpiry,
+  };
+  const paid = applyYouTubeMembershipAccess(
+    enforceSubscriptionAccess(subscriptionFromRevenueCat(response(), now), now),
+    youtube,
+    now,
+  );
+  assert.equal(paid.memberAccessSource, 'store');
+  assert.equal(paid.memberAccessReason, 'active');
+  assert.equal(paid.youtubeMembershipActive, true);
+
+  const grantExpiry = new Date(now + 60 * 60_000).toISOString();
+  const granted = applyYouTubeMembershipAccess(
+    { ...emptySubscriptionStatus(), isActive: true, accessReason: 'admin_granted',
+      accessSource: 'admin', subscriptionAccessMode: 'active',
+      subscriptionAccessExpiresAt: grantExpiry },
+    youtube,
+    now,
+  );
+  assert.equal(granted.memberAccessSource, 'admin');
+  assert.equal(granted.memberAccessReason, 'admin_granted');
+  assert.equal(granted.memberAccessExpiresAt, grantExpiry);
+
+  const blocked = applyYouTubeMembershipAccess(
+    { ...emptySubscriptionStatus(), accessReason: 'admin_revoked',
+      accessSource: 'admin', subscriptionAccessMode: 'inactive' },
+    youtube,
+    now,
+  );
+  assert.equal(blocked.youtubeMembershipActive, true);
+  assert.equal(blocked.hasMemberAccess, false);
+  assert.equal(blocked.memberAccessSource, 'admin');
+  assert.equal(blocked.memberAccessReason, 'admin_revoked');
 });
 
 test('access reasons distinguish production policy from expiry and verification failure', () => {
@@ -67,11 +157,11 @@ test('access reasons distinguish production policy from expiry and verification 
   assert.equal(production.environment, 'production');
 
   const sandbox = subscriptionFromRevenueCat(response({ is_sandbox: true }), now);
-  const denied = enforceSubscriptionAccess(sandbox, now, false);
-  assert.equal(denied.accessReason, 'sandbox_not_allowed');
-  assert.equal(denied.environment, 'sandbox');
-  assert.equal(denied.isActive, false);
-  assert.equal(denied.willRenew, false);
+  const accepted = enforceSubscriptionAccess(sandbox, now, false);
+  assert.equal(accepted.accessReason, 'active');
+  assert.equal(accepted.environment, 'sandbox');
+  assert.equal(accepted.isActive, true);
+  assert.equal(accepted.willRenew, true);
   assert.equal(sandbox.isActive, true, 'policy must not mutate the upstream subscription');
   assert.equal(enforceSubscriptionAccess(sandbox, now, true).accessReason, 'active');
 
@@ -83,7 +173,7 @@ test('access reasons distinguish production policy from expiry and verification 
 
   assert.equal(enforceSubscriptionAccess({ ...active, expiresAt: new Date(now).toISOString() }, now).accessReason, 'expired');
   assert.equal(enforceSubscriptionAccess({ ...active, verifiedAt: null }, now).accessReason, 'verification_required');
-  assert.equal(enforceSubscriptionAccess(active, now + 24 * 60 * 60_000).accessReason, 'verification_required');
+  assert.equal(enforceSubscriptionAccess(active, now + 48 * 60 * 60_000).accessReason, 'active');
   assert.equal(enforceSubscriptionAccess({ ...active, verifiedAt: new Date(now + 60_001).toISOString() }, now).accessReason, 'verification_required');
 
   const refunded = enforceSubscriptionAccess(
@@ -126,13 +216,82 @@ test('a cached verified sandbox row is gated by the current policy on every read
   }
 });
 
-test('only explicitly allowlisted app-review UUIDs can use sandbox receipts in production', async () => {
+test('status read reports current manual YouTube access separately from a denied test receipt', async () => {
+  const currentTime = Date.now();
+  const snapshotExpiry = new Date(currentTime + 7 * 24 * 60 * 60_000);
+  const status = await readSubscriptionStatus(ownerId, async sql => {
+    assert.match(
+      sql,
+      /current_check_claim\.approved_snapshot_import_id = snapshot_state\.active_import_id/,
+    );
+    assert.match(sql, /FROM membership_history history/);
+    return { rows: [{
+    is_active: true,
+    product_id: 'Ostoora3',
+    expires_at: new Date(currentTime + 60 * 60_000),
+    will_renew: true,
+    is_sandbox: true,
+    store_name: 'test_store',
+    verified_at: new Date(currentTime),
+    youtube_membership_active: true,
+    youtube_membership_verified_at: new Date(currentTime),
+    youtube_membership_expires_at: snapshotExpiry,
+    }] };
+  });
+  assert.equal(status.isActive, false);
+  assert.equal(status.accessReason, 'sandbox_not_allowed');
+  assert.equal(status.hasMemberAccess, true);
+  assert.equal(status.memberAccessSource, 'youtube');
+  assert.equal(status.memberAccessReason, 'youtube_verified');
+  assert.equal(status.memberAccessExpiresAt, snapshotExpiry.toISOString());
+  assert.equal(status.youtubeMembershipActive, true);
+  assert.equal(status.youtubeMembershipRecheckRequired, false);
+  assert.equal(status.willRenew, false);
+});
+
+test('status read keeps recheck visible for expired or replaced membership, but not a current nonmember check', async () => {
+  const currentTime = Date.now();
+  const expiredAt = new Date(currentTime - 1_000);
+  const status = await readSubscriptionStatus(ownerId, async () => ({ rows: [{
+    youtube_membership_active: false,
+    youtube_membership_verified_at: new Date(currentTime - 60_000),
+    youtube_membership_expires_at: expiredAt,
+    youtube_membership_had_active_history: true,
+    youtube_membership_has_usable_snapshot: false,
+    youtube_membership_checked_current_snapshot: true,
+  }] }));
+  assert.equal(status.hasMemberAccess, false);
+  assert.equal(status.memberAccessSource, 'none');
+  assert.equal(status.memberAccessReason, 'no_entitlement');
+  assert.equal(status.youtubeMembershipActive, false);
+  assert.equal(status.youtubeMembershipExpiresAt, expiredAt.toISOString());
+  assert.equal(status.youtubeMembershipRecheckRequired, true);
+
+  const replaced = await readSubscriptionStatus(ownerId, async () => ({ rows: [{
+    youtube_membership_active: false,
+    youtube_membership_had_active_history: true,
+    youtube_membership_has_usable_snapshot: true,
+    youtube_membership_checked_current_snapshot: false,
+  }] }));
+  assert.equal(replaced.youtubeMembershipRecheckRequired, true);
+
+  const checkedNonmember = await readSubscriptionStatus(ownerId, async () => ({ rows: [{
+    youtube_membership_active: false,
+    youtube_membership_had_active_history: true,
+    youtube_membership_has_usable_snapshot: true,
+    youtube_membership_checked_current_snapshot: true,
+  }] }));
+  assert.equal(checkedNonmember.youtubeMembershipRecheckRequired, false);
+  assert.equal(checkedNonmember.youtubeMembershipExpiresAt, null);
+});
+
+test('allowlisted reviewers can use Test Store receipts while other users cannot', async () => {
   const previousPolicy = config.revenueCat.allowSandbox;
   const previousAllowedIds = config.revenueCat.sandboxAllowedUserIds;
   const currentTime = Date.now();
   const row = {
     is_active: true, product_id: 'Ostoora3_Pro_Max', will_renew: true,
-    is_sandbox: true, expires_at: new Date(currentTime + 60 * 60_000),
+    is_sandbox: true, store_name: 'test_store', expires_at: new Date(currentTime + 60 * 60_000),
     verified_at: new Date(currentTime),
   };
   try {
@@ -141,7 +300,15 @@ test('only explicitly allowlisted app-review UUIDs can use sandbox receipts in p
     assert.equal(sandboxAccessAllowedForUser(ownerId), true);
     assert.equal(sandboxAccessAllowedForUser(ownerId.toUpperCase()), true);
     assert.equal(sandboxAccessAllowedForUser(otherId), false);
-    assert.equal((await readSubscriptionStatus(ownerId, async () => ({ rows: [row] }))).accessReason, 'active');
+    const allowed = await readSubscriptionStatus(ownerId, async sql => {
+      assert.match(sql, /youtube_membership_active/);
+      assert.match(sql, /snapshot_import\.expires_at > CURRENT_TIMESTAMP/);
+      return { rows: [row] };
+    });
+    assert.equal(allowed.accessReason, 'active');
+    assert.equal(allowed.hasMemberAccess, true);
+    assert.equal(allowed.memberAccessSource, 'store');
+    assert.equal(allowed.environment, 'sandbox');
     assert.equal((await readSubscriptionStatus(otherId, async () => ({ rows: [row] }))).accessReason, 'sandbox_not_allowed');
   } finally {
     config.revenueCat.allowSandbox = previousPolicy;
@@ -182,7 +349,7 @@ test('RevenueCat lookup is production-first and never lets sandbox shadow active
   }
 });
 
-test('only an allowed account with no active production entitlement gets the explicit sandbox lookup', async () => {
+test('every account falls back to sandbox lookup when production has no active entitlement', async () => {
   const previousSecret = config.revenueCat.secretApiKey;
   const previousPolicy = config.revenueCat.allowSandbox;
   const previousAllowedIds = config.revenueCat.sandboxAllowedUserIds;
@@ -214,11 +381,11 @@ test('only an allowed account with no active production entitlement gets the exp
       now,
       request: async () => {
         unlistedCalls++;
-        return new Response(JSON.stringify(production), { status: 200 });
+        return new Response(JSON.stringify(unlistedCalls === 1 ? production : sandbox), { status: 200 });
       },
     });
-    assert.deepEqual(unlisted, production);
-    assert.equal(unlistedCalls, 1);
+    assert.deepEqual(unlisted, sandbox);
+    assert.equal(unlistedCalls, 2);
   } finally {
     config.revenueCat.secretApiKey = previousSecret;
     config.revenueCat.allowSandbox = previousPolicy;
@@ -226,7 +393,7 @@ test('only an allowed account with no active production entitlement gets the exp
   }
 });
 
-test('sandbox fallback sync persists the verified test receipt, while lookup failure writes nothing', async () => {
+test('sandbox fallback sync persists the verified test receipt, while optional lookup failure preserves production', async () => {
   const previousSecret = config.revenueCat.secretApiKey;
   const previousPolicy = config.revenueCat.allowSandbox;
   const previousAllowedIds = config.revenueCat.sandboxAllowedUserIds;
@@ -252,8 +419,9 @@ test('sandbox fallback sync persists the verified test receipt, while lookup fai
         if (sql.startsWith('INSERT')) {
           saved = {
             is_active: parameters[1], product_id: parameters[2],
-            expires_at: parameters[3], will_renew: parameters[4],
-            is_sandbox: parameters[5], verified_at: parameters[6],
+            store_name: parameters[3], expires_at: parameters[4],
+            will_renew: parameters[5], is_sandbox: parameters[6],
+            verified_at: parameters[7],
           };
           return { rows: [] };
         }
@@ -266,23 +434,19 @@ test('sandbox fallback sync persists the verified test receipt, while lookup fai
     assert.equal(status.isActive, true);
     assert.equal(status.environment, 'sandbox');
 
-    let writes = 0;
     let failedRequestCount = 0;
-    await assert.rejects(syncSubscriptionStatus(ownerId, {
-      fetchCustomer: id => fetchRevenueCatCustomer(id, {
-        now: currentTime,
-        request: async () => {
-          failedRequestCount++;
-          if (failedRequestCount === 1) {
-            return new Response(JSON.stringify(production), { status: 200 });
-          }
-          throw new Error('sandbox endpoint unavailable');
-        },
-      }),
-      execute: async () => { writes++; return { rows: [] }; },
-    }), (error: unknown) => error instanceof SubscriptionError
-      && error.code === 'subscription_verification_unavailable');
-    assert.equal(writes, 0);
+    const selected = await fetchRevenueCatCustomer(ownerId, {
+      now: currentTime,
+      request: async () => {
+        failedRequestCount++;
+        if (failedRequestCount === 1) {
+          return new Response(JSON.stringify(production), { status: 200 });
+        }
+        throw new Error('sandbox endpoint unavailable');
+      },
+    });
+    assert.deepEqual(selected, production);
+    assert.equal(failedRequestCount, 2);
   } finally {
     config.revenueCat.secretApiKey = previousSecret;
     config.revenueCat.allowSandbox = previousPolicy;
@@ -339,8 +503,9 @@ test('subscription sync persists only paid state, preserving the independent CSV
     execute: async (text, parameters = []) => {
       statements.push(text);
       if (text.startsWith('INSERT')) {
-        saved = { is_active: parameters[1], product_id: parameters[2], expires_at: parameters[3],
-          will_renew: parameters[4], is_sandbox: parameters[5], verified_at: parameters[6] };
+        saved = { is_active: parameters[1], product_id: parameters[2], store_name: parameters[3],
+          expires_at: parameters[4], will_renew: parameters[5],
+          is_sandbox: parameters[6], verified_at: parameters[7] };
         return { rows: [] };
       }
       return { rows: saved ? [saved] : [] };
@@ -348,13 +513,15 @@ test('subscription sync persists only paid state, preserving the independent CSV
   });
   assert.equal(result.isActive, false);
   assert.equal(statements.length, 2);
-  for (const statement of statements) assert.doesNotMatch(statement, /youtube|user_roles|UPDATE users/);
+  for (const statement of statements.filter(sql => /^(INSERT|UPDATE|DELETE)/.test(sql))) {
+    assert.doesNotMatch(statement, /youtube|user_roles|UPDATE users/);
+  }
 });
 
-test('sync preserves verified sandbox entitlement upstream state while denying production access', async () => {
+test('sync preserves a Test Store entitlement upstream while denying unapproved access', async () => {
   const previousPolicy = config.revenueCat.allowSandbox;
   const previousAllowedIds = config.revenueCat.sandboxAllowedUserIds;
-  const customer = response({ is_sandbox: true });
+  const customer = response({ store: 'test_store' });
   customer.subscriber.entitlements.abu_3meer_pro.expires_date = new Date(Date.now() + 60 * 60_000).toISOString();
   let saved: Record<string, unknown> | undefined;
   try {
@@ -364,8 +531,9 @@ test('sync preserves verified sandbox entitlement upstream state while denying p
       fetchCustomer: async () => customer,
       execute: async (text, parameters = []) => {
         if (text.startsWith('INSERT')) {
-          saved = { is_active: parameters[1], product_id: parameters[2], expires_at: parameters[3],
-            will_renew: parameters[4], is_sandbox: parameters[5], verified_at: parameters[6] };
+          saved = { is_active: parameters[1], product_id: parameters[2], store_name: parameters[3],
+            expires_at: parameters[4], will_renew: parameters[5],
+            is_sandbox: parameters[6], verified_at: parameters[7] };
           return { rows: [] };
         }
         return { rows: saved ? [saved] : [] };
@@ -384,12 +552,12 @@ test('sync preserves verified sandbox entitlement upstream state while denying p
 
 test('a paid member with no YouTube channel receives member content; valid CSV survives paid expiry', async () => {
   const paid = await resolveChallengeMembership(ownerId, {
-    queryMembership: async () => ({ rows: [{ linked: false, current_member: false, is_pro_subscriber: true }] }),
+    queryMembership: async () => ({ rows: [{ linked: false, current_member: false, has_member_access: true }] }),
     refreshMembership: async () => { throw new Error('Must not require CSV for a subscriber'); },
   });
   assert.equal(paid, true);
   const csv = await resolveChallengeMembership(ownerId, {
-    queryMembership: async () => ({ rows: [{ linked: true, current_member: true, is_pro_subscriber: false }] }),
+    queryMembership: async () => ({ rows: [{ linked: true, current_member: true, has_member_access: true }] }),
     refreshMembership: async () => { throw new Error('Current CSV needs no refresh'); },
   });
   assert.equal(csv, true);
@@ -421,6 +589,51 @@ test('sync/status endpoints require authentication and reject spoofed customer-i
   assert.equal(actual.headers['cache-control'], 'private, no-store');
 });
 
+test('sync outage preserves current YouTube or cached store access only while it remains valid', async t => {
+  const currentTime = Date.now();
+  const storeCustomer = response();
+  storeCustomer.subscriber.entitlements.abu_3meer_pro.expires_date =
+    new Date(currentTime + 60 * 60_000).toISOString();
+  const cases = [
+    applyYouTubeMembershipAccess(emptySubscriptionStatus(), {
+      isActive: true,
+      verifiedAt: new Date(currentTime).toISOString(),
+      expiresAt: new Date(currentTime + 60 * 60_000).toISOString(),
+    }, currentTime),
+    enforceSubscriptionAccess(
+      subscriptionFromRevenueCat(storeCustomer, currentTime),
+      currentTime,
+    ),
+    emptySubscriptionStatus(),
+  ];
+
+  for (const effective of cases) {
+    const app = Fastify();
+    await app.register(subscriptionRoutes, {
+      authenticate: async (request: FastifyRequest) => {
+        request.user = { id: ownerId } as AuthenticatedUser;
+      },
+      sync: async () => {
+        throw new SubscriptionError(
+          'subscription_verification_unavailable',
+          'Unable to verify your subscription.',
+        );
+      },
+      read: async () => effective,
+    });
+    t.after(() => app.close());
+    const result = await app.inject({
+      method: 'POST',
+      url: '/subscriptions/sync',
+      payload: {},
+    });
+    assert.equal(result.statusCode, effective.hasMemberAccess ? 200 : 503);
+    if (effective.hasMemberAccess) {
+      assert.equal(result.json().data.memberAccessSource, effective.memberAccessSource);
+    }
+  }
+});
+
 test('authenticated status exposes a policy reason privately and does not leak lookup failures', async t => {
   const app = Fastify();
   let shouldFail = false;
@@ -429,7 +642,7 @@ test('authenticated status exposes a policy reason privately and does not leak l
     read: async (userId: string) => {
       assert.equal(userId, ownerId);
       if (shouldFail) throw new Error('private database details');
-      return enforceSubscriptionAccess(subscriptionFromRevenueCat(response({ is_sandbox: true }), now), now, false);
+      return enforceSubscriptionAccess(subscriptionFromRevenueCat(response({ store: 'test_store' }), now), now, false);
     },
   });
   t.after(() => app.close());

@@ -24,12 +24,16 @@ test('active challenge cache is decorated with only the current user activity', 
   assert.equal('attempts_used' in cached[0], false);
 });
 
-test('a stale active member is refreshed before receiving the 2x challenge award', async () => {
+test('a stale active member is refreshed while word challenges remain fixed XP', async () => {
   let reads = 0;
   let refreshes = 0;
   const isMember = await resolveChallengeMembership('user-1', {
     queryMembership: async () => ({
-      rows: [{ linked: true, current_member: ++reads > 1 }],
+      rows: [{
+        linked: true,
+        current_member: reads > 0,
+        has_member_access: ++reads > 1,
+      }],
     }),
     refreshMembership: async () => {
       refreshes += 1;
@@ -44,13 +48,13 @@ test('a stale active member is refreshed before receiving the 2x challenge award
 
   assert.equal(refreshes, 1);
   assert.equal(isMember, true);
-  assert.equal(memberMultiplierForSource('video_phrase', isMember), 2);
+  assert.equal(memberMultiplierForSource('video_phrase', isMember), 1);
 });
 
 test('a missing or unreadable CSV falls back to x1 without blocking base XP', async () => {
   const isMember = await resolveChallengeMembership('user-1', {
     queryMembership: async () => ({
-      rows: [{ linked: true, current_member: false }],
+      rows: [{ linked: true, current_member: false, has_member_access: false }],
     }),
     refreshMembership: async () => {
       throw new Error('temporary snapshot read error');

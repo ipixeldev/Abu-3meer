@@ -37,5 +37,39 @@ void main() {
       expect(legacyAdjustment.adminIsProSubscriber, isFalse);
       expect(legacyAdjustment.targetIsProSubscriber, isFalse);
     });
+
+    test(
+      'YouTube membership grants audit-row badges without a store subscription',
+      () {
+        final adjustment = parseAdminPointAdjustment(<String, dynamic>{
+          'adminIsProSubscriber': false,
+          'adminIsYouTubeMember': true,
+          'targetIsProSubscriber': false,
+          'targetHasMemberAccess': true,
+        });
+
+        expect(adjustment.adminHasMemberAccess, isTrue);
+        expect(adjustment.targetHasMemberAccess, isTrue);
+        expect(adjustment.adminIsProSubscriber, isFalse);
+        expect(adjustment.targetIsProSubscriber, isFalse);
+      },
+    );
+
+    test(
+      'explicit effective-access denial overrides legacy membership flags',
+      () {
+        final adjustment = parseAdminPointAdjustment(<String, dynamic>{
+          'adminHasMemberAccess': false,
+          'adminIsYouTubeMember': true,
+          'adminIsProSubscriber': true,
+          'targetHasMemberAccess': false,
+          'targetIsYouTubeMember': true,
+          'targetIsProSubscriber': true,
+        });
+
+        expect(adjustment.adminHasMemberAccess, isFalse);
+        expect(adjustment.targetHasMemberAccess, isFalse);
+      },
+    );
   });
 }

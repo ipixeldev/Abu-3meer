@@ -70,6 +70,7 @@ export async function rewardRoutes(fastify: FastifyInstance) {
             displayName: user.displayName,
             isYouTubeMember: user.isYouTubeMember,
             isProSubscriber: user.isProSubscriber,
+            hasMemberAccess: user.hasMemberAccess,
           },
           rewardId.data,
           body.data.idempotencyKey,

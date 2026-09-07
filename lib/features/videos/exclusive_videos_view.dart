@@ -297,7 +297,7 @@ class _VideoCard extends StatelessWidget {
             label: locked
                 ? abuText(
                     context,
-                    'Gold members only: ${video.title}',
+                    'Members only: ${video.title}',
                     'للأعضاء الذهبيين فقط: ${video.title}',
                   )
                 : abuText(

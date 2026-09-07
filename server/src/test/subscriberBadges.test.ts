@@ -4,7 +4,11 @@ import path from 'node:path';
 import test from 'node:test';
 import { mapPublicFanProfile } from '../routes/profileRoutes.js';
 import { mapPublicLeaderboardEntry } from '../services/leaderboardService.js';
-import { activeSubscriptionSql } from '../services/subscriptionAccess.js';
+import {
+  activeMemberAccessSql,
+  activeSubscriptionSql,
+  activeYouTubeMembershipSql,
+} from '../services/subscriptionAccess.js';
 
 test('subscriber badges are independent from CSV membership on public identities', () => {
   for (const isProSubscriber of [false, true]) {
@@ -41,17 +45,42 @@ test('subscriber badges are independent from CSV membership on public identities
   }
 });
 
-test('badge lookup uses the same unexpired, recently verified entitlement as access checks', () => {
+test('badge lookup uses the same unexpired verified entitlement as access checks', () => {
   const sql = activeSubscriptionSql('u.id');
   assert.match(sql, /subscription_access\.user_id = u\.id/);
   assert.match(sql, /entitlement_id = 'abu_3meer_pro'/);
   assert.match(sql, /is_active = TRUE/);
   assert.match(sql, /expires_at > clock_timestamp\(\)/);
-  assert.match(sql, /verified_at > clock_timestamp\(\) - INTERVAL '24 hours'/);
+  assert.match(sql, /verified_at IS NOT NULL/);
   assert.match(sql, /verified_at <= clock_timestamp\(\) \+ INTERVAL '1 minute'/);
+  assert.doesNotMatch(sql, /verified_at > clock_timestamp\(\) - INTERVAL/);
   assert.match(sql, /is_sandbox = FALSE/);
   assert.doesNotMatch(sql, /youtube|member_since|user_roles/);
   assert.throws(() => activeSubscriptionSql('u.id; SELECT 1'));
+
+  const youtubeSql = activeYouTubeMembershipSql('u.id');
+  assert.match(youtubeSql, /approved_snapshot_import_id = snapshot_state\.active_import_id/);
+  assert.match(youtubeSql, /mode = 'inactive' THEN FALSE/);
+  const memberSql = activeMemberAccessSql('u.id');
+  assert.match(memberSql, /youtube_account_links/);
+  assert.match(memberSql, /user_subscription_entitlements/);
+  assert.match(memberSql, /mode = 'inactive' THEN FALSE/);
+  assert.throws(() => activeMemberAccessSql('u.id; SELECT 1'));
+});
+
+test('prediction settlement keeps an unexpired cached store entitlement after 24 hours', async () => {
+  const sql = activeMemberAccessSql('p.user_id');
+  assert.match(sql, /subscription_access\.is_active = TRUE/);
+  assert.match(sql, /subscription_access\.expires_at > clock_timestamp\(\)/);
+  assert.match(sql, /subscription_access\.verified_at IS NOT NULL/);
+  assert.match(sql, /subscription_access\.verified_at <= clock_timestamp\(\) \+ INTERVAL '1 minute'/);
+  assert.doesNotMatch(sql, /INTERVAL '24 hours'/);
+
+  const source = await readFile(
+    path.resolve(process.cwd(), 'src/services/predictionService.ts'),
+    'utf8',
+  );
+  assert.match(source, /activeMemberAccessSql\('p\.user_id'\).*AS has_member_access/);
 });
 
 test('all current public profile, leaderboard, and staff user-list queries expose verified badge state', async () => {
@@ -62,6 +91,7 @@ test('all current public profile, leaderboard, and staff user-list queries expos
   ]) {
     const source = await readFile(path.resolve(process.cwd(), 'src', file), 'utf8');
     assert.match(source, /activeSubscriptionSql\('u\.id'\).*AS is_pro_subscriber/);
+    assert.match(source, /activeYouTubeMembershipSql\('u\.id'\).*AS is_youtube_member/);
     assert.match(source, /isProSubscriber: row\.(?:isProSubscriber|is_pro_subscriber) === true/);
   }
 });
@@ -73,6 +103,26 @@ test('points-audit labels receive current verified badge state in the existing j
   );
   for (const role of ['admin', 'target']) {
     assert.ok(source.includes(`activeSubscriptionSql('${role}.id')} AS ${role}_is_pro_subscriber`));
-    assert.ok(source.includes(`${role}IsProSubscriber: row.${role}_is_pro_subscriber === true`));
+    assert.ok(source.includes(`activeYouTubeMembershipSql('${role}.id')} AS ${role}_is_youtube_member`));
+    assert.ok(source.includes(`const ${role}IsProSubscriber = row.${role}_is_pro_subscriber === true`));
+    assert.ok(source.includes(`const ${role}IsYouTubeMember = row.${role}_is_youtube_member === true`));
+    assert.ok(source.includes(`activeMemberAccessSql('${role}.id')} AS ${role}_has_member_access`));
+    assert.ok(source.includes(`${role}HasMemberAccess: row.${role}_has_member_access === true`));
+  }
+});
+
+test('every member gate consumes the override-aware effective access decision', async () => {
+  const expectations: Array<[string, RegExp]> = [
+    ['middleware/auth.ts', /activeMemberAccessSql\('u\.id'\)\} AS has_member_access/],
+    ['middleware/auth.ts', /hasMemberAccess: row\.has_member_access === true/],
+    ['services/challengeMembershipService.ts', /activeMemberAccessSql\('u\.id'\)\} AS has_member_access/],
+    ['services/challengeService.ts', /activeMemberAccessSql\('user_account\.id'\)\} AS has_member_access/],
+    ['services/predictionService.ts', /activeMemberAccessSql\('p\.user_id'\)\} AS has_member_access/],
+    ['services/notificationService.ts', /members_only: `AND \$\{activeMemberAccessSql\('u\.id'\)\}`/],
+    ['services/rewardRedemptionService.ts', /reward\.memberOnly === true && !user\.hasMemberAccess/],
+  ];
+  for (const [file, pattern] of expectations) {
+    const source = await readFile(path.resolve(process.cwd(), 'src', file), 'utf8');
+    assert.match(source, pattern, file);
   }
 });

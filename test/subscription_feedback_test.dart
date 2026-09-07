@@ -2,17 +2,18 @@ import 'package:abu_3meer/features/subscriptions/subscription_feedback.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('production-only rejection does not ask user to buy a test again', () {
+  test('synthetic-test rejection distinguishes genuine store sandbox', () {
     final result = SubscriptionFeedback.checked(
       serverActive: false,
       storeActive: true,
       isSandbox: true,
       accessReason: 'sandbox_not_allowed',
     );
-    expect(result.english, contains('production purchases only'));
+    expect(result.english, contains('synthetic Test Store'));
+    expect(result.english, contains('sandbox purchases do activate access'));
     expect(result.english, contains('Do not purchase again'));
     expect(result.english, isNot(contains('Membership confirmed')));
-    expect(result.arabic, contains('مشتريات الإنتاج فقط'));
+    expect(result.arabic, contains('Test Store'));
   });
 
   test('missing entitlement does not falsely diagnose a sandbox denial', () {

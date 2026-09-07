@@ -11,7 +11,10 @@ import {
   eligibleLeaderboardSourceTypes,
   listLeaderboardSeasons,
 } from '../services/leaderboardService.js';
-import { activeSubscriptionSql } from '../services/subscriptionAccess.js';
+import {
+  activeSubscriptionSql,
+  activeYouTubeMembershipSql,
+} from '../services/subscriptionAccess.js';
 import { readSubscriptionStatus } from '../services/subscriptionService.js';
 
 const eligibleXpSources = [...eligibleLeaderboardSourceTypes];
@@ -130,13 +133,19 @@ export async function profileRoutes(fastify: FastifyInstance) {
        FROM user_profiles profile
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(pt.final_points), 0) AS total_points,
-                COALESCE(SUM(pt.final_points) FILTER (
+                COALESCE(SUM(COALESCE(
+                  pt.monthly_points_delta,
+                  pt.final_points
+                )) FILTER (
                   WHERE pt.created_at >= (
                     date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
                     AT TIME ZONE 'UTC'
                   )
                 ), 0) AS monthly_points,
-                COALESCE(SUM(pt.final_points) FILTER (
+                COALESCE(SUM(COALESCE(
+                  pt.season_points_delta,
+                  pt.final_points
+                )) FILTER (
                   WHERE pt.created_at >= season.starts_at
                     AND (season.ends_at IS NULL OR pt.created_at < season.ends_at)
                 ), 0) AS season_points
@@ -163,6 +172,16 @@ export async function profileRoutes(fastify: FastifyInstance) {
         subscriptionAccessExpiresAt: subscriptionAccess.subscriptionAccessExpiresAt,
         subscriptionAccessReason: subscriptionAccess.accessReason,
         subscriptionAccessSource: subscriptionAccess.accessSource,
+        hasMemberAccess: subscriptionAccess.hasMemberAccess,
+        memberAccessSource: subscriptionAccess.memberAccessSource,
+        memberAccessReason: subscriptionAccess.memberAccessReason,
+        memberAccessExpiresAt: subscriptionAccess.memberAccessExpiresAt,
+        youtubeMembershipVerifiedAt:
+          subscriptionAccess.youtubeMembershipVerifiedAt,
+        youtubeMembershipExpiresAt:
+          subscriptionAccess.youtubeMembershipExpiresAt,
+        youtubeMembershipRecheckRequired:
+          subscriptionAccess.youtubeMembershipRecheckRequired,
         email: user.email,
         username: user.username,
         displayName: user.displayName,
@@ -172,9 +191,10 @@ export async function profileRoutes(fastify: FastifyInstance) {
         country: user.country,
         countryCode: user.countryCode,
         onboardingCompleted: user.onboardingCompleted,
-        isYouTubeMember: user.isYouTubeMember,
+        isYouTubeMember: subscriptionAccess.youtubeMembershipActive
+          && subscriptionAccess.hasMemberAccess,
+        youtubeMembershipActive: subscriptionAccess.youtubeMembershipActive,
         isProSubscriber: subscriptionAccess.isActive,
-        hasMemberAccess: user.isYouTubeMember || subscriptionAccess.isActive,
         roles: user.roles,
         isAdmin: user.isAdmin,
         isSuperAdmin: user.isSuperAdmin,
@@ -191,26 +211,7 @@ export async function profileRoutes(fastify: FastifyInstance) {
     const res = await query(
       `SELECT u.username, u.display_name, u.avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
-              COALESCE(
-                yl.is_member = TRUE
-                AND yl.verification_source = 'admin_snapshot'
-                AND EXISTS (
-                  SELECT 1
-                  FROM youtube_membership_snapshot_state snapshot_state
-                  JOIN youtube_membership_snapshot_imports snapshot_import
-                    ON snapshot_import.id = snapshot_state.active_import_id
-                   AND snapshot_import.expires_at > CURRENT_TIMESTAMP
-                  WHERE snapshot_state.singleton = TRUE
-                    AND snapshot_state.active_import_id = yl.snapshot_import_id
-                )
-                AND EXISTS (
-                  SELECT 1 FROM youtube_channel_claims claim
-                  WHERE claim.user_id = u.id
-                    AND claim.youtube_channel_id = yl.youtube_channel_id
-                    AND claim.status = 'approved'
-                ),
-                FALSE
-              ) AS is_youtube_member,
+              ${activeYouTubeMembershipSql('u.id')} AS is_youtube_member,
               ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
               COALESCE(xp.total_points, 0)::integer AS total_points,
               COALESCE(xp.monthly_points, 0)::integer AS monthly_points,
@@ -230,13 +231,19 @@ export async function profileRoutes(fastify: FastifyInstance) {
        LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(pt.final_points), 0) AS total_points,
-                COALESCE(SUM(pt.final_points) FILTER (
+                COALESCE(SUM(COALESCE(
+                  pt.monthly_points_delta,
+                  pt.final_points
+                )) FILTER (
                   WHERE pt.created_at >= (
                     date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
                     AT TIME ZONE 'UTC'
                   )
                 ), 0) AS monthly_points,
-                COALESCE(SUM(pt.final_points) FILTER (
+                COALESCE(SUM(COALESCE(
+                  pt.season_points_delta,
+                  pt.final_points
+                )) FILTER (
                   WHERE pt.created_at >= season.starts_at
                     AND (season.ends_at IS NULL OR pt.created_at < season.ends_at)
                 ), 0) AS season_points
@@ -396,9 +403,20 @@ export async function profileRoutes(fastify: FastifyInstance) {
         countryCode: row.country_code,
         onboardingCompleted: row.onboarding_completed,
         locationUpdatedAt: row.location_updated_at,
-        isYouTubeMember: user.isYouTubeMember,
+        isYouTubeMember: subscriptionAccess.youtubeMembershipActive
+          && subscriptionAccess.hasMemberAccess,
+        youtubeMembershipActive: subscriptionAccess.youtubeMembershipActive,
         isProSubscriber: subscriptionAccess.isActive,
-        hasMemberAccess: user.isYouTubeMember || subscriptionAccess.isActive,
+        hasMemberAccess: subscriptionAccess.hasMemberAccess,
+        memberAccessSource: subscriptionAccess.memberAccessSource,
+        memberAccessReason: subscriptionAccess.memberAccessReason,
+        memberAccessExpiresAt: subscriptionAccess.memberAccessExpiresAt,
+        youtubeMembershipVerifiedAt:
+          subscriptionAccess.youtubeMembershipVerifiedAt,
+        youtubeMembershipExpiresAt:
+          subscriptionAccess.youtubeMembershipExpiresAt,
+        youtubeMembershipRecheckRequired:
+          subscriptionAccess.youtubeMembershipRecheckRequired,
         subscriptionAccessMode: subscriptionAccess.subscriptionAccessMode,
         subscriptionAccessExpiresAt:
           subscriptionAccess.subscriptionAccessExpiresAt,

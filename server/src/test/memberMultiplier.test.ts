@@ -27,10 +27,10 @@ describe('YouTube member point multiplier scope', () => {
     }
   });
 
-  it('doubles all video-challenge answers for verified members', () => {
+  it('keeps correct-word and correct-player rewards at their base values', () => {
     for (const source of ['video_phrase', 'player_card'] as PointSourceType[]) {
-      assert.equal(isMemberMultiplierEligible(source), true);
-      assert.equal(memberMultiplierForSource(source, true, 2), 2);
+      assert.equal(isMemberMultiplierEligible(source), false);
+      assert.equal(memberMultiplierForSource(source, true, 2), 1);
       assert.equal(memberMultiplierForSource(source, false, 2), 1);
     }
   });
@@ -39,6 +39,8 @@ describe('YouTube member point multiplier scope', () => {
     const baseOnlySources: PointSourceType[] = [
       'signup_bonus',
       'daily_streak',
+      'membership_activation',
+      'membership_renewal',
       'admin_adjustment',
       'achievement_bonus',
     ];
@@ -50,11 +52,13 @@ describe('YouTube member point multiplier scope', () => {
     }
   });
 
-  it('earns fixed XP for signup and daily login without enabling other legacy sources', () => {
+  it('earns all published and administrator-led XP sources', () => {
     assert.equal(isXpEarningSource('signup_bonus'), true);
     assert.equal(isXpEarningSource('daily_streak'), true);
+    assert.equal(isXpEarningSource('membership_activation'), true);
+    assert.equal(isXpEarningSource('membership_renewal'), true);
     assert.equal(isXpEarningSource('achievement_bonus'), false);
-    assert.equal(isXpEarningSource('admin_adjustment'), false);
+    assert.equal(isXpEarningSource('admin_adjustment'), true);
     assert.equal(signupBonusIdempotencyKey('user_1'), 'signup_bonus_user_1');
   });
 
@@ -62,8 +66,8 @@ describe('YouTube member point multiplier scope', () => {
     assert.equal(enforceEligibleMultiplier('daily_streak', 5), 1);
     assert.equal(enforceEligibleMultiplier('signup_bonus', 10), 1);
     assert.equal(enforceEligibleMultiplier('prediction_exact', 2), 2);
-    assert.equal(enforceEligibleMultiplier('video_phrase', 2), 2);
-    assert.equal(enforceEligibleMultiplier('player_card', 2), 2);
+    assert.equal(enforceEligibleMultiplier('video_phrase', 2), 1);
+    assert.equal(enforceEligibleMultiplier('player_card', 2), 1);
   });
 
   it('returns the original points for an idempotent challenge replay', async () => {
@@ -74,7 +78,7 @@ describe('YouTube member point multiplier scope', () => {
         if (statements.length === 1) return { rowCount: 0, rows: [] };
         return {
           rowCount: 1,
-          rows: [{ user_id: 'user_1', final_points: 20 }],
+        rows: [{ user_id: 'user_1', final_points: 10 }],
         };
       },
     } as unknown as PoolClient;
@@ -91,7 +95,7 @@ describe('YouTube member point multiplier scope', () => {
 
     assert.deepEqual(result, {
       success: true,
-      pointsAwarded: 20,
+      pointsAwarded: 10,
       alreadyAwarded: true,
     });
     assert.equal(statements.length, 2);
@@ -122,6 +126,8 @@ describe('YouTube member point multiplier scope', () => {
     assert.deepEqual(result, { success: true, pointsAwarded: 5 });
     assert.equal(calls[0].values?.[4], 1);
     assert.equal(calls[0].values?.[5], 5);
+    assert.match(calls[0].text, /monthly_points_delta/);
+    assert.match(calls[0].text, /season_points_delta/);
     assert.match(calls[1].text, /monthly_points = monthly_points \+ \$1/);
     assert.match(calls[1].text, /season_points = season_points \+ \$1/);
     assert.doesNotMatch(calls[1].text, /loyalty_points/);

@@ -1,16 +1,11 @@
 import { getClient, query } from '../db/pool.js';
-import { activeSubscriptionSql } from './subscriptionAccess.js';
+import {
+  activeSubscriptionSql,
+  activeYouTubeMembershipSql,
+} from './subscriptionAccess.js';
+import { eligiblePointSourceTypes } from './pointsService.js';
 
-export const eligibleLeaderboardSourceTypes = [
-  'signup_bonus',
-  'daily_streak',
-  'prediction_exact',
-  'prediction_scorer',
-  'prediction_winner',
-  'prediction_win',
-  'video_phrase',
-  'player_card',
-] as const;
+export const eligibleLeaderboardSourceTypes = eligiblePointSourceTypes;
 
 export type LeaderboardScope = 'current_month' | 'previous_month' | 'season';
 
@@ -663,6 +658,9 @@ async function rankedRows(
   totalPlayers: number;
 }> {
   const safeLimit = Math.min(100, Math.max(1, Math.trunc(limit)));
+  const pointsColumn = window.type === 'monthly'
+    ? 'COALESCE(pt.monthly_points_delta, pt.final_points)'
+    : 'COALESCE(pt.season_points_delta, pt.final_points)';
   const result = await query<RankedRow>(
     `WITH scored AS (
        SELECT u.id::text AS database_user_id,
@@ -670,17 +668,10 @@ async function rankedRows(
               u.display_name,
               u.avatar_url,
               u.supported_team,
-              COALESCE(
-                yl.is_member = TRUE
-                AND yl.verification_source = 'admin_snapshot'
-                AND yl.snapshot_import_id = snapshot_state.active_import_id
-                AND snapshot_import.id IS NOT NULL
-                AND approved_claim.id IS NOT NULL,
-                FALSE
-              ) AS is_youtube_member,
+              ${activeYouTubeMembershipSql('u.id')} AS is_youtube_member,
               ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
               u.created_at AS account_created_at,
-              SUM(pt.final_points)::bigint AS points
+              SUM(${pointsColumn})::bigint AS points
        FROM point_transactions pt
        JOIN users u ON u.id = pt.user_id
        LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
@@ -699,7 +690,7 @@ async function rankedRows(
          AND ($2::timestamptz IS NULL OR pt.created_at < $2)
        GROUP BY u.id, yl.user_id, snapshot_state.active_import_id,
                 snapshot_import.id, approved_claim.id
-       HAVING SUM(pt.final_points) > 0
+       HAVING SUM(${pointsColumn}) > 0
      ), ranked AS (
        SELECT database_user_id,
               username AS "publicId",
@@ -746,11 +737,14 @@ async function rankForUser(
   databaseUserId: string,
   window: PeriodWindow,
 ): Promise<UserPeriodRank> {
+  const pointsColumn = window.type === 'monthly'
+    ? 'COALESCE(pt.monthly_points_delta, pt.final_points)'
+    : 'COALESCE(pt.season_points_delta, pt.final_points)';
   const result = await query<{ rank: string | number; points: string | number }>(
     `WITH scored AS (
        SELECT u.id::text AS database_user_id,
               u.created_at AS account_created_at,
-              SUM(pt.final_points)::bigint AS points
+              SUM(${pointsColumn})::bigint AS points
        FROM point_transactions pt
        JOIN users u ON u.id = pt.user_id
        WHERE u.account_status = 'active'
@@ -758,7 +752,7 @@ async function rankForUser(
          AND pt.created_at >= $1
          AND ($2::timestamptz IS NULL OR pt.created_at < $2)
        GROUP BY u.id
-       HAVING SUM(pt.final_points) > 0
+       HAVING SUM(${pointsColumn}) > 0
      ), ranked AS (
        SELECT database_user_id,
               points,

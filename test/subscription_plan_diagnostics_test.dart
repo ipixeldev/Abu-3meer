@@ -20,6 +20,7 @@ void main() {
     getStorefrontCountry: storefront ?? () async => 'SWE',
     timeout: timeout,
     now: () => checkedAt,
+    productIds: ids,
   );
 
   test(
@@ -70,6 +71,27 @@ void main() {
     expect(report.originalSupportCode, isNull);
     expect(report.supportText, contains('Original error: not_provided'));
     expect(report.productLookupErrorCode, isNull);
+  });
+
+  test('Android uses Play subscription IDs and accepts RevenueCat base-plan identifiers', () async {
+    const playIds = ['ostoora3', 'ostoora3_pro_max'];
+    final report = await SubscriptionPlanDiagnosticsRunner(
+      productIds: playIds,
+      returnedProductAliases:
+          SubscriptionPlanDiagnosticsRunner.googleReturnedProductAliases,
+      isConfigured: () async => true,
+      getProducts: (requested) async {
+        expect(requested, playIds);
+        return ['ostoora3:monthly', 'ostoora3_pro_max:yearly'];
+      },
+      getStorefrontCountry: () async => 'TUR',
+      now: () => checkedAt,
+    ).check();
+
+    expect(report.category, 'products_available');
+    expect(report.requestedProductIds, playIds);
+    expect(report.returnedProductIds, playIds);
+    expect(report.missingProductIds, isEmpty);
   });
 
   test('partial response identifies the exact missing known plan', () async {
@@ -326,7 +348,8 @@ void main() {
         }
       });
       addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
-      final report = await SubscriptionPlanDiagnosticsRunner().check();
+      final report = await SubscriptionPlanDiagnosticsRunner(productIds: ids)
+          .check();
       expect(report.category, 'products_available');
       expect(calls.map((call) => call.method), [
         'isConfigured',

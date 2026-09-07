@@ -1,0 +1,6 @@
+# Copy this file to android/key.properties and replace every placeholder.
+# Never commit key.properties or the .jks upload key.
+storePassword=CHOOSE_A_STRONG_PASSWORD
+keyPassword=CHOOSE_A_STRONG_PASSWORD
+keyAlias=upload
+storeFile=app/upload-keystore.jks

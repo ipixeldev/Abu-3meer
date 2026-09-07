@@ -71,15 +71,15 @@ export const config = {
     secretApiKey: (process.env.REVENUECAT_SECRET_API_KEY || '').trim(),
     entitlementId: 'abu_3meer_pro',
     webhookAuthorization: (process.env.REVENUECAT_WEBHOOK_AUTHORIZATION || '').trim(),
+    // Escape hatch for RevenueCat Test Store/legacy unknown sandbox rows.
+    // Normal App Store/Play test-track receipts do not need this switch.
     allowSandbox: process.env.REVENUECAT_ALLOW_SANDBOX === 'true',
-    // App Review purchases are sandbox transactions. Keep global sandbox
-    // access disabled and allow only dedicated PostgreSQL account UUIDs.
+    // Genuine Apple/Google sandbox receipts are accepted based on their
+    // persisted store provenance. This opt-in is only for RevenueCat Test
+    // Store or legacy sandbox rows whose provider cannot be verified.
     sandboxAllowedUserIds: uuidList(
       process.env.REVENUECAT_SANDBOX_ALLOWED_USER_IDS || '',
     ),
-    // Webhooks and app foreground/purchase sync refresh this verified lease.
-    // A missing webhook cannot retain revoked access indefinitely.
-    verificationMaxAgeSeconds: 24 * 60 * 60,
   },
 
   // No implicit production administrator. The first configured address is the
@@ -163,12 +163,20 @@ export const config = {
     // Signup and daily attendance are fixed activity awards. They deliberately
     // remain outside the YouTube membership multiplier.
     signUpBonus: parseInt(process.env.SIGNUP_BONUS_POINTS || '50', 10),
-    exactScore: parseInt(process.env.EXACT_SCORE_POINTS || '30', 10),
+    exactScore: parseInt(process.env.EXACT_SCORE_POINTS || '50', 10),
     firstScorer: parseInt(process.env.FIRST_SCORER_POINTS || '20', 10),
     winnerOutcome: parseInt(process.env.WINNER_OUTCOME_POINTS || '10', 10),
-    videoPhrase: parseInt(process.env.VIDEO_PHRASE_POINTS || '10', 10),
-    playerCard: parseInt(process.env.PLAYER_CARD_POINTS || '10', 10),
+    videoPhrase: parseInt(process.env.VIDEO_PHRASE_POINTS || '15', 10),
+    playerCard: parseInt(process.env.PLAYER_CARD_POINTS || '15', 10),
     dailyStreak: parseInt(process.env.DAILY_STREAK_POINTS || '5', 10),
+    firstMembershipActivation: parseInt(
+      process.env.FIRST_MEMBERSHIP_ACTIVATION_POINTS || '150',
+      10,
+    ),
+    membershipRenewal: parseInt(
+      process.env.MEMBERSHIP_RENEWAL_POINTS || '50',
+      10,
+    ),
     memberMultiplier: parseFloat(process.env.MEMBER_MULTIPLIER || '2.0'),
   },
 };

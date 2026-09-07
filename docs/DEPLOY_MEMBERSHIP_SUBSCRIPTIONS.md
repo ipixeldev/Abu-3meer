@@ -4,10 +4,11 @@ Run these commands on the Ubuntu production server, one block at a time. Stop
 after an error. The procedure preserves users, points, subscription snapshots,
 uploaded CSV files, and media.
 
-This release adds backend behavior, including migration
-`042_admin_subscription_access.sql`. An earlier rebuild that applied only
-migrations 040/041 is not sufficient; the API image must be rebuilt and
-recreated after the new revision is pulled.
+This release adds backend behavior through migrations
+`042_admin_subscription_access.sql`, `043_loyalty_points_rules.sql`, and
+`044_revenuecat_store_provenance.sql`. An earlier rebuild that stopped before
+any of these is not sufficient; the API image must be rebuilt and recreated
+after the new revision is pulled.
 
 ## 1. Pull the published revision
 
@@ -31,7 +32,7 @@ git merge --ff-only origin/agent/production-backend
 ```
 
 ```bash
-git ls-files server/migrations/042_admin_subscription_access.sql server/src/routes/adminSubscriptionRoutes.ts server/src/routes/supportRoutes.ts
+git ls-files server/migrations/042_admin_subscription_access.sql server/migrations/043_loyalty_points_rules.sql server/migrations/044_revenuecat_store_provenance.sql server/src/routes/adminSubscriptionRoutes.ts server/src/routes/supportRoutes.ts
 ```
 
 All three paths must appear. If one is missing, stop because the required
@@ -80,20 +81,21 @@ REVENUECAT_SECRET_API_KEY=sk_...
 The public `appl_` key belongs in the iOS client and must not replace this
 server key. Never paste either key into logs, chat, or source control.
 
-Keep public production accounts on production receipts while permitting only a
-dedicated TestFlight/App Review account to prove Apple's sandbox purchase flow:
+Keep synthetic RevenueCat Test Store access disabled while accepting genuine
+Apple/Google store-signed test transactions:
 
 ```dotenv
 REVENUECAT_ALLOW_SANDBOX=false
-REVENUECAT_SANDBOX_ALLOWED_USER_IDS=<dedicated-review-app-account-postgresql-uuid>
+REVENUECAT_SANDBOX_ALLOWED_USER_IDS=
 ```
 
-Use a comma-separated list only if there is more than one dedicated reviewer
-account. Values must be PostgreSQL `users.id` UUIDs. Emails, usernames, Apple
-IDs, Firebase UIDs, and RevenueCat keys are not accepted. The server queries
-RevenueCat production first and uses the sandbox lookup only for an exact
-allowlisted UUID with no active production entitlement. Do not set the global
-switch to `true` on the public deployment.
+The server queries RevenueCat production first and checks sandbox only when no
+active production entitlement exists. Sandbox rows whose persisted provider is
+`app_store` or `play_store` grant test-track access and a badge automatically.
+They remain visibly marked as test purchases. `test_store` and legacy rows with
+no verified provider still require the global switch or an account UUID in the
+optional allowlist; do not enable either on the public deployment unless that
+synthetic access is intentional.
 
 To find a dedicated review account's UUID without exposing its login password,
 replace `REVIEW_USERNAME` in this read-only command:
@@ -102,10 +104,10 @@ replace `REVIEW_USERNAME` in this read-only command:
 docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT id, username FROM users WHERE normalized_username = lower(\$\$REVIEW_USERNAME\$\$);"'
 ```
 
-Configure the same exact UUID manually in RevenueCat under **Sandbox Testing
-Access → Allowed App User IDs only**. Both sides are required: the server
-allowlist controls Abu 3meer's protected access, while RevenueCat's setting
-controls which SDK App User IDs may receive sandbox entitlements.
+Only use that UUID command when intentionally allowing RevenueCat Test Store or
+a legacy unknown-provider row. If RevenueCat's own sandbox-access setting is
+restricted, its allowlist still controls which SDK App User IDs can receive a
+sandbox entitlement.
 
 Keep the existing webhook secret if it is configured:
 
@@ -146,8 +148,8 @@ docker compose up -d --no-deps --force-recreate --wait api
 ```
 
 The API migration runner applies pending migrations at startup. Confirm that
-the log reports `042_admin_subscription_access.sql` as applied (or already
-applied) and contains no startup error:
+the log reports migrations 042, 043, and 044 as applied (or already applied)
+and contains no startup error:
 
 ```bash
 docker compose logs --tail=120 api
@@ -192,17 +194,19 @@ keys. See [SUBSCRIPTION_PRODUCTION_DIAGNOSTICS.md](SUBSCRIPTION_PRODUCTION_DIAGN
 1. Open **Members → View plans** on the current TestFlight build. A zero-product
    `RC-23` report is an Apple/RevenueCat catalog problem; rebuilding this backend
    alone cannot populate StoreKit products.
-2. Sign into the exact dedicated review app account whose UUID is on both
-   allowlists. Restore once if it already owns a sandbox subscription, then tap
-   Refresh access. TestFlight and App Review purchases remain sandbox even with
-   the production `appl_` key.
-3. Sign into a normal, non-allowlisted account and confirm a sandbox receipt does
-   not grant access.
+2. Sign into the TestFlight/Play test-track account. Restore once if it already
+   owns a sandbox subscription, then tap **Refresh access**. Confirm the screen
+   labels it as sandbox/test while member access and the badge are active.
+3. If RevenueCat's sandbox-access setting is restricted, confirm the tester's
+   PostgreSQL app-user UUID is allowed there. The server-side escape-hatch
+   allowlist may remain blank for genuine App Store/Play Store receipts.
 4. In Admin Studio, an admin or super admin can open **Membership access** and
    choose **Activate access**, **Deactivate access**, or **Use store status**.
    A reason is required; an active grant may have a future expiry. Confirming
-   this action changes only app access and the subscriber badge. It does not
-   alter store billing or YouTube membership.
+   this action changes effective app access and the subscriber badge. It does
+   not alter store billing or erase the underlying YouTube verification; an
+   explicit inactive override nevertheless blocks member access until an admin
+   chooses **Use store status** again.
 5. Tap WhatsApp support. With the number blank, confirm the app shows the support
    email. Once a real number is configured, confirm it opens that business chat.
 
@@ -210,8 +214,9 @@ keys. See [SUBSCRIPTION_PRODUCTION_DIAGNOSTICS.md](SUBSCRIPTION_PRODUCTION_DIAGN
 
 The first subscriptions must be reviewed with an app version. The review draft
 already contains the subscription group and both subscription versions. Build
-1.1.0 (24) is valid, selected for the app version, and available to internal
-TestFlight testers; current iPad screenshots are uploaded in English and Arabic.
+1.1.0 (24) remains the currently processed TestFlight build; this source release
+is 1.1.0 (25) and must be built/uploaded before testing these new access and XP
+changes. Current iPad screenshots are uploaded in English and Arabic.
 The app version cannot be added to the review draft until the owner completes
 App Privacy, reviewer contact details, copyright, and the content-rights
 declaration. The current Digital Services Act status is also **In Review**.

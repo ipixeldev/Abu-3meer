@@ -202,6 +202,52 @@ void main() {
     }
   });
 
+  test(
+    'server response preserves effective YouTube member access metadata',
+    () {
+      final result = SubscriptionAccessResult.fromEnvelope({
+        'data': {
+          'entitlementId': 'abu_3meer_pro',
+          'isActive': false,
+          'accessReason': 'sandbox_not_allowed',
+          'environment': 'sandbox',
+          'hasMemberAccess': true,
+          'memberAccessSource': 'youtube',
+          'memberAccessReason': 'youtube_verified',
+          'memberAccessExpiresAt': '2026-09-10T12:00:00.000Z',
+          'youtubeMembershipActive': true,
+          'youtubeMembershipVerifiedAt': '2026-09-07T12:00:00.000Z',
+          'youtubeMembershipExpiresAt': '2026-09-10T12:00:00.000Z',
+          'youtubeMembershipRecheckRequired': false,
+        },
+      });
+
+      expect(result.isActive, isFalse);
+      expect(result.hasMemberAccess, isTrue);
+      expect(result.memberAccessSource, 'youtube');
+      expect(result.memberAccessReason, 'youtube_verified');
+      expect(result.youtubeMembershipActive, isTrue);
+      expect(
+        result.youtubeMembershipExpiresAt?.toUtc(),
+        DateTime.utc(2026, 9, 10, 12),
+      );
+      expect(result.youtubeMembershipRecheckRequired, isFalse);
+
+      final blocked = SubscriptionAccessResult.fromEnvelope({
+        'data': {
+          'entitlementId': 'abu_3meer_pro',
+          'isActive': false,
+          'accessReason': 'admin_revoked',
+          'hasMemberAccess': false,
+          'memberAccessSource': 'none',
+          'youtubeMembershipActive': true,
+        },
+      });
+      expect(blocked.youtubeMembershipActive, isTrue);
+      expect(blocked.hasMemberAccess, isFalse);
+    },
+  );
+
   for (final result in {
     'CANCELLED': PaywallResult.cancelled,
     'PURCHASED': PaywallResult.purchased,

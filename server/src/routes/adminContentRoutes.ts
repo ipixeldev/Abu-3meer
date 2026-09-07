@@ -218,7 +218,8 @@ const enabledSchema = z.object({ enabled: z.boolean() });
 
 const challengeSelect = `
   SELECT c.id, c.video_id, c.title, c.description, c.kind, c.status,
-         c.reward_points, c.reward_points * 2 AS member_points,
+         COALESCE(point_rule.base_points, c.reward_points) AS reward_points,
+         COALESCE(point_rule.base_points, c.reward_points) AS member_points,
          c.video_url, c.image_url, c.maximum_attempts, c.member_only,
          c.notify_on_live, c.starts_at, c.ends_at,
          COALESCE(
@@ -233,7 +234,12 @@ const challengeSelect = `
            '[]'::jsonb
          ) AS questions
   FROM challenges c
-  LEFT JOIN challenge_questions q ON q.challenge_id = c.id`;
+  LEFT JOIN challenge_questions q ON q.challenge_id = c.id
+  LEFT JOIN point_rules point_rule
+    ON point_rule.key = CASE c.kind
+      WHEN 'playerCard' THEN 'playerCard'
+      ELSE 'videoQuestion'
+    END`;
 
 function redemptionToJson(id: string, data: Record<string, unknown>) {
   const userLabel = [
@@ -299,7 +305,7 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
     async () => {
       const result = await query(
         `${challengeSelect}
-         GROUP BY c.id
+         GROUP BY c.id, point_rule.base_points
          ORDER BY c.created_at DESC
          LIMIT 200`,
       );
@@ -332,7 +338,18 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
               correct_answer, normalized_correct_answer, video_url, image_url,
               maximum_attempts, member_only, notify_on_live, starts_at, ends_at)
            VALUES
-             ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+             ($1, $2, $3, $4, $5,
+              COALESCE(
+                (SELECT base_points FROM point_rules WHERE key =
+                  CASE $4 WHEN 'playerCard' THEN 'playerCard' ELSE 'videoQuestion' END),
+                $7
+              ),
+              COALESCE(
+                (SELECT base_points FROM point_rules WHERE key =
+                  CASE $4 WHEN 'playerCard' THEN 'playerCard' ELSE 'videoQuestion' END),
+                $6
+              ),
+              $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
           [
             id,
             body.title,
@@ -340,7 +357,7 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
             body.kind,
             body.status,
             body.rewardPoints,
-            body.rewardPoints * 2,
+            body.rewardPoints,
             primaryAnswer,
             normalizeChallengeAnswer(primaryAnswer),
             body.videoUrl || null,
@@ -384,7 +401,7 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
               kind: body.kind,
               title: body.title,
               status: body.status,
-              rewardPoints: body.rewardPoints,
+              rewardRuleKey: body.kind === 'playerCard' ? 'playerCard' : 'videoQuestion',
               questionCount: body.questions.length,
               // Older clients may still send this field. New Player Guess
               // challenges intentionally do not create a catalogue link.

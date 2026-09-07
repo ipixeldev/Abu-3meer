@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 
@@ -20,19 +21,20 @@ class SubscriptionPlanDiagnosticReport {
   SubscriptionPlanDiagnosticReport._({
     required this.categoryKind,
     required this.checkedAtUtc,
+    required List<String> requestedProductIds,
     required List<String> returnedProductIds,
     required this.storefrontCountryCode,
     required this.originalSupportCode,
     required this.setupErrorCode,
     required this.productLookupErrorCode,
     required this.storefrontErrorCode,
-  }) : returnedProductIds = List.unmodifiable(returnedProductIds);
+  }) : requestedProductIds = List.unmodifiable(requestedProductIds),
+       returnedProductIds = List.unmodifiable(returnedProductIds);
 
   final SubscriptionPlanDiagnosticCategory categoryKind;
   String get category => categoryKind.code;
   final DateTime checkedAtUtc;
-  List<String> get requestedProductIds =>
-      SubscriptionPlanDiagnosticsRunner.knownProductIds;
+  final List<String> requestedProductIds;
   final List<String> returnedProductIds;
   List<String> get missingProductIds => List.unmodifiable(
     requestedProductIds.where((id) => !returnedProductIds.contains(id)),
@@ -81,23 +83,52 @@ class SubscriptionPlanDiagnosticsRunner {
     SubscriptionStorefrontLookup? getStorefrontCountry,
     Duration timeout = const Duration(seconds: 15),
     DateTime Function()? now,
+    List<String>? productIds,
+    Map<String, String>? returnedProductAliases,
   }) : _isConfigured = isConfigured ?? (() => Purchases.isConfigured),
        _getProducts = getProducts ?? _sdkProducts,
        _getStorefrontCountry = getStorefrontCountry ?? _sdkStorefrontCountry,
        _timeout = timeout,
-       _now = now ?? DateTime.now {
+       _now = now ?? DateTime.now,
+       _productIds = List.unmodifiable(
+         productIds ?? productIdsForPlatform(defaultTargetPlatform),
+       ),
+       _returnedProductAliases = Map.unmodifiable(
+         returnedProductAliases ??
+             returnedProductAliasesForPlatform(defaultTargetPlatform),
+       ) {
     if (timeout <= Duration.zero) {
       throw ArgumentError.value(timeout, 'timeout', 'Must be positive');
     }
   }
 
-  static const knownProductIds = ['Ostoora3', 'Ostoora3_Pro_Max'];
+  static const appleProductIds = ['Ostoora3', 'Ostoora3_Pro_Max'];
+  // Google Billing product lookup accepts the subscription IDs. RevenueCat's
+  // returned StoreProduct identifier may append the selected base-plan ID.
+  static const googleProductIds = ['ostoora3', 'ostoora3_pro_max'];
+  static const googleReturnedProductAliases = {
+    'ostoora3:monthly': 'ostoora3',
+    'ostoora3_pro_max:yearly': 'ostoora3_pro_max',
+  };
+
+  @visibleForTesting
+  static List<String> productIdsForPlatform(TargetPlatform platform) =>
+      platform == TargetPlatform.android ? googleProductIds : appleProductIds;
+
+  @visibleForTesting
+  static Map<String, String> returnedProductAliasesForPlatform(
+    TargetPlatform platform,
+  ) => platform == TargetPlatform.android
+      ? googleReturnedProductAliases
+      : const {};
 
   final Future<bool> Function() _isConfigured;
   final SubscriptionProductLookup _getProducts;
   final SubscriptionStorefrontLookup _getStorefrontCountry;
   final Duration _timeout;
   final DateTime Function() _now;
+  final List<String> _productIds;
+  final Map<String, String> _returnedProductAliases;
 
   Future<SubscriptionPlanDiagnosticReport> check({
     String? originalSupportCode,
@@ -114,6 +145,7 @@ class SubscriptionPlanDiagnosticsRunner {
       return SubscriptionPlanDiagnosticReport._(
         categoryKind: SubscriptionPlanDiagnosticCategory.storeRequestFailed,
         checkedAtUtc: checkedAtUtc,
+        requestedProductIds: _productIds,
         returnedProductIds: const [],
         storefrontCountryCode: null,
         originalSupportCode: safeOriginalCode,
@@ -123,25 +155,29 @@ class SubscriptionPlanDiagnosticsRunner {
       );
     }
     // The setup check and both parallel reads share one overall deadline.
-    final productsRead = _read(() => _getProducts(knownProductIds), elapsed);
+    final productsRead = _read(() => _getProducts(_productIds), elapsed);
     final storefrontRead = _read(_getStorefrontCountry, elapsed);
     final products = await productsRead;
     final storefront = await storefrontRead;
 
     // Ignore unexpected identifiers entirely, including duplicates and casing
     // variants. Keeping only known IDs also prevents untrusted data in reports.
-    final returnedProductIds = knownProductIds
-        .where((id) => products.value?.contains(id) ?? false)
+    final safeReturnedIds = (products.value ?? const <String>[])
+        .map((id) => _returnedProductAliases[id] ?? id)
+        .toSet();
+    final returnedProductIds = _productIds
+        .where(safeReturnedIds.contains)
         .toList(growable: false);
     final category = products.errorCode != null
         ? SubscriptionPlanDiagnosticCategory.storeRequestFailed
-        : returnedProductIds.length == knownProductIds.length
+        : returnedProductIds.length == _productIds.length
         ? SubscriptionPlanDiagnosticCategory.productsAvailable
         : SubscriptionPlanDiagnosticCategory.productsMissing;
 
     return SubscriptionPlanDiagnosticReport._(
       categoryKind: category,
       checkedAtUtc: checkedAtUtc,
+      requestedProductIds: _productIds,
       returnedProductIds: returnedProductIds,
       storefrontCountryCode: _safeCountryCode(storefront.value),
       originalSupportCode: safeOriginalCode,

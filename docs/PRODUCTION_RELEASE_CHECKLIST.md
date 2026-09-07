@@ -1,9 +1,11 @@
 # Production release checklist
 
 The application code is configured for the real Abu 3meer App Store app: the
-iOS client uses its public RevenueCat `appl_` SDK key, the server keeps the
-private `sk_` key, and the product identifiers are `Ostoora3` and
-`Ostoora3_Pro_Max`. A release build cannot silently fall back to RevenueCat Test
+iOS client uses its public RevenueCat `appl_` SDK key, Android release builds
+receive the Play app's public `goog_` key, and the server keeps the private
+`sk_` key. Apple product identifiers are `Ostoora3` and `Ostoora3_Pro_Max`;
+Google Play uses `ostoora3:monthly` and `ostoora3_pro_max:yearly`. A release
+build cannot silently fall back to RevenueCat Test
 Store or the repository's local StoreKit preview catalog.
 
 This checklist separates code/deployment work from account-owner actions. A
@@ -19,6 +21,21 @@ submission ready by itself.
   report.
 - Access and subscriber badges use the authenticated server decision. An Apple
   or RevenueCat client alert alone never grants protected access.
+- A channel link that matches the current imported YouTube member list activates
+  member access directly as **YouTube membership**, never as a store/test
+  subscription. The lease does not claim auto-renewal; after its snapshot
+  expires or is replaced, the user must run the membership check again.
+- The manual channel-link flow proves that a public channel is in the imported
+  member list, but it does not prove that the signed-in app user owns that
+  channel. The first matching account is bound uniquely. For a stronger public
+  launch guarantee, require Google/YouTube ownership authorization or an
+  admin-issued one-time claim code; otherwise staff must resolve disputed links.
+- Loyalty defaults are 50 signup, 5 daily login, 15 correct word, 15 correct
+  player, 10 winner, 20 first goalscorer, and 50 exact score. The member
+  multiplier applies only to the three prediction rewards. First verified
+  activation awards 150 XP once; a newly proven paid/membership period awards
+  50 XP. Admin Studio now saves these rules to PostgreSQL and scoring reads
+  those saved values.
 - Subscription refresh bypasses stale client state. An administrator block is
   shown as an access decision and does not prompt the user to buy again.
 - Admin Studio has a separate **Membership access** directory for admins and
@@ -40,22 +57,24 @@ submission ready by itself.
 
 The current revision contains server changes beyond migrations 040/041. The
 earlier successful Docker recreation does **not** deploy the admin override,
-review-account allowlist, or WhatsApp support changes. Pull the new revision,
+membership rewards, store provenance, or WhatsApp support changes. Pull the new revision,
 back up PostgreSQL, update `.env`, rebuild the API image, and recreate the API.
-Migration 042 runs automatically at API startup.
+Migrations 043 and 044 run automatically at API startup.
 
 Keep these production values in `/opt/abu3meer/server/.env`:
 
 ```dotenv
 REVENUECAT_SECRET_API_KEY=sk_...
 REVENUECAT_ALLOW_SANDBOX=false
-REVENUECAT_SANDBOX_ALLOWED_USER_IDS=<dedicated-review-app-account-postgresql-uuid>
+REVENUECAT_SANDBOX_ALLOWED_USER_IDS=
 SUPPORT_WHATSAPP_NUMBER=
 ```
 
 `REVENUECAT_SANDBOX_ALLOWED_USER_IDS` is a comma-separated list of app-account
-PostgreSQL UUIDs, not emails, Apple IDs, Firebase UIDs, or RevenueCat keys. Use
-only dedicated TestFlight/App Review accounts. Leave
+PostgreSQL UUIDs, not emails, Apple IDs, Firebase UIDs, or RevenueCat keys. It
+is only an escape hatch for RevenueCat Test Store or legacy sandbox rows whose
+store provenance is unknown. Genuine App Store and Play Store test receipts do
+not need this server allowlist. Leave
 `SUPPORT_WHATSAPP_NUMBER` blank until the business number is known; blank safely
 disables WhatsApp. When enabled, enter the international number with country
 code using digits only, without `+`, spaces, `00`, or a local trunk prefix.
@@ -64,28 +83,19 @@ The detailed, non-destructive commands are in
 [DEPLOY_MEMBERSHIP_SUBSCRIPTIONS.md](DEPLOY_MEMBERSHIP_SUBSCRIPTIONS.md). Do not
 run `docker compose down -v`.
 
-## Production-first TestFlight and App Review access
+## TestFlight, Play test-track, and App Review access
 
-TestFlight and App Review purchases use Apple's sandbox even though the same
-binary uses the production `appl_` key. Keep the global server switch
-`REVENUECAT_ALLOW_SANDBOX=false`.
+TestFlight/App Review and Google Play test-track purchases are genuine
+store-signed sandbox transactions. The server asks RevenueCat for production
+state first, then checks sandbox when production has no active entitlement.
+An active `app_store` or `play_store` sandbox entitlement grants member access
+and the badge, while the UI continues to label it as a test purchase rather
+than a live charge. RevenueCat Test Store and legacy sandbox rows with unknown
+store provenance remain blocked while `REVENUECAT_ALLOW_SANDBOX=false`.
 
-For the dedicated review account only:
-
-1. Put its PostgreSQL user UUID in
-   `REVENUECAT_SANDBOX_ALLOWED_USER_IDS` and redeploy the API.
-2. In RevenueCat, open the project **Sandbox Testing Access** settings, choose
-   **Allowed App User IDs only**, and add the same UUID. The app identifies the
-   RevenueCat customer with this UUID.
-3. Sign into that exact app account in TestFlight and use Restore/Refresh once
-   if it already owns the test subscription.
-
-The server always asks RevenueCat for production state first. Only if that exact
-allowlisted account has no active production entitlement does it perform the
-explicit sandbox lookup. An active production entitlement therefore cannot be
-shadowed by test data, and sandbox access remains unavailable to every other
-production user. Do not set the global sandbox switch to `true` for the public
-deployment.
+After migration 044, an existing tester must tap **Refresh access** once so the
+server records `store_name`. If RevenueCat's own sandbox-access setting is
+restricted, allow that tester's PostgreSQL app-user UUID there as well.
 
 ## Current store and release state
 
@@ -106,8 +116,10 @@ deployment.
   activation before treating the unchanged zero-product result as final, then
   retry on a current TestFlight build and copy the sanitized store report.
 - Full production build **1.1.0 (24)** is processed, valid, attached to the App
-  Store version, and available to internal TestFlight testers. It was not
-  submitted to Beta App Review or App Review.
+  Store version, and available to internal TestFlight testers. The current
+  source is bumped to **1.1.0 (25)** for the new membership/XP behavior and must
+  be uploaded before that behavior can be tested. Neither build was submitted
+  to Beta App Review or App Review.
 - Fresh 2064x2752 iPad screenshots from the current build are uploaded and
   complete for both English and Arabic. TestFlight app descriptions and build
   24 What to Test notes are also populated in both locales.

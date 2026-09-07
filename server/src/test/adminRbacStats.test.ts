@@ -133,9 +133,16 @@ describe('admin dashboard statistics', () => {
     assert.match(sql, /role_flags[\s\S]*NOT is_member[\s\S]*AS fans/);
     assert.match(sql, /verification_source = 'admin_snapshot'/);
     assert.match(sql, /snapshot_import_id = snapshot_state\.active_import_id/);
-    assert.match(sql, /snapshot_import\.expires_at > CURRENT_TIMESTAMP/);
+    assert.match(sql, /snapshot_import\.expires_at > clock_timestamp\(\)/);
     assert.match(sql, /approved_claim\.status = 'approved'/);
-    assert.match(sql, /youtube_membership_snapshot_members[\s\S]*status = 'active'/);
+    assert.match(
+      sql,
+      /approved_claim\.approved_snapshot_import_id = snapshot_state\.active_import_id/,
+    );
+    assert.match(sql, /mode = 'inactive' THEN FALSE/);
+    assert.match(sql, /user_subscription_entitlements/);
+    assert.match(sql, /AS is_member/);
+    assert.match(sql, /WHERE COALESCE\(/);
     assert.match(
       sql,
       /FROM videos[\s\S]*is_unlisted = TRUE OR member_only = TRUE/,

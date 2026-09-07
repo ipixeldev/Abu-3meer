@@ -194,7 +194,7 @@ void main() {
     });
   }
 
-  test('leaderboard and admin preserve only explicit subscription flag', () {
+  test('leaderboard and admin expose effective member access for badges', () {
     for (final value in [null, false, 'true', 1]) {
       final data = {
         'isYouTubeMember': true,
@@ -202,15 +202,30 @@ void main() {
         'isProSubscriber': value,
       };
       expect(parseApiLeaderboardEntry(data).isProSubscriber, isFalse);
+      expect(parseApiLeaderboardEntry(data).hasMemberAccess, isTrue);
       expect(parseAdminUserProfile(data).isProSubscriber, isFalse);
+      expect(parseAdminUserProfile(data).hasMemberAccess, isTrue);
     }
     final data = {'isProSubscriber': true, 'isYouTubeMember': false};
     final entry = parseApiLeaderboardEntry(data);
     expect(entry.isProSubscriber, isTrue);
     expect(entry.isMember, isFalse);
+    expect(entry.hasMemberAccess, isTrue);
     final profile = parseAdminUserProfile(data);
     expect(profile.isProSubscriber, isTrue);
     expect(profile.isYouTubeMember, isFalse);
+    expect(profile.hasMemberAccess, isTrue);
     expect(profile.copyWith(displayName: 'renamed').isProSubscriber, isTrue);
+    expect(profile.copyWith(displayName: 'renamed').hasMemberAccess, isTrue);
+
+    final blocked = parseAdminUserProfile({
+      'isYouTubeMember': true,
+      'youtubeMembershipActive': true,
+      'hasMemberAccess': false,
+      'subscriptionAccessReason': 'admin_revoked',
+    });
+    expect(blocked.isYouTubeMember, isFalse);
+    expect(blocked.hasMemberAccess, isFalse);
+    expect(blocked.copyWith(displayName: 'blocked').hasMemberAccess, isFalse);
   });
 }

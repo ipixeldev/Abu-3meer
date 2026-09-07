@@ -5,7 +5,10 @@ import Fastify, { FastifyRequest } from 'fastify';
 import type { AuthenticatedUser } from '../middleware/auth.js';
 import { adminSubscriptionRoutes, changeSubscriptionAccess, subscriptionAccessBody } from '../routes/adminSubscriptionRoutes.js';
 import { subscriptionRoutes } from '../routes/subscriptionRoutes.js';
-import { activeSubscriptionSql } from '../services/subscriptionAccess.js';
+import {
+  activeMemberAccessSql,
+  activeSubscriptionSql,
+} from '../services/subscriptionAccess.js';
 import { config } from '../config.js';
 import { applySubscriptionAccessOverride, emptySubscriptionStatus, enforceSubscriptionAccess,
   readSubscriptionStatus, SubscriptionError, syncSubscriptionStatus } from '../services/subscriptionService.js';
@@ -78,8 +81,9 @@ test('store synchronization never writes an admin override or clears its effecti
     execute: async (sql, params = []) => {
       sqls.push(sql);
       if (sql.startsWith('INSERT')) {
-        saved = { is_active: params[1], product_id: params[2], expires_at: params[3],
-          will_renew: params[4], is_sandbox: params[5], verified_at: params[6] };
+        saved = { is_active: params[1], product_id: params[2], store_name: params[3],
+          expires_at: params[4], will_renew: params[5],
+          is_sandbox: params[6], verified_at: params[7] };
         return { rows: [] };
       }
       return { rows: [{ ...saved, access_override_mode: 'inactive' }] };
@@ -134,7 +138,13 @@ test('override transaction locks target and audits actor/target/before/after/rea
   });
   assert.equal(db.statements.at(-1)?.sql, 'COMMIT');
   assert.equal(db.released, true);
-  assert.doesNotMatch(db.statements.map(row => row.sql).join('\n'), /UPDATE users|INSERT INTO user_subscription_entitlements|youtube|user_roles/);
+  const writes = db.statements
+    .map(row => row.sql)
+    .filter(sql => /^(INSERT|UPDATE|DELETE)/.test(sql));
+  assert.doesNotMatch(
+    writes.join('\n'),
+    /UPDATE users|INSERT INTO user_subscription_entitlements|youtube|user_roles/,
+  );
 });
 
 test('store mode deletes only override; audit failure rolls back; unknown targets cannot change access', async () => {
@@ -195,7 +205,7 @@ test('admin endpoint rejects unauthenticated and non-admin actors, accepts admin
   }
 });
 
-test('authenticated sync can return an admin decision during RC failure without weakening webhook retries', async t => {
+test('authenticated sync preserves only effective access during RC failure without weakening webhook retries', async t => {
   for (const mode of ['active', 'inactive', 'store'] as const) {
     const app = Fastify();
     await app.register(subscriptionRoutes, {
@@ -207,8 +217,8 @@ test('authenticated sync can return an admin decision during RC failure without 
     });
     t.after(() => app.close());
     const result = await app.inject({ method: 'POST', url: '/subscriptions/sync', payload: {} });
-    assert.equal(result.statusCode, mode === 'store' ? 503 : 200);
-    if (mode !== 'store') assert.equal(result.json().data.isActive, mode === 'active');
+    assert.equal(result.statusCode, mode === 'active' ? 200 : 503);
+    if (mode === 'active') assert.equal(result.json().data.hasMemberAccess, true);
     assert.equal((await app.inject({ method: 'POST', url: '/subscriptions/webhook', payload: { event: { id: 'event-1', type: 'RENEWAL' } } })).statusCode, 503);
   }
 });
@@ -220,7 +230,7 @@ test('SQL and migration keep overrides separate, expire grants, and never grant 
   config.revenueCat.sandboxAllowedUserIds = [targetId, "bad') OR TRUE --"];
   const sql = activeSubscriptionSql('u.id');
   try {
-    assert.match(sql, /COALESCE\(\(/);
+    assert.match(sql, /COALESCE\(/);
     assert.match(sql, /mode = 'inactive' THEN FALSE/);
     assert.match(sql, /expires_at IS NULL OR access_override.expires_at > clock_timestamp\(\)/);
     assert.match(sql, /ELSE NULL/);
@@ -228,6 +238,11 @@ test('SQL and migration keep overrides separate, expire grants, and never grant 
     assert.match(sql, /subscription_access.product_id IS NOT NULL/);
     assert.match(sql, new RegExp(targetId));
     assert.doesNotMatch(sql, /bad|OR TRUE --/);
+    const memberSql = activeMemberAccessSql('u.id');
+    assert.match(memberSql, /mode = 'inactive' THEN FALSE/);
+    assert.match(memberSql, /youtube_account_links/);
+    assert.match(memberSql, /approved_snapshot_import_id = snapshot_state\.active_import_id/);
+    assert.match(memberSql, /user_subscription_entitlements/);
   } finally {
     config.revenueCat.allowSandbox = previousPolicy;
     config.revenueCat.sandboxAllowedUserIds = previousAllowedIds;
@@ -242,7 +257,10 @@ test('private profile and Admin Studio responses expose one fresh effective acce
   const profile = await readFile('src/routes/profileRoutes.ts', 'utf8');
   assert.doesNotMatch(profile, /hasMemberAccess: user\.hasMemberAccess/);
   assert.match(profile, /isProSubscriber: subscriptionAccess\.isActive/);
-  assert.match(profile, /hasMemberAccess: user\.isYouTubeMember \|\| subscriptionAccess\.isActive/);
+  assert.match(profile, /isYouTubeMember: subscriptionAccess\.youtubeMembershipActive/);
+  assert.match(profile, /hasMemberAccess: subscriptionAccess\.hasMemberAccess/);
+  assert.match(profile, /memberAccessSource: subscriptionAccess\.memberAccessSource/);
+  assert.match(profile, /youtubeMembershipRecheckRequired:/);
   assert.match(profile, /subscriptionAccessReason: subscriptionAccess\.accessReason/);
   assert.match(profile, /subscriptionAccessSource: subscriptionAccess\.accessSource/);
 

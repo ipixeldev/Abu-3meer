@@ -17,7 +17,15 @@ import {
   listLeaderboardSeasons,
   saveManualLeaderboardSeason,
 } from '../services/leaderboardService.js';
-import { activeSubscriptionSql } from '../services/subscriptionAccess.js';
+import {
+  adjustUserPoints,
+  updatePointRuleSettings,
+} from '../services/pointsService.js';
+import {
+  activeMemberAccessSql,
+  activeSubscriptionSql,
+  activeYouTubeMembershipSql,
+} from '../services/subscriptionAccess.js';
 import {
   applySubscriptionAccessOverride,
   enforceSubscriptionAccess,
@@ -43,6 +51,32 @@ const leaderboardSeasonIdSchema = z.string()
   .min(1)
   .max(50)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+
+export const adminPointAdjustmentBodySchema = z.object({
+  amount: z.number().int().min(-5000).max(5000).refine(
+    value => value !== 0,
+    'The adjustment amount cannot be zero.',
+  ),
+  reason: z.string().trim().min(5).max(240),
+  idempotencyKey: z.string().trim().min(8).max(100)
+    .regex(/^[A-Za-z0-9:_-]+$/),
+}).strict();
+
+export const adminPointRuleBodySchema = z.object({
+  signUpBonus: z.number().int().min(0).max(500).optional(),
+  dailyStreak: z.number().int().min(0).max(500).optional(),
+  videoQuestion: z.number().int().min(0).max(500).optional(),
+  playerCard: z.number().int().min(0).max(500).optional(),
+  winnerOutcome: z.number().int().min(0).max(500).optional(),
+  firstScorer: z.number().int().min(0).max(500).optional(),
+  exactPrediction: z.number().int().min(0).max(500).optional(),
+  firstMembershipActivation: z.number().int().min(0).max(500).optional(),
+  membershipRenewal: z.number().int().min(0).max(500).optional(),
+  memberMultiplier: z.number().min(1).max(5).optional(),
+}).strict().refine(
+  value => Object.keys(value).length > 0,
+  'At least one point rule is required.',
+);
 
 async function resolveUserId(identifier: string): Promise<string | null> {
   const result = await query(
@@ -86,31 +120,14 @@ export async function adminRoutes(fastify: FastifyInstance) {
       `SELECT u.id, u.firebase_uid, u.email, u.username, u.display_name,
               u.avatar_url, u.country, u.country_code, u.supported_team,
               u.supported_team_logo,
-              COALESCE(
-                yl.is_member = TRUE
-                AND yl.verification_source = 'admin_snapshot'
-                AND EXISTS (
-                  SELECT 1
-                  FROM youtube_membership_snapshot_state snapshot_state
-                  JOIN youtube_membership_snapshot_imports snapshot_import
-                    ON snapshot_import.id = snapshot_state.active_import_id
-                   AND snapshot_import.expires_at > CURRENT_TIMESTAMP
-                  WHERE snapshot_state.singleton = TRUE
-                    AND snapshot_state.active_import_id = yl.snapshot_import_id
-                )
-                AND EXISTS (
-                  SELECT 1 FROM youtube_channel_claims claim
-                  WHERE claim.user_id = u.id
-                    AND claim.youtube_channel_id = yl.youtube_channel_id
-                    AND claim.status = 'approved'
-                ),
-                FALSE
-              ) AS is_youtube_member,
+              ${activeYouTubeMembershipSql('u.id')} AS is_youtube_member,
               ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
+              ${activeMemberAccessSql('u.id')} AS has_member_access,
               COALESCE(subscription_override.mode, 'store') AS subscription_access_mode,
               subscription_override.expires_at AS subscription_access_expires_at,
               subscription_entitlement.is_active AS subscription_store_is_active,
               subscription_entitlement.product_id AS subscription_store_product_id,
+              subscription_entitlement.store_name AS subscription_store_name,
               subscription_entitlement.expires_at AS subscription_store_expires_at,
               subscription_entitlement.will_renew AS subscription_store_will_renew,
               subscription_entitlement.is_sandbox AS subscription_store_is_sandbox,
@@ -139,26 +156,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
        LEFT JOIN user_roles ur ON ur.user_id = u.id
          AND (
            ur.role_id <> 'member'
-           OR COALESCE(
-             yl.is_member = TRUE
-             AND yl.verification_source = 'admin_snapshot'
-             AND EXISTS (
-               SELECT 1
-               FROM youtube_membership_snapshot_state snapshot_state
-               JOIN youtube_membership_snapshot_imports snapshot_import
-                 ON snapshot_import.id = snapshot_state.active_import_id
-                AND snapshot_import.expires_at > CURRENT_TIMESTAMP
-               WHERE snapshot_state.singleton = TRUE
-                 AND snapshot_state.active_import_id = yl.snapshot_import_id
-             )
-             AND EXISTS (
-               SELECT 1 FROM youtube_channel_claims claim
-               WHERE claim.user_id = u.id
-                 AND claim.youtube_channel_id = yl.youtube_channel_id
-                 AND claim.status = 'approved'
-             ),
-             FALSE
-           )
+           OR ${activeYouTubeMembershipSql('u.id')}
          )
        WHERE (
          $1::text IS NULL OR
@@ -172,23 +170,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
          $2::text IS NULL
          OR (
            $2 = 'member'
-           AND yl.is_member = TRUE
-           AND yl.verification_source = 'admin_snapshot'
-           AND EXISTS (
-             SELECT 1
-             FROM youtube_membership_snapshot_state snapshot_state
-             JOIN youtube_membership_snapshot_imports snapshot_import
-               ON snapshot_import.id = snapshot_state.active_import_id
-              AND snapshot_import.expires_at > CURRENT_TIMESTAMP
-             WHERE snapshot_state.singleton = TRUE
-               AND snapshot_state.active_import_id = yl.snapshot_import_id
-           )
-           AND EXISTS (
-             SELECT 1 FROM youtube_channel_claims claim
-             WHERE claim.user_id = u.id
-               AND claim.youtube_channel_id = yl.youtube_channel_id
-               AND claim.status = 'approved'
-           )
+           AND ${activeYouTubeMembershipSql('u.id')}
          )
          OR (
            $2 <> 'member'
@@ -226,6 +208,11 @@ export async function adminRoutes(fastify: FastifyInstance) {
           productId: typeof row.subscription_store_product_id === 'string'
             ? row.subscription_store_product_id
             : null,
+          store: row.subscription_store_name === 'app_store'
+            || row.subscription_store_name === 'play_store'
+            || row.subscription_store_name === 'test_store'
+            ? row.subscription_store_name
+            : null,
           expiresAt: isoTimestamp(row.subscription_store_expires_at),
           willRenew: row.subscription_store_will_renew === true,
           isSandbox: row.subscription_store_is_sandbox === true,
@@ -250,6 +237,17 @@ export async function adminRoutes(fastify: FastifyInstance) {
         supportedTeamLogo: row.supported_team_logo,
         isYouTubeMember: row.is_youtube_member,
         isProSubscriber: row.is_pro_subscriber === true,
+        hasMemberAccess: row.has_member_access === true,
+        memberAccessSource: row.has_member_access !== true
+          ? (subscriptionAccess.accessSource === 'admin' ? 'admin' : 'none')
+          : subscriptionAccess.isActive
+            ? subscriptionAccess.accessSource
+            : 'youtube',
+        memberAccessReason: row.has_member_access !== true
+          ? subscriptionAccess.accessReason
+          : subscriptionAccess.isActive
+            ? subscriptionAccess.accessReason
+            : 'youtube_verified',
         subscriptionAccessMode: subscriptionAccess.subscriptionAccessMode,
         subscriptionAccessExpiresAt:
           subscriptionAccess.subscriptionAccessExpiresAt,
@@ -578,10 +576,37 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
   // 2. Manual Point Adjustments (Permission: points.adjust) - Requires Mandatory Reason & Audit Trail
   fastify.post('/admin/users/:id/points', { preHandler: [requirePermission('points.adjust')] }, async (request, reply) => {
-    return reply.status(410).send({
-      error: 'XpAdjustmentsDisabled',
-      message: 'XP is earned from signup, daily login, correct predictions, and correct video-question answers; manual XP awards are disabled.',
-    });
+    const parsed = adminPointAdjustmentBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'ValidationError',
+        issues: parsed.error.issues,
+      });
+    }
+    const identifier = (request.params as { id: string }).id;
+    const targetUserId = await resolveUserId(identifier);
+    if (!targetUserId) {
+      return reply.status(404).send({ error: 'NotFound', message: 'User not found.' });
+    }
+    try {
+      return await adjustUserPoints({
+        actorId: request.user!.id,
+        targetUserId,
+        amount: parsed.data.amount,
+        reason: parsed.data.reason,
+        idempotencyKey: parsed.data.idempotencyKey,
+      });
+    } catch (error) {
+      const statusCode = Number((error as { statusCode?: unknown }).statusCode);
+      if ([404, 409, 422].includes(statusCode)) {
+        return reply.status(statusCode).send({
+          error: statusCode === 404 ? 'NotFound'
+            : statusCode === 409 ? 'Conflict' : 'InvalidAdjustment',
+          message: error instanceof Error ? error.message : 'Point adjustment failed.',
+        });
+      }
+      throw error;
+    }
   });
 
   fastify.get(
@@ -589,49 +614,67 @@ export async function adminRoutes(fastify: FastifyInstance) {
     { preHandler: [requirePermission('points.adjust')] },
     async () => {
       const result = await query(
-        `SELECT a.id, a.target_id, a.created_at, a.after_state,
+        `SELECT a.id, a.target_id, a.created_at, a.before_state, a.after_state,
                 admin.firebase_uid AS admin_uid,
                 admin.display_name AS admin_display_name,
                 ${activeSubscriptionSql('admin.id')} AS admin_is_pro_subscriber,
+                ${activeYouTubeMembershipSql('admin.id')} AS admin_is_youtube_member,
+                ${activeMemberAccessSql('admin.id')} AS admin_has_member_access,
                 target.firebase_uid AS target_uid,
                 target.display_name AS target_display_name,
                 target.username AS target_username,
-                ${activeSubscriptionSql('target.id')} AS target_is_pro_subscriber
+                ${activeSubscriptionSql('target.id')} AS target_is_pro_subscriber,
+                ${activeYouTubeMembershipSql('target.id')} AS target_is_youtube_member,
+                ${activeMemberAccessSql('target.id')} AS target_has_member_access
          FROM admin_audit_logs a
-         JOIN users admin ON admin.id = a.admin_user_id
+         LEFT JOIN users admin ON admin.id = a.admin_user_id
          LEFT JOIN users target ON target.id::text = a.target_id
          WHERE a.action = 'points.adjust'
          ORDER BY a.created_at DESC
          LIMIT 50`,
       );
       return result.rows.map((row) => {
-        const state = row.after_state || {};
-        const delta = Number(state.amount || state.pointsAwarded || 0);
-        const totalAfter = Number(state.totalPoints || 0);
-        const monthlyAfter = Number(state.monthlyPoints || 0);
-        const seasonAfter = Number(state.seasonPoints || 0);
+        const before = row.before_state && typeof row.before_state === 'object'
+          ? row.before_state : {};
+        const state = row.after_state && typeof row.after_state === 'object'
+          ? row.after_state : {};
+        const delta = Number(state.amount ?? state.pointsAwarded ?? 0);
+        const totalAfter = Number(state.totalPoints ?? 0);
+        const monthlyAfter = Number(state.monthlyPoints ?? 0);
+        const seasonAfter = Number(state.seasonPoints ?? 0);
+        const adminIsProSubscriber = row.admin_is_pro_subscriber === true;
+        const adminIsYouTubeMember = row.admin_is_youtube_member === true;
+        const targetIsProSubscriber = row.target_is_pro_subscriber === true;
+        const targetIsYouTubeMember = row.target_is_youtube_member === true;
         return {
           id: row.id,
-          adminId: row.admin_uid || '',
-          adminDisplayName: row.admin_display_name || '',
-          adminIsProSubscriber: row.admin_is_pro_subscriber === true,
+          adminId: row.admin_uid || state.adminId || '',
+          adminDisplayName:
+            row.admin_display_name
+            || state.adminDisplayName
+            || 'Former administrator',
+          adminIsProSubscriber,
+          adminIsYouTubeMember,
+          adminHasMemberAccess: row.admin_has_member_access === true,
           targetUserId: row.target_uid || row.target_id || '',
           targetDisplayName: row.target_display_name || '',
           targetUsername: row.target_username || '',
-          targetIsProSubscriber: row.target_is_pro_subscriber === true,
+          targetIsProSubscriber,
+          targetIsYouTubeMember,
+          targetHasMemberAccess: row.target_has_member_access === true,
           delta,
           reason: String(state.reason || ''),
-          totalBefore: Math.max(0, totalAfter - delta),
+          totalBefore: Number(before.totalPoints ?? Math.max(0, totalAfter - delta)),
           totalAfter,
-          monthlyBefore: Math.max(0, monthlyAfter - delta),
+          monthlyBefore: Number(before.monthlyPoints ?? Math.max(0, monthlyAfter - delta)),
           monthlyAfter,
-          seasonBefore: Math.max(0, seasonAfter - delta),
+          seasonBefore: Number(before.seasonPoints ?? Math.max(0, seasonAfter - delta)),
           seasonAfter,
-          periodFloorApplied: false,
+          periodFloorApplied: state.periodFloorApplied === true,
           monthlyRolledOver: false,
           seasonRolledOver: false,
-          monthlyPeriod: '',
-          seasonId: '',
+          monthlyPeriod: String(state.monthlyPeriod || ''),
+          seasonId: String(state.seasonId || ''),
           createdAt: row.created_at,
         };
       });
@@ -781,27 +824,19 @@ export async function adminRoutes(fastify: FastifyInstance) {
 
   // 5. Point Rules Configuration (Permission: settings.manage)
   fastify.put('/admin/point-rules', { preHandler: [requirePermission('settings.manage')] }, async (request, reply) => {
-    const schema = z.record(z.string(), z.number().int().min(1).max(500));
-    const parsed = schema.safeParse(request.body);
+    const parsed = adminPointRuleBodySchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
     }
-
-    for (const [key, basePoints] of Object.entries(parsed.data)) {
-      await query(
-        `UPDATE point_rules SET base_points = $1, updated_at = CURRENT_TIMESTAMP WHERE key = $2`,
-        [basePoints, key]
-      );
-    }
-
-    // Audit log
-    await query(
-      `INSERT INTO admin_audit_logs (admin_user_id, action, target_entity, target_id, after_state)
-       VALUES ($1, 'point_rules.update', 'settings', 'point_rules', $2)`,
-      [request.user!.id, JSON.stringify(parsed.data)]
+    const updatedRules = await updatePointRuleSettings(
+      request.user!.id,
+      parsed.data,
     );
-
-    return { success: true, updatedRules: parsed.data };
+    await redis.del(
+      'cache:challenges:active:member',
+      'cache:challenges:active:public',
+    ).catch(() => undefined);
+    return { success: true, updatedRules };
   });
 
   // 6. Security & Audit Logs (Permission: audit.view)

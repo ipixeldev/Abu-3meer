@@ -513,6 +513,90 @@ void main() {
   });
 
   testWidgets(
+    'verified YouTube membership takes priority over a stale sandbox receipt',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final store = _Store();
+      addTearDown(store.dispose);
+      final expiresAt = DateTime(2026, 9, 10);
+      final profile = _profile.copyWith(
+        membershipMultiplier: 2,
+        hasMemberAccess: true,
+        memberAccessSource: 'youtube',
+        memberAccessReason: 'youtube_verified',
+        memberAccessExpiresAt: expiresAt,
+        youtubeMembershipExpiresAt: expiresAt,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SubscriptionPanel(
+              repository: _Repository(),
+              profile: profile,
+              subscriptionService: store,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('YouTube membership active'), findsOneWidget);
+      expect(find.text('Test subscription'), findsNothing);
+      expect(profile.hasMemberAccess, isTrue);
+      await tester.tap(find.byKey(const Key('subscription-open-details')));
+      await tester.pumpAndSettle();
+      expect(find.text('YOUTUBE MEMBERSHIP'), findsOneWidget);
+      expect(
+        find.textContaining('does not auto-renew through this app'),
+        findsWidgets,
+      );
+      expect(
+        find.byKey(const Key('youtube-membership-recheck')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Test subscription'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'expired YouTube verification asks for recheck instead of calling it test',
+    (tester) async {
+      final store = _Store();
+      addTearDown(store.dispose);
+      final profile = _profile.copyWith(
+        hasMemberAccess: false,
+        youtubeMembershipRecheckRequired: true,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SubscriptionPanel(
+              repository: _Repository(),
+              profile: profile,
+              subscriptionService: store,
+            ),
+          ),
+        ),
+      );
+
+      expect(find.text('YouTube membership needs recheck'), findsOneWidget);
+      expect(find.text('Test subscription'), findsNothing);
+      await tester.tap(find.byKey(const Key('subscription-open-details')));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('previous YouTube membership check has expired'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Test subscription'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
     'fresh access response replaces a stale profile reason until profile rebuild',
     (tester) async {
       final store = _Store();
@@ -563,6 +647,8 @@ void main() {
     final store = _Store(active: false);
     addTearDown(store.dispose);
     final blockedProfile = _profile.copyWith(
+      membershipMultiplier: 2,
+      hasMemberAccess: false,
       subscriptionAccessMode: SubscriptionAccessMode.inactive,
       subscriptionAccessReason: 'admin_revoked',
     );
@@ -634,7 +720,9 @@ void main() {
           ),
         );
         expect(
-          find.text(language == 'en' ? 'Subscription active' : 'الاشتراك نشط'),
+          find.text(
+            language == 'en' ? 'Sandbox active' : 'اشتراك تجريبي مفعّل',
+          ),
           findsOneWidget,
         );
         expect(find.text('View plans'), findsNothing);
@@ -667,7 +755,9 @@ void main() {
           findsNothing,
         );
         expect(
-          find.text(language == 'en' ? 'Subscription active' : 'الاشتراك نشط'),
+          find.text(
+            language == 'en' ? 'Sandbox active' : 'اشتراك تجريبي مفعّل',
+          ),
           findsOneWidget,
         );
       },

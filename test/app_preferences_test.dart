@@ -140,6 +140,32 @@ void main() {
       );
     });
 
+    test('localizes membership activation and renewal ledger rows', () {
+      expect(
+        localizedPointTransactionReason(
+          sourceType: 'membership_activation',
+          storedReason: 'First membership activation',
+          language: AbuLanguage.english,
+        ),
+        'First membership activation',
+      );
+      expect(
+        localizedPointTransactionReason(
+          sourceType: 'membership_renewal',
+          storedReason: 'Membership renewal',
+          language: AbuLanguage.arabic,
+        ),
+        'مكافأة تجديد العضوية',
+      );
+      expect(
+        localizedPointSourceLabel(
+          sourceType: 'membership_activation',
+          language: AbuLanguage.arabic,
+        ),
+        'تفعيل العضوية',
+      );
+    });
+
     test('does not leak Arabic fragments into an English fallback', () {
       final label = localizedPointTransactionReason(
         sourceType: 'custom_event',

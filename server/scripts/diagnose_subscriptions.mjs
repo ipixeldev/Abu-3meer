@@ -23,16 +23,19 @@ function dateValue(value) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function legacyReason(source, now, maxAgeSeconds, allowSandbox) {
+function legacyReason(source, now, allowSandbox) {
   const expires = dateValue(source.expiresAt);
   const verified = dateValue(source.verifiedAt);
   if (!source.productId) return 'no_entitlement';
   if (expires !== null && expires <= now) return 'expired';
   if (!source.isActive || expires === null) return 'inactive';
-  if (verified === null || verified > now + 60_000 || verified <= now - maxAgeSeconds * 1000) {
+  if (verified === null || verified > now + 60_000) {
     return 'verification_required';
   }
-  if (source.isSandbox && !allowSandbox) return 'sandbox_not_allowed';
+  if (source.isSandbox
+      && source.store !== 'app_store'
+      && source.store !== 'play_store'
+      && !allowSandbox) return 'sandbox_not_allowed';
   return 'active';
 }
 
@@ -43,13 +46,12 @@ export async function diagnoseSubscription({ username, execute, enforce, policy,
     runtimeSupportsAccessReasons: policy.runtimeSupportsAccessReasons === true,
     serverKeyConfigured: policy.serverKeyConfigured === true,
     sandboxAllowed: policy.allowSandbox === true,
-    verificationMaxAgeSeconds: policy.maxAgeSeconds,
     readOnly: true,
   };
   // Restrict the report to one exact username, never dump the members/users
   // table. Parameter binding prevents a supplied username becoming SQL.
   const result = await execute(
-    `SELECT u.id, s.user_id AS subscription_user_id, s.is_active, s.product_id,
+    `SELECT u.id, s.user_id AS subscription_user_id, s.is_active, s.product_id, s.store_name,
             s.expires_at, s.will_renew, s.is_sandbox, s.verified_at
      FROM users u
      LEFT JOIN user_subscription_entitlements s
@@ -66,6 +68,8 @@ export async function diagnoseSubscription({ username, execute, enforce, policy,
     entitlementId: 'abu_3meer_pro',
     isActive: row.is_active === true,
     productId: typeof row.product_id === 'string' ? row.product_id : null,
+    store: ['app_store', 'play_store', 'test_store'].includes(row.store_name)
+      ? row.store_name : null,
     expiresAt: expires === null ? null : new Date(expires).toISOString(),
     willRenew: row.will_renew === true,
     isSandbox: row.is_sandbox === true,
@@ -79,7 +83,7 @@ export async function diagnoseSubscription({ username, execute, enforce, policy,
   const knownReasons = new Set([
     'active', 'sandbox_not_allowed', 'no_entitlement', 'expired', 'verification_required', 'inactive',
   ]);
-  const derivedReason = legacyReason(source, now, policy.maxAgeSeconds, sandboxAllowed);
+  const derivedReason = legacyReason(source, now, sandboxAllowed);
   return {
     ...report,
     sandboxAllowed,
@@ -87,13 +91,15 @@ export async function diagnoseSubscription({ username, execute, enforce, policy,
     snapshotPresent: row.subscription_user_id != null,
     entitlementId: source.entitlementId,
     productId: source.productId,
+    store: source.store,
     sourceEntitlementActive: source.isActive,
     isSandbox: source.isSandbox,
     expiresAt: source.expiresAt,
     verifiedAt: source.verifiedAt,
     expired: expires !== null && expires <= now,
-    verificationFresh: verified !== null && verified <= now + 60_000
-      && verified > now - policy.maxAgeSeconds * 1000,
+    verificationTimestampValid: verified !== null && verified <= now + 60_000,
+    verificationAgeSeconds: verified === null
+      ? null : Math.max(0, Math.floor((now - verified) / 1000)),
     accessActive: status.isActive === true,
     accessReason: knownReasons.has(status.accessReason) ? status.accessReason
       : status.isActive === true ? 'active'
@@ -128,7 +134,6 @@ async function main() {
         serverKeyConfigured: config.revenueCat.secretApiKey.startsWith('sk_'),
         allowSandbox: config.revenueCat.allowSandbox,
         sandboxAllowedUserIds: config.revenueCat.sandboxAllowedUserIds,
-        maxAgeSeconds: config.revenueCat.verificationMaxAgeSeconds,
         runtimeSupportsAccessReasons: typeof service.emptySubscriptionStatus().accessReason === 'string',
       },
     });

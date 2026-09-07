@@ -589,6 +589,7 @@ implements YouTubeMembershipSnapshotStore {
              ON approved_claim.user_id = l.user_id
             AND approved_claim.youtube_channel_id = l.youtube_channel_id
             AND approved_claim.status = 'approved'
+            AND approved_claim.approved_snapshot_import_id = $1
            LEFT JOIN youtube_membership_snapshot_members m
              ON m.youtube_channel_id = l.youtube_channel_id
             AND m.import_id = $1
@@ -624,6 +625,7 @@ implements YouTubeMembershipSnapshotStore {
              ON approved_claim.user_id = l.user_id
             AND approved_claim.youtube_channel_id = l.youtube_channel_id
             AND approved_claim.status = 'approved'
+            AND approved_claim.approved_snapshot_import_id = $1
            LEFT JOIN youtube_membership_snapshot_members m
              ON m.youtube_channel_id = l.youtube_channel_id
             AND m.import_id = $1
@@ -670,6 +672,7 @@ implements YouTubeMembershipSnapshotStore {
            ON approved_claim.user_id = link.user_id
           AND approved_claim.youtube_channel_id = link.youtube_channel_id
           AND approved_claim.status = 'approved'
+          AND approved_claim.approved_snapshot_import_id = link.snapshot_import_id
          WHERE link.is_member = TRUE
          ON CONFLICT DO NOTHING`,
       );
@@ -687,10 +690,13 @@ implements YouTubeMembershipSnapshotStore {
            ON approved_claim.user_id = l.user_id
           AND approved_claim.youtube_channel_id = l.youtube_channel_id
           AND approved_claim.status = 'approved'
+          AND approved_claim.approved_snapshot_import_id = $1
          JOIN youtube_membership_snapshot_members m
            ON m.youtube_channel_id = l.youtube_channel_id
           AND m.import_id = $1
-          AND m.status = 'active'`,
+          AND m.status = 'active'
+         WHERE l.is_member = TRUE
+           AND l.snapshot_import_id = $1`,
         [importId],
       );
       const matchedUserCount = Number(matched.rows[0]?.matched ?? 0);

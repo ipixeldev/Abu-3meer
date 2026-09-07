@@ -8,8 +8,8 @@ The Flutter SDK uses the authenticated server account's UUID (`/profile/me` → 
 
 1. In the RevenueCat project's API keys page, create a secret REST API v1 key. Put it only in `server/.env` as `REVENUECAT_SECRET_API_KEY=sk_...`. The public `test_...` SDK key is not this credential.
 2. Generate a random webhook authorization value and set `REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer <random value>"` in the same file. Do not commit this file or paste the secret into chat.
-3. Set `REVENUECAT_ALLOW_SANDBOX=false` for live production. For an intentional TestFlight/Test Store test deployment, set it to `true` to allow test receipts to grant member benefits; return it to `false` before serving paid production customers. Test Store SDK keys cannot be used for App Store purchases.
-4. Deploy the code using the existing repository release workflow. The API startup runs migration `041_revenuecat_subscriptions.sql`; Docker Compose now forwards all three environment variables. Recreating the API container is required after `.env` changes (a plain restart does not reload Compose environment).
+3. Keep `REVENUECAT_ALLOW_SANDBOX=false` in production. Genuine `app_store` and `play_store` sandbox receipts grant access automatically; this switch is only for RevenueCat Test Store or legacy rows with unknown provider provenance.
+4. Deploy the code using the existing repository release workflow. API startup applies migrations automatically, including migration 044 which persists RevenueCat store provenance. Recreating the API container is required after `.env` changes (a plain restart does not reload Compose environment).
 5. In RevenueCat → Integrations → Webhooks, configure URL `https://api.abu3meer.com/api/v1/subscriptions/webhook`, the exact Authorization header from step 2, and the appropriate app/environments. Send all event types so renewals, refunds, expirations, and transfers refresh the backend. Use Send Test to verify a 200 response.
 
 The API does not need the App Store `.p8` or public SDK key. RevenueCat holds the store credentials; the server uses only its secret REST API key.
@@ -36,9 +36,9 @@ Successful sync/status responses:
 }
 ```
 
-Missing server credentials produce 503 with code `subscriptions_not_configured`. Verification failures leave the previous stored state unchanged, but access still expires at the paid/grace-period end and at most 24 hours after the last successful check. A cancellation keeps access through the paid term; a verified refund removes paid access.
+Missing server credentials produce 503 with code `subscriptions_not_configured`. Verification failures leave the last authenticated RevenueCat state unchanged. An active cached entitlement remains usable through its paid/grace-period `expiresAt`, so background rewards do not depend on the customer reopening the app every 24 hours. RevenueCat webhooks and explicit app syncs update renewals, refunds, transfers, and revocations; expiry is still enforced locally on every read. A cancellation keeps access through the paid term, while a verified refund removes paid access.
 
-`/auth/sync` and `/profile/me` return separate `isYouTubeMember`, `isProSubscriber`, and `hasMemberAccess` fields. Valid CSV membership OR an active server-verified subscription grants Members Zone videos, member-only challenges, member notification eligibility (subject to notification preferences), and the existing x2 eligible gameplay XP. Signup/daily attendance XP remains unmultiplied. CSV imports and subscription updates never overwrite one another, and paid subscriptions never grant staff roles.
+`/auth/sync` and `/profile/me` return separate `isYouTubeMember`, `isProSubscriber`, and `hasMemberAccess` fields. Valid CSV membership OR an active server-verified subscription grants Members videos, member-only challenges, member notification eligibility (subject to notification preferences), and the configured member multiplier on eligible prediction types. Signup, daily attendance, word/player answers, activation, and renewal XP remain unmultiplied. CSV imports and subscription updates never overwrite one another, and paid subscriptions never grant staff roles.
 
 ## Verification before release
 

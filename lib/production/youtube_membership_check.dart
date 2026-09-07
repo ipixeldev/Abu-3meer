@@ -18,6 +18,9 @@ class YouTubeMembershipCheckResult {
     this.snapshotExpiresAt,
     this.membershipLevelId,
     this.memberSince,
+    this.accessSource = 'none',
+    this.willRenew = false,
+    this.recheckRequiredAt,
   });
 
   final YouTubeMembershipCheckStatus status;
@@ -27,6 +30,9 @@ class YouTubeMembershipCheckResult {
   final DateTime? memberSince;
   final DateTime verifiedAt;
   final DateTime? snapshotExpiresAt;
+  final String accessSource;
+  final bool willRenew;
+  final DateTime? recheckRequiredAt;
 
   factory YouTubeMembershipCheckResult.fromJson(dynamic value) {
     if (value is! Map) {
@@ -53,6 +59,15 @@ class YouTubeMembershipCheckResult {
     final snapshotExpiresAt = snapshotExpiresAtValue == null
         ? null
         : DateTime.tryParse(snapshotExpiresAtValue.toString().trim());
+    final accessSource =
+        (map['accessSource'] ?? (isMember == true ? 'youtube' : 'none'))
+            .toString()
+            .trim();
+    final willRenewValue = map['willRenew'];
+    final recheckRequiredAtValue = map['recheckRequiredAt'];
+    final recheckRequiredAt = recheckRequiredAtValue == null
+        ? snapshotExpiresAt
+        : DateTime.tryParse(recheckRequiredAtValue.toString().trim());
     final statusMatchesFlag =
         (status == YouTubeMembershipCheckStatus.active && isMember == true) ||
         (status != YouTubeMembershipCheckStatus.active && isMember == false);
@@ -66,8 +81,12 @@ class YouTubeMembershipCheckResult {
         (requiresChannel && !hasValidChannel) ||
         (channelId != null && !hasValidChannel) ||
         (snapshotExpiresAtValue != null && snapshotExpiresAt == null) ||
+        !const {'youtube', 'none'}.contains(accessSource) ||
+        (willRenewValue != null && willRenewValue is! bool) ||
+        willRenewValue == true ||
+        (recheckRequiredAtValue != null && recheckRequiredAt == null) ||
         (status == YouTubeMembershipCheckStatus.active &&
-            snapshotExpiresAt == null)) {
+            (snapshotExpiresAt == null || accessSource != 'youtube'))) {
       throw const FormatException('Invalid YouTube membership-check response.');
     }
 
@@ -90,6 +109,9 @@ class YouTubeMembershipCheckResult {
       memberSince: memberSince?.toLocal(),
       verifiedAt: verifiedAt.toLocal(),
       snapshotExpiresAt: snapshotExpiresAt?.toLocal(),
+      accessSource: accessSource,
+      willRenew: false,
+      recheckRequiredAt: recheckRequiredAt?.toLocal(),
     );
   }
 }

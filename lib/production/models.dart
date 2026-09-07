@@ -69,6 +69,12 @@ class AbuUserProfile {
     this.subscriptionAccessExpiresAt,
     this.subscriptionAccessReason = 'unknown',
     this.subscriptionAccessSource = 'none',
+    this.serverHasMemberAccess,
+    this.memberAccessSource = 'none',
+    this.memberAccessReason = 'unknown',
+    this.memberAccessExpiresAt,
+    this.youtubeMembershipExpiresAt,
+    this.youtubeMembershipRecheckRequired = false,
   });
 
   final String uid;
@@ -78,6 +84,10 @@ class AbuUserProfile {
   final DateTime? subscriptionAccessExpiresAt;
   final String subscriptionAccessReason;
   final String subscriptionAccessSource;
+  final bool? serverHasMemberAccess;
+  final String memberAccessSource;
+  final String memberAccessReason;
+  final DateTime? memberAccessExpiresAt;
   final String email;
   final String username;
   final String displayName;
@@ -107,6 +117,8 @@ class AbuUserProfile {
   final String youtubeMembershipLevelId;
   final DateTime? youtubeMembershipVerifiedAt;
   final DateTime? youtubeMemberSince;
+  final DateTime? youtubeMembershipExpiresAt;
+  final bool youtubeMembershipRecheckRequired;
 
   /// Explicit PostgreSQL onboarding state. Legacy Firestore-only profiles do
   /// not have this field, so `null` deliberately falls back to field inference.
@@ -129,7 +141,8 @@ class AbuUserProfile {
   bool get canManageRoles => !isGuest && role == 'superAdmin';
   bool get canManageSubscriptions => isAdmin;
   bool get isYouTubeMember => membershipMultiplier > 1;
-  bool get hasMemberAccess => isYouTubeMember || isProSubscriber;
+  bool get hasMemberAccess =>
+      serverHasMemberAccess ?? (isYouTubeMember || isProSubscriber);
   String get countryFlag {
     final c = countryCode.trim().isNotEmpty
         ? countryCode.trim().toLowerCase()
@@ -223,9 +236,17 @@ class AbuUserProfile {
     bool clearSubscriptionAccessExpiresAt = false,
     String? subscriptionAccessReason,
     String? subscriptionAccessSource,
+    bool? hasMemberAccess,
+    String? memberAccessSource,
+    String? memberAccessReason,
+    DateTime? memberAccessExpiresAt,
+    bool clearMemberAccessExpiresAt = false,
     String? youtubeMembershipLevelId,
     DateTime? youtubeMembershipVerifiedAt,
     DateTime? youtubeMemberSince,
+    DateTime? youtubeMembershipExpiresAt,
+    bool clearYoutubeMembershipExpiresAt = false,
+    bool? youtubeMembershipRecheckRequired,
   }) => AbuUserProfile(
     uid: uid,
     backendUserId: backendUserId,
@@ -239,6 +260,12 @@ class AbuUserProfile {
         subscriptionAccessReason ?? this.subscriptionAccessReason,
     subscriptionAccessSource:
         subscriptionAccessSource ?? this.subscriptionAccessSource,
+    serverHasMemberAccess: hasMemberAccess ?? serverHasMemberAccess,
+    memberAccessSource: memberAccessSource ?? this.memberAccessSource,
+    memberAccessReason: memberAccessReason ?? this.memberAccessReason,
+    memberAccessExpiresAt: clearMemberAccessExpiresAt
+        ? null
+        : memberAccessExpiresAt ?? this.memberAccessExpiresAt,
     email: email ?? this.email,
     username: username ?? this.username,
     displayName: displayName ?? this.displayName,
@@ -271,6 +298,12 @@ class AbuUserProfile {
     youtubeMembershipVerifiedAt:
         youtubeMembershipVerifiedAt ?? this.youtubeMembershipVerifiedAt,
     youtubeMemberSince: youtubeMemberSince ?? this.youtubeMemberSince,
+    youtubeMembershipExpiresAt: clearYoutubeMembershipExpiresAt
+        ? null
+        : youtubeMembershipExpiresAt ?? this.youtubeMembershipExpiresAt,
+    youtubeMembershipRecheckRequired:
+        youtubeMembershipRecheckRequired ??
+        this.youtubeMembershipRecheckRequired,
   );
 
   factory AbuUserProfile.fromDocument(
@@ -289,6 +322,9 @@ class AbuUserProfile {
       role: data['role'] as String? ?? 'user',
       membershipMultiplier: (data['membershipMultiplier'] as num? ?? 1)
           .toDouble(),
+      serverHasMemberAccess: data['hasMemberAccess'] is bool
+          ? data['hasMemberAccess'] as bool
+          : null,
       totalPoints: (data['totalPoints'] as num? ?? 0).toInt(),
       monthlyPoints: (data['monthlyPoints'] as num? ?? 0).toInt(),
       seasonPoints: (data['seasonPoints'] as num? ?? 0).toInt(),
@@ -1339,16 +1375,20 @@ class AdminPointAdjustment {
     required this.createdAt,
     this.adminIsProSubscriber = false,
     this.targetIsProSubscriber = false,
+    this.adminHasMemberAccess = false,
+    this.targetHasMemberAccess = false,
   });
 
   final String id;
   final String adminId;
   final String adminDisplayName;
   final bool adminIsProSubscriber;
+  final bool adminHasMemberAccess;
   final String targetUserId;
   final String targetDisplayName;
   final String targetUsername;
   final bool targetIsProSubscriber;
+  final bool targetHasMemberAccess;
   final int delta;
   final String reason;
   final int totalBefore;
@@ -1373,10 +1413,18 @@ class AdminPointAdjustment {
       adminId: data['adminId'] as String? ?? '',
       adminDisplayName: data['adminDisplayName'] as String? ?? '',
       adminIsProSubscriber: data['adminIsProSubscriber'] == true,
+      adminHasMemberAccess: data['adminHasMemberAccess'] is bool
+          ? data['adminHasMemberAccess'] as bool
+          : data['adminIsProSubscriber'] == true ||
+                data['adminIsYouTubeMember'] == true,
       targetUserId: data['targetUserId'] as String? ?? '',
       targetDisplayName: data['targetDisplayName'] as String? ?? '',
       targetUsername: data['targetUsername'] as String? ?? '',
       targetIsProSubscriber: data['targetIsProSubscriber'] == true,
+      targetHasMemberAccess: data['targetHasMemberAccess'] is bool
+          ? data['targetHasMemberAccess'] as bool
+          : data['targetIsProSubscriber'] == true ||
+                data['targetIsYouTubeMember'] == true,
       delta: (data['delta'] as num? ?? 0).toInt(),
       reason: data['reason'] as String? ?? '',
       totalBefore: (data['totalBefore'] as num? ?? 0).toInt(),
@@ -1454,6 +1502,7 @@ class LeaderboardEntry {
   final int seasonPoints;
   final bool isMember;
   final bool isProSubscriber;
+  bool get hasMemberAccess => isMember || isProSubscriber;
   final int totalPoints;
   final String monthlyPeriod;
   final String seasonId;

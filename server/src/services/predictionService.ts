@@ -7,7 +7,7 @@ import {
 import { refreshStaleYouTubeMembershipsForUsers } from './csvMembershipService.js';
 import { normalizeChallengeAnswer } from './challengeService.js';
 import { config } from '../config.js';
-import { activeSubscriptionSql } from './subscriptionAccess.js';
+import { activeMemberAccessSql } from './subscriptionAccess.js';
 import {
   createNotificationCampaign,
   type CreatedNotificationCampaign,
@@ -248,28 +248,7 @@ async function settleMatchPredictionsUnlocked(
   const predictionsRes = await query(
     `SELECT p.id, p.user_id, p.home_score, p.away_score, p.first_scorer,
             p.rewarded,
-            COALESCE(
-              yl.is_member = TRUE
-              AND yl.verification_source = 'admin_snapshot'
-              AND EXISTS (
-                SELECT 1
-                FROM youtube_membership_snapshot_state snapshot_state
-                JOIN youtube_membership_snapshot_imports snapshot_import
-                  ON snapshot_import.id = snapshot_state.active_import_id
-                 AND snapshot_import.expires_at > CURRENT_TIMESTAMP
-                WHERE snapshot_state.singleton = TRUE
-                  AND snapshot_state.active_import_id = yl.snapshot_import_id
-              )
-              AND EXISTS (
-                SELECT 1
-                FROM youtube_channel_claims approved_claim
-                WHERE approved_claim.user_id = p.user_id
-                  AND approved_claim.youtube_channel_id = yl.youtube_channel_id
-                  AND approved_claim.status = 'approved'
-              ),
-              FALSE
-            ) AS is_youtube_member,
-            ${activeSubscriptionSql('p.user_id')} AS is_pro_subscriber
+            ${activeMemberAccessSql('p.user_id')} AS has_member_access
      FROM predictions p
      LEFT JOIN youtube_account_links yl ON yl.user_id = p.user_id
      WHERE p.match_id = $1 AND NOT p.rewarded`,
@@ -331,7 +310,8 @@ async function settleMatchPredictionsUnlocked(
         basePoints: component.basePoints,
         multiplier: memberMultiplierForSource(
           component.sourceType,
-          pred.is_youtube_member === true || pred.is_pro_subscriber === true,
+          pred.has_member_access === true,
+          rules.memberMultiplier ?? config.pointDefaults.memberMultiplier,
         ),
         description: `${component.label}: ${match.home_team} vs ${match.away_team}`,
         idempotencyKey: `pred_reward:${pred.id}:${component.key}`,

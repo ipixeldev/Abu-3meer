@@ -18,12 +18,18 @@ void main() {
         'memberSince': '2026-01-02T12:00:00.000Z',
         'verifiedAt': verifiedAt,
         'snapshotExpiresAt': expiresAt,
+        'accessSource': 'youtube',
+        'willRenew': false,
+        'recheckRequiredAt': expiresAt,
       },
     });
     expect(active.status, YouTubeMembershipCheckStatus.active);
     expect(active.isYouTubeMember, isTrue);
     expect(active.youtubeChannelId, channelId);
     expect(active.membershipLevelId, 'gold');
+    expect(active.accessSource, 'youtube');
+    expect(active.willRenew, isFalse);
+    expect(active.recheckRequiredAt?.toUtc(), DateTime.utc(2026, 9, 9, 12));
 
     final notMember = parseYouTubeMembershipCheckEnvelope({
       'membership': {
@@ -102,6 +108,15 @@ void main() {
     expect(repository, isNot(contains('.authorizeScopes(')));
     expect(ui, contains("Key('youtube-membership-check-dialog')"));
     expect(ui, contains('CHECK MEMBERSHIP'));
+    expect(
+      ui,
+      contains(
+        'await repository.refreshProfile(\n'
+        '                                      profile.uid,\n'
+        '                                      force: true,',
+      ),
+      reason: 'settings must refresh profile/badge after a successful check',
+    );
 
     final executableClient = '$api\n$repository\n$ui\n$admin';
     expect(executableClient, isNot(contains('youtube-channel-claim-input')));

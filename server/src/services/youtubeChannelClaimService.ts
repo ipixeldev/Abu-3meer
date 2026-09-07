@@ -32,6 +32,7 @@ const claimProjection = `
          AND snapshot_member.youtube_channel_id = c.youtube_channel_id
          AND snapshot_member.status = 'active'
         WHERE snapshot_state.singleton = TRUE
+          AND c.approved_snapshot_import_id = snapshot_state.active_import_id
       ) THEN 'active' ELSE 'lapsed' END
     ELSE c.status
   END AS effective_status`;

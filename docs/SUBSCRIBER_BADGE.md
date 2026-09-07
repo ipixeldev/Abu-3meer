@@ -1,15 +1,18 @@
 # Subscriber badge
 
-The green-circle/white-star badge is shown beside active app subscribers' names
+The green-circle/white-star badge is shown beside active members' names
 on profiles, monthly/season leaderboards, settings, and staff user/audit lists.
-Both Ostoora3 billing plans use the same badge. CSV membership and staff roles
-remain separate and do not imply an app subscription.
+Both Ostoora3 billing plans, a current verified YouTube membership, and an
+explicit administrator access grant use the same badge. Staff roles alone do
+not imply membership.
 
-The server derives `isProSubscriber` from its verified `abu_3meer_pro`
-entitlement. Public responses expose only the boolean, not billing details.
-Expiration/removal takes effect when fresh server data is loaded. Deploy the
-updated server code as well as the Flutter build for public-profile and
-leaderboard badges; older servers safely render no subscriber badge.
+The server derives `hasMemberAccess` from its effective, override-aware access
+decision. Public responses expose only the badge/access boolean, not billing
+details. Expiration, a YouTube recheck requirement, or an admin block takes
+effect when fresh server data is loaded. Genuine App Store and Google Play
+sandbox purchases receive the badge for testing; synthetic RevenueCat Test
+Store receipts remain subject to the explicit server policy. Deploy the server
+and Flutter build together so every public profile and leaderboard agrees.
 
 Asset: `assets/images/subscriber_badge_source.jpg` (626 × 548).
 This is an unchanged binary copy of the user's replacement JPG. `SubscriberBadge`

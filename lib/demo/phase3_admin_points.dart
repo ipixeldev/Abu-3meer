@@ -253,7 +253,7 @@ class _AdminPointAdjustmentDialogState
                         '  ·  @${user.username}'
                         '${user.email.isEmpty ? '' : '  ·  ${user.email}'}'
                         '${user.suspended ? '  ·  ${abuText(context, 'SUSPENDED', 'موقوف')}' : ''}',
-                        isSubscriber: user.isProSubscriber,
+                        isSubscriber: user.hasMemberAccess,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -546,7 +546,7 @@ class _AdminPointAdjustmentDialogState
             children: [
               SubscriberName(
                 '${user.displayName} · @${user.username}',
-                isSubscriber: user.isProSubscriber,
+                isSubscriber: user.hasMemberAccess,
                 style: _display(19),
               ),
               const SizedBox(height: 10),
@@ -701,7 +701,7 @@ class _PointAdjustmentAuditTile extends StatelessWidget {
                   children: [
                     SubscriberName(
                       userLabel,
-                      isSubscriber: adjustment.targetIsProSubscriber,
+                      isSubscriber: adjustment.targetHasMemberAccess,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(fontWeight: FontWeight.w800),
@@ -773,7 +773,7 @@ class _PointAdjustmentAuditTile extends StatelessWidget {
               'By ${adjustment.adminDisplayName.isEmpty ? adjustment.adminId : adjustment.adminDisplayName}',
               'بواسطة ${adjustment.adminDisplayName.isEmpty ? adjustment.adminId : adjustment.adminDisplayName}',
             ),
-            isSubscriber: adjustment.adminIsProSubscriber,
+            isSubscriber: adjustment.adminHasMemberAccess,
             badgeSize: 13,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,

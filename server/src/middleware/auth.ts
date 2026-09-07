@@ -9,7 +9,11 @@ import {
 } from '../services/pointsService.js';
 import { redactRequestUrl } from '../security/logRedaction.js';
 import { googleProviderSubjectFromFirebaseIdentities } from '../services/firebaseIdentityService.js';
-import { activeSubscriptionSql } from '../services/subscriptionAccess.js';
+import {
+  activeMemberAccessSql,
+  activeSubscriptionSql,
+  activeYouTubeMembershipSql,
+} from '../services/subscriptionAccess.js';
 
 export interface AuthenticatedUser {
   id: string;
@@ -83,27 +87,9 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
     const userLookupSql =
       `SELECT u.id, u.firebase_uid, u.email, u.username, u.display_name, u.avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
-              COALESCE(
-                yl.is_member = TRUE
-                AND yl.verification_source = 'admin_snapshot'
-                AND EXISTS (
-                  SELECT 1
-                  FROM youtube_membership_snapshot_state snapshot_state
-                  JOIN youtube_membership_snapshot_imports snapshot_import
-                    ON snapshot_import.id = snapshot_state.active_import_id
-                   AND snapshot_import.expires_at > CURRENT_TIMESTAMP
-                  WHERE snapshot_state.singleton = TRUE
-                    AND snapshot_state.active_import_id = yl.snapshot_import_id
-                )
-                AND EXISTS (
-                  SELECT 1 FROM youtube_channel_claims claim
-                  WHERE claim.user_id = u.id
-                    AND claim.youtube_channel_id = yl.youtube_channel_id
-                    AND claim.status = 'approved'
-                ),
-                FALSE
-              ) AS is_youtube_member,
+              ${activeYouTubeMembershipSql('u.id')} AS is_youtube_member,
               ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
+              ${activeMemberAccessSql('u.id')} AS has_member_access,
               u.account_status, u.onboarding_completed,
               p.is_guest,
               COALESCE(
@@ -116,37 +102,15 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
               ) as permissions
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
-       LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
        LEFT JOIN user_roles ur ON ur.user_id = u.id
          AND (
            ur.role_id <> 'member'
-           OR COALESCE(
-             yl.is_member = TRUE
-             AND yl.verification_source = 'admin_snapshot'
-             AND EXISTS (
-               SELECT 1
-               FROM youtube_membership_snapshot_state snapshot_state
-               JOIN youtube_membership_snapshot_imports snapshot_import
-                 ON snapshot_import.id = snapshot_state.active_import_id
-                AND snapshot_import.expires_at > CURRENT_TIMESTAMP
-               WHERE snapshot_state.singleton = TRUE
-                 AND snapshot_state.active_import_id = yl.snapshot_import_id
-             )
-             AND EXISTS (
-               SELECT 1 FROM youtube_channel_claims claim
-               WHERE claim.user_id = u.id
-                 AND claim.youtube_channel_id = yl.youtube_channel_id
-                 AND claim.status = 'approved'
-             ),
-             FALSE
-           )
+           OR ${activeYouTubeMembershipSql('u.id')}
          )
        LEFT JOIN role_permissions rp ON rp.role_id = ur.role_id
        WHERE u.firebase_uid = $1
        GROUP BY u.id, u.firebase_uid, u.email, u.username, u.display_name, u.avatar_url,
                 u.supported_team, u.supported_team_logo, u.country, u.country_code,
-                yl.is_member, yl.youtube_channel_id,
-                yl.verification_source, yl.snapshot_import_id,
                 u.account_status, u.onboarding_completed,
                 p.is_guest`;
     let res = await query(userLookupSql, [firebaseUid]);
@@ -335,7 +299,7 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
       onboardingCompleted: row.onboarding_completed === true,
       isYouTubeMember: row.is_youtube_member,
       isProSubscriber: row.is_pro_subscriber === true,
-      hasMemberAccess: row.is_youtube_member === true || row.is_pro_subscriber === true,
+      hasMemberAccess: row.has_member_access === true,
       accountStatus: row.account_status,
       roles,
       permissions,

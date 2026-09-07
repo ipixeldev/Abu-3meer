@@ -23,7 +23,16 @@ class SubscriptionAccessResult {
     this.source = 'none',
     this.overrideMode = 'store',
     this.overrideExpiresAt,
-  });
+    bool? hasMemberAccess,
+    this.memberAccessSource = 'none',
+    this.memberAccessReason = 'unknown',
+    this.memberAccessExpiresAt,
+    this.youtubeMembershipActive = false,
+    this.youtubeMembershipVerifiedAt,
+    this.youtubeMembershipExpiresAt,
+    this.youtubeMembershipRecheckRequired = false,
+  }) : hasMemberAccess =
+           hasMemberAccess ?? (isActive || youtubeMembershipActive);
 
   final bool isActive;
   final String reason;
@@ -31,6 +40,14 @@ class SubscriptionAccessResult {
   final String source;
   final String overrideMode;
   final DateTime? overrideExpiresAt;
+  final bool hasMemberAccess;
+  final String memberAccessSource;
+  final String memberAccessReason;
+  final DateTime? memberAccessExpiresAt;
+  final bool youtubeMembershipActive;
+  final DateTime? youtubeMembershipVerifiedAt;
+  final DateTime? youtubeMembershipExpiresAt;
+  final bool youtubeMembershipRecheckRequired;
 
   factory SubscriptionAccessResult.fromEnvelope(Object? envelope) {
     final data = envelope is Map ? envelope['data'] : null;
@@ -49,12 +66,16 @@ class SubscriptionAccessResult {
       'admin_revoked',
     };
     const environments = {'production', 'sandbox'};
+    final isActive =
+        data['isActive'] == true &&
+        (!reasons.contains(data['accessReason']) ||
+            data['accessReason'] == 'active' ||
+            data['accessReason'] == 'admin_granted');
+    final youtubeMembershipActive =
+        data['youtubeMembershipActive'] == true ||
+        data['isYouTubeMember'] == true;
     return SubscriptionAccessResult(
-      isActive:
-          data['isActive'] == true &&
-          (!reasons.contains(data['accessReason']) ||
-              data['accessReason'] == 'active' ||
-              data['accessReason'] == 'admin_granted'),
+      isActive: isActive,
       reason: reasons.contains(data['accessReason'])
           ? data['accessReason'] as String
           : 'unknown',
@@ -75,6 +96,37 @@ class SubscriptionAccessResult {
       overrideExpiresAt: DateTime.tryParse(
         (data['subscriptionAccessExpiresAt'] ?? '').toString(),
       ),
+      hasMemberAccess: data['hasMemberAccess'] is bool
+          ? data['hasMemberAccess'] as bool
+          : isActive || youtubeMembershipActive,
+      memberAccessSource:
+          const {
+            'youtube',
+            'store',
+            'admin',
+            'none',
+          }.contains(data['memberAccessSource'])
+          ? data['memberAccessSource'] as String
+          : youtubeMembershipActive
+          ? 'youtube'
+          : isActive
+          ? (data['accessReason'] == 'admin_granted' ? 'admin' : 'store')
+          : 'none',
+      memberAccessReason:
+          (data['memberAccessReason'] ?? data['accessReason'] ?? 'unknown')
+              .toString(),
+      memberAccessExpiresAt: DateTime.tryParse(
+        (data['memberAccessExpiresAt'] ?? '').toString(),
+      ),
+      youtubeMembershipActive: youtubeMembershipActive,
+      youtubeMembershipVerifiedAt: DateTime.tryParse(
+        (data['youtubeMembershipVerifiedAt'] ?? '').toString(),
+      ),
+      youtubeMembershipExpiresAt: DateTime.tryParse(
+        (data['youtubeMembershipExpiresAt'] ?? '').toString(),
+      ),
+      youtubeMembershipRecheckRequired:
+          data['youtubeMembershipRecheckRequired'] == true,
     );
   }
 }

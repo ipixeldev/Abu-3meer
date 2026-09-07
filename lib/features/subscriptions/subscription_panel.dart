@@ -7,6 +7,8 @@ import '../../production/brand.dart';
 import '../../production/models.dart';
 import '../../production/production_repository.dart';
 import '../../production/subscription_service.dart';
+import '../../production/youtube_membership_check.dart';
+import '../membership/manual_membership_dialog.dart';
 import 'subscription_feedback.dart';
 import 'subscription_paywall_page.dart';
 import '../support/whatsapp_support_button.dart';
@@ -34,17 +36,61 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
   bool _working = false;
   String? _activeAction;
   SubscriptionFeedback? _message;
-  String? _localAccessReason;
-  bool? _localAccessActive;
+  SubscriptionAccessResult? _localAccess;
+  YouTubeMembershipCheckResult? _localYouTubeCheck;
   String? get _accessReason =>
-      _localAccessReason ??
+      _localAccess?.reason ??
       (widget.profile.subscriptionAccessReason != 'unknown'
           ? widget.profile.subscriptionAccessReason
           : _store.userId == widget.profile.backendUserId
           ? _store.serverAccess?.reason
           : null);
   bool get _accessActive =>
-      _localAccessActive ?? widget.profile.isProSubscriber;
+      _localAccess?.isActive ?? widget.profile.isProSubscriber;
+  bool get _youtubeAccessActive => _localYouTubeCheck != null
+      ? _localYouTubeCheck!.isYouTubeMember
+      : (_localAccess?.youtubeMembershipActive ?? false) ||
+            widget.profile.isYouTubeMember;
+  bool get _memberAccessActive {
+    if (_accessReason == 'admin_revoked') return false;
+    if (_localYouTubeCheck != null) {
+      return _localYouTubeCheck!.isYouTubeMember || _accessActive;
+    }
+    final local = _localAccess;
+    if (local != null) {
+      return local.hasMemberAccess;
+    }
+    return widget.profile.hasMemberAccess;
+  }
+
+  String get _memberAccessSource {
+    if (_accessReason == 'admin_revoked') return 'admin';
+    if (_localYouTubeCheck?.isYouTubeMember == true) return 'youtube';
+    final source = _localAccess?.memberAccessSource;
+    if (source != null && source != 'none') return source;
+    if (widget.profile.memberAccessSource != 'none') {
+      return widget.profile.memberAccessSource;
+    }
+    if (_youtubeAccessActive) return 'youtube';
+    if (_accessActive) {
+      return _accessReason == 'admin_granted' ? 'admin' : 'store';
+    }
+    return 'none';
+  }
+
+  DateTime? get _youtubeAccessExpiresAt =>
+      _localYouTubeCheck?.recheckRequiredAt ??
+      _localYouTubeCheck?.snapshotExpiresAt ??
+      _localAccess?.youtubeMembershipExpiresAt ??
+      widget.profile.youtubeMembershipExpiresAt ??
+      (_memberAccessSource == 'youtube'
+          ? _localAccess?.memberAccessExpiresAt ??
+                widget.profile.memberAccessExpiresAt
+          : null);
+
+  bool get _youtubeRecheckRequired =>
+      (_localAccess?.youtubeMembershipRecheckRequired ?? false) ||
+      widget.profile.youtubeMembershipRecheckRequired;
   final _detailsRevision = ValueNotifier<int>(0);
   bool _detailsOpen = false;
 
@@ -115,9 +161,13 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
         accessReason: access.reason,
       );
       _update(() {
-        _localAccessReason = access.reason;
-        _localAccessActive = access.isActive;
-        _message = feedback;
+        _localAccess = access;
+        _message =
+            (access.hasMemberAccess && access.memberAccessSource == 'youtube')
+            ? SubscriptionFeedback.youtubeMembershipActive(
+                expiresAt: access.youtubeMembershipExpiresAt,
+              )
+            : feedback;
       });
       showDetails = action == 'plans' && !access.isActive;
     } catch (error) {
@@ -146,27 +196,72 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
     }
   }
 
+  Future<void> _checkYouTubeMembership() async {
+    final profile = widget.profile;
+    if (_working || profile.isGuest) return;
+    final result = await showDialog<YouTubeMembershipCheckResult>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => ManualMembershipDialog(
+        onCheck: widget.repository.checkYouTubeMembership,
+      ),
+    );
+    if (result == null || !mounted || widget.profile.uid != profile.uid) {
+      return;
+    }
+    _update(() {
+      _localYouTubeCheck = result;
+      _message = result.isYouTubeMember && _accessReason != 'admin_revoked'
+          ? SubscriptionFeedback.youtubeMembershipActive(
+              expiresAt: result.recheckRequiredAt ?? result.snapshotExpiresAt,
+            )
+          : _accessReason == 'admin_revoked'
+          ? SubscriptionFeedback.checked(
+              serverActive: false,
+              storeActive: false,
+              isSandbox: false,
+              accessReason: 'admin_revoked',
+            )
+          : SubscriptionFeedback.youtubeMembershipNotActive();
+    });
+    // The membership endpoint already refreshes once; this second read makes
+    // the profile stream and every badge deterministic before the dialog is
+    // dismissed, even when it previously held a cached profile.
+    await widget.repository.refreshProfile(profile.uid, force: true);
+  }
+
+  String _formatDate(BuildContext context, DateTime value) =>
+      MaterialLocalizations.of(context).formatMediumDate(value.toLocal());
+
   @override
   void didUpdateWidget(covariant SubscriptionPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.profile.uid != widget.profile.uid ||
         oldWidget.profile.backendUserId != widget.profile.backendUserId) {
       _message = null;
-      _localAccessReason = null;
-      _localAccessActive = null;
+      _localAccess = null;
+      _localYouTubeCheck = null;
     } else if (oldWidget.profile.isProSubscriber !=
             widget.profile.isProSubscriber ||
+        oldWidget.profile.hasMemberAccess != widget.profile.hasMemberAccess ||
         oldWidget.profile.subscriptionAccessReason !=
             widget.profile.subscriptionAccessReason ||
         oldWidget.profile.subscriptionAccessMode !=
             widget.profile.subscriptionAccessMode ||
         oldWidget.profile.subscriptionAccessExpiresAt !=
-            widget.profile.subscriptionAccessExpiresAt) {
+            widget.profile.subscriptionAccessExpiresAt ||
+        oldWidget.profile.isYouTubeMember != widget.profile.isYouTubeMember ||
+        oldWidget.profile.youtubeMembershipExpiresAt !=
+            widget.profile.youtubeMembershipExpiresAt ||
+        oldWidget.profile.youtubeMembershipRecheckRequired !=
+            widget.profile.youtubeMembershipRecheckRequired ||
+        oldWidget.profile.memberAccessSource !=
+            widget.profile.memberAccessSource) {
       // A newly delivered profile is authoritative over an earlier local
       // response. Until it arrives, the response keeps the panel from showing
       // the stale pre-refresh reason and access verdict.
-      _localAccessReason = null;
-      _localAccessActive = null;
+      _localAccess = null;
+      _localYouTubeCheck = null;
     }
     if (!identical(oldWidget.profile, widget.profile)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -245,16 +340,29 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
     animation: _store,
     builder: (context, _) {
       final profile = widget.profile;
-      final storeActive =
-          _store.userId == profile.backendUserId &&
-          _store.customerInfo?.entitlements.active[SubscriptionService
-                  .entitlementId] !=
-              null;
+      final storeEntitlement = _store.userId == profile.backendUserId
+          ? _store.customerInfo?.entitlements.active[SubscriptionService
+                .entitlementId]
+          : null;
+      final storeActive = storeEntitlement != null;
       final active = _accessActive;
       final adminGranted = active && _accessReason == 'admin_granted';
       final adminBlocked = !active && _accessReason == 'admin_revoked';
-      final memberAccess = active || profile.isYouTubeMember;
-      final pending = !active && storeActive && !adminBlocked;
+      final youtubeActive = _youtubeAccessActive;
+      final memberAccess = _memberAccessActive;
+      final youtubePrimary =
+          memberAccess &&
+          youtubeActive &&
+          (_memberAccessSource == 'youtube' || !active);
+      final activeSandboxStore =
+          active &&
+          !youtubePrimary &&
+          !adminGranted &&
+          (storeEntitlement?.isSandbox == true ||
+              (_localAccess?.environment == 'sandbox' &&
+                  _localAccess?.memberAccessSource == 'store'));
+      final youtubeRecheckRequired = !youtubeActive && _youtubeRecheckRequired;
+      final pending = !memberAccess && storeActive && !adminBlocked;
       final storeSandbox =
           pending &&
           _store
@@ -264,7 +372,7 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                   ?.isSandbox ==
               true;
       final testSubscription =
-          !active &&
+          !memberAccess &&
           !adminBlocked &&
           (_accessReason == 'sandbox_not_allowed' || storeSandbox);
       final accessNotActive =
@@ -282,7 +390,9 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           !profile.isGuest &&
           profile.backendUserId.isNotEmpty &&
           _store.available;
-      final title = adminGranted
+      final title = youtubePrimary
+          ? abuText(context, 'YouTube membership active', 'عضوية يوتيوب مفعّلة')
+          : adminGranted
           ? abuText(context, 'Admin-granted access', 'صلاحيات ممنوحة من المدير')
           : adminBlocked
           ? abuText(
@@ -291,7 +401,15 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
               'صلاحيات الاشتراك معطلة',
             )
           : active
-          ? abuText(context, 'Subscription active', 'الاشتراك نشط')
+          ? activeSandboxStore
+                ? abuText(context, 'Sandbox active', 'اشتراك تجريبي مفعّل')
+                : abuText(context, 'Subscription active', 'الاشتراك نشط')
+          : youtubeRecheckRequired
+          ? abuText(
+              context,
+              'YouTube membership needs recheck',
+              'عضوية يوتيوب تحتاج إلى إعادة تحقق',
+            )
           : accessNotActive && pending
           ? abuText(context, 'Access not active', 'الصلاحيات غير مفعّلة')
           : testSubscription
@@ -301,13 +419,44 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           : memberAccess
           ? abuText(context, 'Member access active', 'مزايا العضوية مفعّلة')
           : abuText(context, 'Ostoora3 membership', 'عضوية الأسطورة');
-      final subtitle = adminGranted
+      final youtubeExpiry = _youtubeAccessExpiresAt;
+      final subtitle = youtubePrimary
+          ? youtubeExpiry == null
+                ? abuText(
+                    context,
+                    'Verified from the current channel members list',
+                    'موثّقة من قائمة أعضاء القناة الحالية',
+                  )
+                : abuText(
+                    context,
+                    'Active until ${_formatDate(context, youtubeExpiry)} · recheck required',
+                    'مفعّلة حتى ${_formatDate(context, youtubeExpiry)} · يلزم إعادة التحقق',
+                  )
+          : adminGranted
           ? abuText(context, 'Not a store purchase', 'ليس شراءً من المتجر')
           : adminBlocked
           ? abuText(
               context,
               'Contact support · billing unchanged',
               'تواصل مع الدعم · الفوترة لم تتغير',
+            )
+          : active
+          ? activeSandboxStore
+                ? abuText(
+                    context,
+                    'Test purchase · badge active',
+                    'شراء تجريبي · الشارة مفعّلة',
+                  )
+                : abuText(
+                    context,
+                    'Members + member bonuses',
+                    'قسم الأعضاء ومزايا العضوية',
+                  )
+          : youtubeRecheckRequired
+          ? abuText(
+              context,
+              'Check again or subscribe through the store',
+              'تحقق مجدداً أو اشترك عبر المتجر',
             )
           : accessNotActive && pending
           ? abuText(context, 'Review subscription status', 'راجع حالة الاشتراك')
@@ -322,12 +471,6 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
               context,
               'Store subscription found',
               'تم العثور على اشتراك المتجر',
-            )
-          : active
-          ? abuText(
-              context,
-              'Members + member bonuses',
-              'قسم الأعضاء ومزايا العضوية',
             )
           : memberAccess
           ? abuText(context, 'YouTube membership', 'عضوية يوتيوب')
@@ -378,9 +521,10 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                       const SizedBox(height: 3),
                       Text(
                         _message != null &&
-                                !active &&
+                                !memberAccess &&
                                 !testSubscription &&
-                                !adminBlocked
+                                !adminBlocked &&
+                                !youtubeRecheckRequired
                             ? abuText(
                                 context,
                                 'Review subscription status',
@@ -442,12 +586,19 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
     builder: (context, _) {
       final profile = widget.profile;
       final accessActive = _accessActive;
+      final youtubeActive =
+          _memberAccessActive &&
+          _youtubeAccessActive &&
+          _memberAccessSource == 'youtube';
+      final youtubeRecheckRequired = !youtubeActive && _youtubeRecheckRequired;
+      final youtubeExpiresAt = _youtubeAccessExpiresAt;
       final enabled =
           !_working &&
           !_store.busy &&
           !profile.isGuest &&
           profile.backendUserId.isNotEmpty &&
           _store.available;
+      final canCheckYouTube = !_working && !_store.busy && !profile.isGuest;
       final canRefreshLocalAccess =
           !_working &&
           !_store.busy &&
@@ -459,10 +610,14 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
           : null;
       final entitlement =
           info?.entitlements.active[SubscriptionService.entitlementId];
+      final sandboxStoreAccess =
+          entitlement?.isSandbox == true ||
+          (_localAccess?.environment == 'sandbox' &&
+              _localAccess?.memberAccessSource == 'store');
       final adminBlocked = _accessReason == 'admin_revoked';
       // A known store subscription must not lead the user back to buying it
       // again just because the separate server activation is unavailable.
-      final hasSubscription =
+      final hasStoreSubscription =
           (accessActive && _accessReason != 'admin_granted') ||
           entitlement != null ||
           _accessReason == 'sandbox_not_allowed';
@@ -485,7 +640,13 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    abuText(context, 'OSTOORA3 MEMBERSHIP', 'عضوية الأسطورة'),
+                    youtubeActive
+                        ? abuText(context, 'YOUTUBE MEMBERSHIP', 'عضوية يوتيوب')
+                        : abuText(
+                            context,
+                            'OSTOORA3 MEMBERSHIP',
+                            'عضوية الأسطورة',
+                          ),
                     style: const TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 16,
@@ -501,24 +662,62 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
               ],
             ),
             const SizedBox(height: 12),
-            Text(
-              abuText(
-                context,
-                'Ostoora3 · Monthly\nOstoora3 Pro Max · Yearly',
-                'Ostoora3 · شهري\nOstoora3 Pro Max · سنوي',
+            if (youtubeActive) ...[
+              Text(
+                abuText(
+                  context,
+                  'Your channel is present in the current members list. This membership is separate from store billing and does not auto-renew through this app.',
+                  'قناتك موجودة في قائمة الأعضاء الحالية. هذه العضوية منفصلة عن فوترة المتجر ولا تتجدد عبر التطبيق.',
+                ),
+                style: const TextStyle(color: AbuBrand.muted, height: 1.45),
               ),
-              style: const TextStyle(height: 1.6),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              abuText(
-                context,
-                'Both plans include access to Members and member bonuses. Prices and renewal terms are shown by the store before purchase.',
-                'تتضمن الخطتان محتوى الأعضاء ومزايا العضوية. يعرض المتجر السعر وشروط التجديد قبل الشراء.',
+            ] else ...[
+              Text(
+                abuText(
+                  context,
+                  'Ostoora3 · Monthly\nOstoora3 Pro Max · Yearly',
+                  'Ostoora3 · شهري\nOstoora3 Pro Max · سنوي',
+                ),
+                style: const TextStyle(height: 1.6),
               ),
-              style: const TextStyle(color: AbuBrand.muted, height: 1.4),
-            ),
-            if (_accessReason == 'admin_granted' ||
+              const SizedBox(height: 8),
+              Text(
+                abuText(
+                  context,
+                  'Both plans include access to Members and member bonuses. Prices and renewal terms are shown by the store before purchase.',
+                  'تتضمن الخطتان محتوى الأعضاء ومزايا العضوية. يعرض المتجر السعر وشروط التجديد قبل الشراء.',
+                ),
+                style: const TextStyle(color: AbuBrand.muted, height: 1.4),
+              ),
+            ],
+            if (youtubeActive) ...[
+              const SizedBox(height: 12),
+              Text(
+                abuText(
+                  context,
+                  'YouTube membership active',
+                  'عضوية يوتيوب مفعّلة',
+                ),
+                style: const TextStyle(
+                  color: AbuBrand.lime,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                youtubeExpiresAt == null
+                    ? abuText(
+                        context,
+                        'Member access and your badge are active. Check membership again when the app asks you to.',
+                        'تم تفعيل مزايا الأعضاء والشارة. أعد التحقق عندما يطلب منك التطبيق ذلك.',
+                      )
+                    : abuText(
+                        context,
+                        'Access and your badge remain active through ${_formatDate(context, youtubeExpiresAt)}. Check membership again after that date.',
+                        'تظل صلاحياتك والشارة مفعّلة حتى ${_formatDate(context, youtubeExpiresAt)}. أعد التحقق بعد ذلك التاريخ.',
+                      ),
+                style: const TextStyle(height: 1.45),
+              ),
+            ] else if (_accessReason == 'admin_granted' ||
                 _accessReason == 'admin_revoked') ...[
               const SizedBox(height: 12),
               Builder(
@@ -538,12 +737,26 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
             ] else if (accessActive) ...[
               const SizedBox(height: 12),
               Text(
-                abuText(context, 'Subscription active', 'الاشتراك نشط'),
+                sandboxStoreAccess
+                    ? abuText(
+                        context,
+                        'Sandbox subscription active',
+                        'اشتراك تجريبي مفعّل',
+                      )
+                    : abuText(context, 'Subscription active', 'الاشتراك نشط'),
                 style: const TextStyle(
                   color: AbuBrand.lime,
                   fontWeight: FontWeight.w700,
                 ),
               ),
+              if (sandboxStoreAccess)
+                Text(
+                  abuText(
+                    context,
+                    'This is a test purchase, not a live charge. Member access and your badge are active in this sandbox environment.',
+                    'هذه عملية شراء تجريبية وليست رسماً فعلياً. مزايا العضوية والشارة مفعّلة في بيئة Sandbox.',
+                  ),
+                ),
               if (entitlement != null && !entitlement.willRenew)
                 Text(
                   abuText(
@@ -552,6 +765,16 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                     'التجديد متوقف. تستمر الصلاحيات حتى نهاية الفترة المدفوعة.',
                   ),
                 ),
+            ] else if (youtubeRecheckRequired) ...[
+              const SizedBox(height: 12),
+              Text(
+                abuText(
+                  context,
+                  'Your previous YouTube membership check has expired. Check the channel again to reactivate access, or subscribe through the store.',
+                  'انتهت صلاحية التحقق السابق من عضوية يوتيوب. تحقق من القناة مجدداً لإعادة تفعيل الصلاحيات، أو اشترك عبر المتجر.',
+                ),
+                style: const TextStyle(color: AbuBrand.gold),
+              ),
             ] else if (entitlement != null) ...[
               const SizedBox(height: 12),
               Text(
@@ -589,16 +812,6 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                     'عملية شراء تجريبية · ليست اشتراكاً مدفوعاً فعلياً',
                   ),
                 ),
-            ] else if (profile.isYouTubeMember) ...[
-              const SizedBox(height: 12),
-              Text(
-                abuText(
-                  context,
-                  'Your CSV membership already includes member access. A store subscription is optional.',
-                  'عضويتك في ملف CSV تمنحك صلاحيات الأعضاء بالفعل. اشتراك المتجر اختياري.',
-                ),
-                style: const TextStyle(color: AbuBrand.gold),
-              ),
             ],
             if (profile.isGuest) ...[
               const SizedBox(height: 12),
@@ -631,25 +844,52 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
               ),
             ],
             const SizedBox(height: 14),
-            if (!adminBlocked || hasSubscription)
+            if (youtubeActive || youtubeRecheckRequired)
+              FilledButton.tonalIcon(
+                key: const Key('youtube-membership-recheck'),
+                onPressed: canCheckYouTube ? _checkYouTubeMembership : null,
+                icon: const Icon(Icons.fact_check_outlined),
+                label: Text(
+                  abuText(
+                    context,
+                    youtubeActive
+                        ? 'Check YouTube membership again'
+                        : 'Recheck YouTube membership',
+                    youtubeActive
+                        ? 'تحقق من عضوية يوتيوب مجدداً'
+                        : 'أعد التحقق من عضوية يوتيوب',
+                  ),
+                ),
+              ),
+            if (youtubeActive || youtubeRecheckRequired)
+              const SizedBox(height: 8),
+            if (!adminBlocked || hasStoreSubscription)
               FilledButton.icon(
                 onPressed: enabled
-                    ? () => _perform(hasSubscription ? 'manage' : 'plans')
+                    ? () => _perform(hasStoreSubscription ? 'manage' : 'plans')
                     : null,
                 icon: Icon(
-                  hasSubscription
+                  hasStoreSubscription
                       ? Icons.manage_accounts_outlined
                       : Icons.star_outline_rounded,
                 ),
                 label: Text(
                   abuText(
                     context,
-                    hasSubscription ? 'Manage subscription' : 'View plans',
-                    hasSubscription ? 'إدارة الاشتراك' : 'عرض الخطط',
+                    hasStoreSubscription
+                        ? 'Manage store subscription'
+                        : youtubeActive || youtubeRecheckRequired
+                        ? 'View store plans'
+                        : 'View plans',
+                    hasStoreSubscription
+                        ? 'إدارة اشتراك المتجر'
+                        : youtubeActive || youtubeRecheckRequired
+                        ? 'عرض خطط المتجر'
+                        : 'عرض الخطط',
                   ),
                 ),
               ),
-            if (hasSubscription && !adminBlocked)
+            if (hasStoreSubscription && !adminBlocked)
               TextButton.icon(
                 key: const Key('subscription-details-view-plans'),
                 onPressed: enabled ? () => _perform('plans') : null,
@@ -687,7 +927,7 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                     ),
                   ),
                 ),
-                if (!hasSubscription && !adminBlocked)
+                if (!hasStoreSubscription && !adminBlocked)
                   TextButton(
                     onPressed: enabled ? () => _perform('manage') : null,
                     child: Text(
@@ -709,11 +949,17 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
             ],
             const Divider(),
             Text(
-              abuText(
-                context,
-                'Auto-renewing subscriptions. Manage or cancel in your store account settings. Deleting the app or your app account does not cancel a subscription.',
-                'تتجدد الاشتراكات تلقائياً. يمكنك إدارتها أو إلغاؤها من إعدادات حساب المتجر. حذف التطبيق أو حسابك فيه لا يلغي الاشتراك.',
-              ),
+              youtubeActive
+                  ? abuText(
+                      context,
+                      'YouTube membership does not auto-renew through this app. App Store and Google Play plans are separate auto-renewing subscriptions and can be managed in your store account settings.',
+                      'عضوية يوتيوب لا تتجدد عبر هذا التطبيق. خطط App Store وGoogle Play هي اشتراكات منفصلة تتجدد تلقائياً ويمكن إدارتها من إعدادات حساب المتجر.',
+                    )
+                  : abuText(
+                      context,
+                      'Auto-renewing subscriptions. Manage or cancel in your store account settings. Deleting the app or your app account does not cancel a subscription.',
+                      'تتجدد الاشتراكات تلقائياً. يمكنك إدارتها أو إلغاؤها من إعدادات حساب المتجر. حذف التطبيق أو حسابك فيه لا يلغي الاشتراك.',
+                    ),
               style: const TextStyle(
                 fontSize: 11,
                 color: AbuBrand.muted,

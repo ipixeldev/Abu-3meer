@@ -61,11 +61,12 @@ async function reconcileApprovedClaims(
                   AND member.youtube_channel_id IS NOT NULL
                 ) AS is_member
          FROM youtube_account_links link
+         LEFT JOIN active_snapshot ON TRUE
          LEFT JOIN youtube_channel_claims claim
            ON claim.user_id = link.user_id
           AND claim.youtube_channel_id = link.youtube_channel_id
           AND claim.status = 'approved'
-         LEFT JOIN active_snapshot ON TRUE
+          AND claim.approved_snapshot_import_id = active_snapshot.active_import_id
          LEFT JOIN youtube_membership_snapshot_members member
            ON member.import_id = active_snapshot.active_import_id
           AND member.youtube_channel_id = link.youtube_channel_id

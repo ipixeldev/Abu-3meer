@@ -13,6 +13,29 @@ class SubscriptionFeedback {
   final String english;
   final String arabic;
 
+  static SubscriptionFeedback youtubeMembershipActive({DateTime? expiresAt}) {
+    final expiry = expiresAt?.toLocal();
+    final date = expiry == null
+        ? null
+        : '${expiry.year.toString().padLeft(4, '0')}-'
+              '${expiry.month.toString().padLeft(2, '0')}-'
+              '${expiry.day.toString().padLeft(2, '0')}';
+    return SubscriptionFeedback(
+      date == null
+          ? 'YouTube membership verified. Member access and your badge are active. This membership does not auto-renew through the app; check it again when requested.'
+          : 'YouTube membership verified. Member access and your badge are active through $date. This membership does not auto-renew through the app; check it again after that date.',
+      date == null
+          ? 'تم التحقق من عضوية يوتيوب وتفعيل مزايا الأعضاء والشارة. هذه العضوية لا تتجدد عبر التطبيق؛ أعد التحقق عندما يُطلب منك.'
+          : 'تم التحقق من عضوية يوتيوب وتفعيل مزايا الأعضاء والشارة حتى $date. هذه العضوية لا تتجدد عبر التطبيق؛ أعد التحقق بعد ذلك التاريخ.',
+    );
+  }
+
+  static SubscriptionFeedback youtubeMembershipNotActive() =>
+      const SubscriptionFeedback(
+        'This channel is not an active member in the current list. Check again after joining or choose a store subscription.',
+        'هذه القناة ليست عضواً نشطاً في القائمة الحالية. أعد التحقق بعد الانضمام أو اختر اشتراكاً من المتجر.',
+      );
+
   static String supportCode(Object error) {
     if (error is SubscriptionException && error.code == 'plans_unavailable') {
       return 'RC-PLANS';
@@ -28,8 +51,8 @@ class SubscriptionFeedback {
         code == PurchasesErrorCode.productNotAvailableForPurchaseError ||
         (error is SubscriptionException && error.code == 'plans_unavailable')) {
       return const SubscriptionFeedback(
-        'The App Store could not load the subscription plans. Store setup or availability needs checking. Please contact support with the code below; you have not been charged by opening this screen.',
-        'تعذر على App Store تحميل خطط الاشتراك. يجب التحقق من إعدادات المتجر أو توفر الخطط. تواصل مع الدعم وأرسل الرمز أدناه؛ فتح هذه الشاشة لا يخصم أي مبلغ.',
+        'The subscription store could not load the plans. Store setup or availability needs checking. Please contact support with the code below; you have not been charged by opening this screen.',
+        'تعذر على متجر الاشتراكات تحميل الخطط. يجب التحقق من إعدادات المتجر أو توفر الخطط. تواصل مع الدعم وأرسل الرمز أدناه؛ فتح هذه الشاشة لا يخصم أي مبلغ.',
       );
     }
     if (code == PurchasesErrorCode.invalidCredentialsError ||
@@ -146,8 +169,8 @@ class SubscriptionFeedback {
     }
     if (accessReason == 'admin_revoked') {
       return const SubscriptionFeedback(
-        'An admin blocked subscription-based app access. Your store subscription was not cancelled or refunded. Contact support; purchasing again will not remove this block. YouTube CSV membership is checked separately.',
-        'عطّل المدير صلاحيات اشتراك التطبيق. لم يُلغَ اشتراك المتجر ولم يُردّ مبلغه. تواصل مع الدعم؛ الشراء مجدداً لن يزيل التعطيل. تُفحص عضوية يوتيوب في CSV بشكل منفصل.',
+        'An admin blocked member access. Your store subscription was not cancelled or refunded, but neither a store purchase nor YouTube verification can bypass this block. Contact support; purchasing again will not remove it.',
+        'عطّل المدير صلاحيات الأعضاء. لم يُلغَ اشتراك المتجر ولم يُردّ مبلغه، لكن شراء المتجر أو التحقق من يوتيوب لن يتجاوز هذا التعطيل. تواصل مع الدعم؛ الشراء مجدداً لن يزيله.',
       );
     }
     if (serverActive) {
@@ -158,8 +181,8 @@ class SubscriptionFeedback {
     }
     if (accessReason == 'sandbox_not_allowed') {
       return const SubscriptionFeedback(
-        'This is a TestFlight or Xcode test subscription. This server accepts production purchases only, so it does not activate member access or a subscriber badge. TestFlight purchases cannot become live payments. Do not purchase again.',
-        'هذا اشتراك تجريبي من TestFlight أو Xcode. يقبل هذا الخادم مشتريات الإنتاج فقط، لذلك لا يفعّل صلاحيات الأعضاء أو شارة الاشتراك. لا يمكن تحويل مشتريات TestFlight إلى مدفوعات فعلية. لا تشترِ مرة أخرى.',
+        'RevenueCat returned a synthetic Test Store or unknown test receipt, so member access was not activated. Genuine App Store and Google Play sandbox purchases do activate access and the badge. Refresh once; if this remains, contact support. Do not purchase again.',
+        'أعاد RevenueCat إيصالاً تجريبياً من Test Store أو من مصدر غير معروف، لذلك لم تُفعّل صلاحيات الأعضاء. مشتريات App Store وGoogle Play التجريبية الحقيقية تفعّل الصلاحيات والشارة. حدّث مرة واحدة، وإن استمرت الحالة فتواصل مع الدعم. لا تشترِ مرة أخرى.',
       );
     }
     if (accessReason == 'expired') {

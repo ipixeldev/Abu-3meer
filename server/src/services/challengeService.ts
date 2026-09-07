@@ -1,5 +1,6 @@
 import { getClient } from '../db/pool.js';
-import { activeSubscriptionSql } from './subscriptionAccess.js';
+import { config } from '../config.js';
+import { activeMemberAccessSql } from './subscriptionAccess.js';
 import {
   awardPointsInTransaction,
   invalidatePointCaches,
@@ -86,7 +87,14 @@ export async function submitChallengeAnswer(
     );
 
     const challengeRes = await client.query(
-      `SELECT c.id, c.title, c.kind, c.status, c.reward_points,
+      `SELECT c.id, c.title, c.kind, c.status,
+              COALESCE(
+                point_rule.base_points,
+                CASE c.kind
+                  WHEN 'playerCard' THEN $2::integer
+                  ELSE $3::integer
+                END
+              ) AS reward_points,
               c.correct_answer, c.normalized_correct_answer, c.starts_at,
               c.ends_at, c.maximum_attempts, c.member_only,
               COALESCE(question.normalized_accepted_answers, '[]'::jsonb)
@@ -99,9 +107,18 @@ export async function submitChallengeAnswer(
          ORDER BY q.position, q.id
          LIMIT 1
        ) question ON TRUE
+       LEFT JOIN point_rules point_rule
+         ON point_rule.key = CASE c.kind
+           WHEN 'playerCard' THEN 'playerCard'
+           ELSE 'videoQuestion'
+         END
        WHERE c.id = $1
        FOR UPDATE OF c`,
-      [challengeId],
+      [
+        challengeId,
+        config.pointDefaults.playerCard,
+        config.pointDefaults.videoPhrase,
+      ],
     );
 
     if (challengeRes.rows.length === 0) {
@@ -110,15 +127,7 @@ export async function submitChallengeAnswer(
 
     const challenge = challengeRes.rows[0];
     const membershipRes = await client.query(
-      `SELECT COALESCE(
-                member_link.is_member = TRUE
-                AND member_link.verification_source = 'admin_snapshot'
-                AND member_link.snapshot_import_id = snapshot_state.active_import_id
-                AND snapshot_import.id IS NOT NULL
-                AND approved_claim.id IS NOT NULL,
-                FALSE
-              ) AS is_youtube_member,
-              ${activeSubscriptionSql('user_account.id')} AS is_pro_subscriber
+      `SELECT ${activeMemberAccessSql('user_account.id')} AS has_member_access
        FROM users user_account
        LEFT JOIN youtube_account_links member_link
          ON member_link.user_id = user_account.id
@@ -134,8 +143,7 @@ export async function submitChallengeAnswer(
        WHERE user_account.id = $1`,
       [userId],
     );
-    const hasMemberAccess = membershipRes.rows[0]?.is_youtube_member === true
-      || membershipRes.rows[0]?.is_pro_subscriber === true;
+    const hasMemberAccess = membershipRes.rows[0]?.has_member_access === true;
     const now = new Date();
     if (
       !['open', 'scheduled'].includes(challenge.status) ||
@@ -157,7 +165,7 @@ export async function submitChallengeAnswer(
 
     const sourceType: PointSourceType =
       challenge.kind === 'playerCard' ? 'player_card' : 'video_phrase';
-    const basePoints = Number(challenge.reward_points) || 10;
+    const basePoints = Number(challenge.reward_points);
     const awardParams = {
       userId,
       sourceType,

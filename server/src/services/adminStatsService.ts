@@ -1,4 +1,5 @@
 import { query } from '../db/pool.js';
+import { activeMemberAccessSql } from './subscriptionAccess.js';
 
 export const adminDashboardStatsPath = '/admin/dashboard/stats';
 
@@ -49,31 +50,13 @@ export async function getAdminDashboardStats(
      role_flags AS (
        SELECT
          u.id AS user_id,
-         COALESCE(
-           yl.is_member = TRUE
-           AND yl.verification_source = 'admin_snapshot'
-           AND yl.snapshot_import_id = snapshot_state.active_import_id
-           AND snapshot_import.id IS NOT NULL
-           AND approved_claim.id IS NOT NULL,
-           FALSE
-         ) AS is_member,
+         ${activeMemberAccessSql('u.id')} AS is_member,
          COALESCE(bool_or(ur.role_id = 'moderator'), FALSE) AS is_moderator,
          COALESCE(bool_or(ur.role_id = 'admin'), FALSE) AS is_admin,
          COALESCE(bool_or(ur.role_id = 'super_admin'), FALSE) AS is_super_admin
        FROM users u
        LEFT JOIN user_roles ur ON ur.user_id = u.id
-       LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
-       LEFT JOIN youtube_membership_snapshot_state snapshot_state
-         ON snapshot_state.singleton = TRUE
-       LEFT JOIN youtube_membership_snapshot_imports snapshot_import
-         ON snapshot_import.id = snapshot_state.active_import_id
-        AND snapshot_import.expires_at > CURRENT_TIMESTAMP
-       LEFT JOIN youtube_channel_claims approved_claim
-         ON approved_claim.user_id = u.id
-        AND approved_claim.youtube_channel_id = yl.youtube_channel_id
-        AND approved_claim.status = 'approved'
-       GROUP BY u.id, yl.user_id, snapshot_state.active_import_id,
-                snapshot_import.id, approved_claim.id
+       GROUP BY u.id
      ),
      role_counts AS (
        SELECT
@@ -95,23 +78,8 @@ export async function getAdminDashboardStats(
           FROM youtube_account_links
           WHERE youtube_channel_id IS NOT NULL) AS linked_youtube_channels,
          (SELECT COUNT(*)
-          FROM youtube_account_links link
-          JOIN youtube_channel_claims approved_claim
-            ON approved_claim.user_id = link.user_id
-           AND approved_claim.youtube_channel_id = link.youtube_channel_id
-           AND approved_claim.status = 'approved'
-          JOIN youtube_membership_snapshot_state snapshot_state
-            ON snapshot_state.singleton = TRUE
-          JOIN youtube_membership_snapshot_imports snapshot_import
-            ON snapshot_import.id = snapshot_state.active_import_id
-           AND snapshot_import.expires_at > CURRENT_TIMESTAMP
-          JOIN youtube_membership_snapshot_members snapshot_member
-            ON snapshot_member.import_id = snapshot_state.active_import_id
-           AND snapshot_member.youtube_channel_id = link.youtube_channel_id
-           AND snapshot_member.status = 'active'
-          WHERE link.is_member = TRUE
-            AND link.verification_source = 'admin_snapshot'
-            AND link.snapshot_import_id = snapshot_state.active_import_id
+          FROM users member_user
+          WHERE ${activeMemberAccessSql('member_user.id')}
          ) AS active_memberships
      ),
      engagement_counts AS (

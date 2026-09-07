@@ -134,11 +134,13 @@ describe('XP-only leaderboard periods', () => {
       'prediction_win',
       'video_phrase',
       'player_card',
+      'membership_activation',
+      'membership_renewal',
+      'admin_adjustment',
     ]);
 
     const excluded = [
       'achievement_bonus',
-      'admin_adjustment',
       'loyalty_redemption',
       'prediction_btts',
     ];
@@ -148,6 +150,21 @@ describe('XP-only leaderboard periods', () => {
         false,
       );
     }
+  });
+
+  it('uses independently persisted period deltas for leaderboard sums', async () => {
+    const service = await readFile(
+      path.resolve(process.cwd(), 'src/services/leaderboardService.ts'),
+      'utf8',
+    );
+    assert.match(
+      service,
+      /COALESCE\(pt\.monthly_points_delta, pt\.final_points\)/,
+    );
+    assert.match(
+      service,
+      /COALESCE\(pt\.season_points_delta, pt\.final_points\)/,
+    );
   });
 
   it('builds the current month with exact UTC boundaries', () => {

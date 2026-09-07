@@ -110,14 +110,14 @@ manufacture Apple's product response. See
 ## Separate production-access requirements
 
 TestFlight and App Review still produce sandbox receipts after product lookup
-works. The server now supports a production-first, dedicated reviewer-account
-fallback: keep `REVENUECAT_ALLOW_SANDBOX=false`, place only the review account's
-PostgreSQL UUID in `REVENUECAT_SANDBOX_ALLOWED_USER_IDS`, and put the same UUID
-in RevenueCat **Sandbox Testing Access → Allowed App User IDs only**. This does
-not change the client key or the product lookup described above.
+works. The server checks production first and then accepts a genuine
+`app_store`/`play_store` sandbox entitlement without enabling RevenueCat Test
+Store. Keep `REVENUECAT_ALLOW_SANDBOX=false`. If RevenueCat's own sandbox access
+is restricted, allow the tester's PostgreSQL UUID there. This does not change
+the client key or the product lookup described above.
 
-The current server revision must be rebuilt/recreated to deploy that allowlist,
-migration 042 admin access controls, and the optional WhatsApp support endpoint.
+The current server revision must be rebuilt/recreated to deploy migrations
+043/044, admin access controls, and the optional WhatsApp support endpoint.
 See [DEPLOY_MEMBERSHIP_SUBSCRIPTIONS.md](DEPLOY_MEMBERSHIP_SUBSCRIPTIONS.md).
 
 References: [RevenueCat configure the SDK](https://www.revenuecat.com/docs/getting-started/configuring-sdk),

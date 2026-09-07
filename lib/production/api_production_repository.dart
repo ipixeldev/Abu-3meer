@@ -284,6 +284,11 @@ AbuUserProfile parseAdminUserProfile(dynamic value) {
       (user['youtubeChannelId'] ?? user['youtube_channel_id'] ?? '')
           .toString()
           .trim();
+  final effectiveYouTubeMember =
+      user['hasMemberAccess'] != false &&
+      (user['isYouTubeMember'] is bool
+          ? user['isYouTubeMember'] == true
+          : user['youtubeMembershipActive'] == true);
   return AbuUserProfile(
     // Mutating endpoints accept either the PostgreSQL ID or Firebase UID. Use
     // the Firebase UID when present so the same model also works in existing
@@ -310,6 +315,21 @@ AbuUserProfile parseAdminUserProfile(dynamic value) {
                 user['accessSource'] ??
                 'none')
             .toString(),
+    serverHasMemberAccess: user['hasMemberAccess'] is bool
+        ? user['hasMemberAccess'] as bool
+        : null,
+    memberAccessSource:
+        (user['memberAccessSource'] ?? user['member_access_source'] ?? 'none')
+            .toString(),
+    memberAccessReason:
+        (user['memberAccessReason'] ??
+                user['member_access_reason'] ??
+                'unknown')
+            .toString(),
+    memberAccessExpiresAt: optionalTimestamp(
+      'memberAccessExpiresAt',
+      'member_access_expires_at',
+    ),
     email: (user['email'] ?? '').toString(),
     username: (user['username'] ?? '').toString(),
     displayName: (user['displayName'] ?? '').toString(),
@@ -319,7 +339,7 @@ AbuUserProfile parseAdminUserProfile(dynamic value) {
     supportedTeamLogo: (user['supportedTeamLogo'] ?? '').toString(),
     avatarUrl: (user['avatarUrl'] ?? '').toString(),
     role: role,
-    membershipMultiplier: user['isYouTubeMember'] == true ? 2.0 : 1.0,
+    membershipMultiplier: effectiveYouTubeMember ? 2.0 : 1.0,
     totalPoints: parseApiInt(user['totalPoints']),
     monthlyPoints: parseApiInt(user['monthlyPoints']),
     seasonPoints: parseApiInt(user['seasonPoints']),
@@ -346,6 +366,13 @@ AbuUserProfile parseAdminUserProfile(dynamic value) {
       'youtubeMemberSince',
       'youtube_member_since',
     ),
+    youtubeMembershipExpiresAt: optionalTimestamp(
+      'youtubeMembershipExpiresAt',
+      'youtube_membership_expires_at',
+    ),
+    youtubeMembershipRecheckRequired:
+        user['youtubeMembershipRecheckRequired'] == true ||
+        user['youtube_membership_recheck_required'] == true,
   );
 }
 
@@ -360,10 +387,18 @@ AdminPointAdjustment parseAdminPointAdjustment(dynamic value) {
     adminId: (item['adminId'] ?? '').toString(),
     adminDisplayName: (item['adminDisplayName'] ?? '').toString(),
     adminIsProSubscriber: item['adminIsProSubscriber'] == true,
+    adminHasMemberAccess: item['adminHasMemberAccess'] is bool
+        ? item['adminHasMemberAccess'] as bool
+        : item['adminIsProSubscriber'] == true ||
+              item['adminIsYouTubeMember'] == true,
     targetUserId: (item['targetUserId'] ?? '').toString(),
     targetDisplayName: (item['targetDisplayName'] ?? '').toString(),
     targetUsername: (item['targetUsername'] ?? '').toString(),
     targetIsProSubscriber: item['targetIsProSubscriber'] == true,
+    targetHasMemberAccess: item['targetHasMemberAccess'] is bool
+        ? item['targetHasMemberAccess'] as bool
+        : item['targetIsProSubscriber'] == true ||
+              item['targetIsYouTubeMember'] == true,
     delta: parseApiInt(item['delta']),
     reason: (item['reason'] ?? '').toString(),
     totalBefore: parseApiInt(item['totalBefore']),
@@ -456,6 +491,17 @@ class ApiProductionRepository {
       final accountStatus = (u['accountStatus'] ?? u['account_status'] ?? '')
           .toString();
       final storedAvatarUrl = (u['avatarUrl'] ?? '').toString().trim();
+      DateTime? userTimestamp(String key) =>
+          DateTime.tryParse((u[key] ?? '').toString())?.toLocal();
+      // `youtubeMembershipActive` is raw diagnostic state. The effective
+      // `isYouTubeMember` value already includes a final admin access block,
+      // so never rebuild a badge/multiplier from the raw value when the server
+      // deliberately returned false.
+      final effectiveYouTubeMember =
+          u['hasMemberAccess'] != false &&
+          (u['isYouTubeMember'] is bool
+              ? u['isYouTubeMember'] == true
+              : u['youtubeMembershipActive'] == true);
       return AbuUserProfile(
         uid: u['firebaseUid'] ?? user.uid,
         backendUserId: (u['id'] ?? '').toString(),
@@ -470,6 +516,12 @@ class ApiProductionRepository {
             .toString(),
         subscriptionAccessSource: (u['subscriptionAccessSource'] ?? 'none')
             .toString(),
+        serverHasMemberAccess: u['hasMemberAccess'] is bool
+            ? u['hasMemberAccess'] as bool
+            : null,
+        memberAccessSource: (u['memberAccessSource'] ?? 'none').toString(),
+        memberAccessReason: (u['memberAccessReason'] ?? 'unknown').toString(),
+        memberAccessExpiresAt: userTimestamp('memberAccessExpiresAt'),
         email: u['email'] ?? user.email ?? '',
         displayName: u['displayName'] ?? user.displayName ?? '',
         username: u['username'] ?? '',
@@ -484,7 +536,7 @@ class ApiProductionRepository {
             ? storedAvatarUrl
             : (user.photoURL ?? '').trim(),
         role: role,
-        membershipMultiplier: (u['isYouTubeMember'] == true) ? 2.0 : 1.0,
+        membershipMultiplier: effectiveYouTubeMember ? 2.0 : 1.0,
         totalPoints: (p['total_points'] ?? 0).toInt(),
         monthlyPoints: (p['monthly_points'] ?? 0).toInt(),
         seasonPoints: (p['season_points'] ?? 0).toInt(),
@@ -503,6 +555,16 @@ class ApiProductionRepository {
         ),
         suspended: accountStatus == 'suspended' || accountStatus == 'banned',
         onboardingCompleted: u['onboardingCompleted'] as bool?,
+        youtubeChannelLinked: u['youtubeChannelLinked'] == true,
+        youtubeMembershipLevelId: (u['youtubeMembershipLevelId'] ?? '')
+            .toString(),
+        youtubeMembershipVerifiedAt: userTimestamp(
+          'youtubeMembershipVerifiedAt',
+        ),
+        youtubeMemberSince: userTimestamp('youtubeMemberSince'),
+        youtubeMembershipExpiresAt: userTimestamp('youtubeMembershipExpiresAt'),
+        youtubeMembershipRecheckRequired:
+            u['youtubeMembershipRecheckRequired'] == true,
       );
     }
     throw AbuApiException(
@@ -1702,6 +1764,24 @@ class ApiProductionRepository {
       );
     }
     return response.map(parseAdminPointAdjustment).toList(growable: false);
+  }
+
+  Future<Map<String, num>> fetchPointRules() async {
+    final response = await api.get('/point-rules');
+    if (response is! Map) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned invalid point rules.',
+        details: response,
+      );
+    }
+    return Map<String, dynamic>.from(response).map(
+      (key, value) => MapEntry(key, value is num ? value : num.parse('$value')),
+    );
+  }
+
+  Future<void> updatePointRules(Map<String, num> rules) async {
+    await api.put('/admin/point-rules', body: rules, requireAuth: true);
   }
 
   Future<void> updateNotificationPreferences({

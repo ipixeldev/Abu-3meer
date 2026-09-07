@@ -8,7 +8,7 @@ const diagnostics = import(pathToFileURL(path.resolve('scripts/diagnose_subscrip
 const now = Date.parse('2026-09-06T12:00:00Z');
 const policy = {
   serverKeyConfigured: true, allowSandbox: false,
-  maxAgeSeconds: 24 * 60 * 60, runtimeSupportsAccessReasons: true,
+  runtimeSupportsAccessReasons: true,
 };
 const row = {
   id: 'private-account-id', subscription_user_id: 'private-account-id',
@@ -64,11 +64,11 @@ test('legacy image reports the current policy reason without requiring an image 
   assert.equal(report.reasonSource, 'derived-for-legacy-runtime');
 });
 
-test('diagnostics distinguish expired, stale, absent and active production subscriptions', async () => {
+test('diagnostics distinguish expired, malformed, absent and durable active production subscriptions', async () => {
   const { diagnoseSubscription } = await diagnostics;
   for (const [changes, reason] of [
     [{ expires_at: new Date(now) }, 'expired'],
-    [{ verified_at: new Date(now - 24 * 60 * 60_000) }, 'verification_required'],
+    [{ verified_at: new Date(now - 48 * 60 * 60_000), is_sandbox: false }, 'active'],
     [{ verified_at: new Date(now + 60_001) }, 'verification_required'],
     [{ is_active: false, product_id: null, subscription_user_id: null }, 'no_entitlement'],
     [{ is_sandbox: false }, 'active'],
@@ -79,6 +79,7 @@ test('diagnostics distinguish expired, stale, absent and active production subsc
     });
     assert.equal(report.accessReason, reason);
     assert.equal(report.accessActive, reason === 'active');
+    if (reason === 'active') assert.equal(report.verificationTimestampValid, true);
   }
   const missing = await diagnoseSubscription({
     username: 'dev', policy, now, enforce: enforceSubscriptionAccess,

@@ -368,7 +368,7 @@ class _AdminSubscriptionDialogState extends State<AdminSubscriptionDialog> {
                                       user.displayName.isNotEmpty
                                           ? user.displayName
                                           : user.username,
-                                      isSubscriber: user.isProSubscriber,
+                                      isSubscriber: user.hasMemberAccess,
                                       maxLines: 2,
                                       style: const TextStyle(
                                         fontWeight: FontWeight.w700,

@@ -3087,7 +3087,7 @@ class _FanWarContributorCard extends StatelessWidget {
                       leading: Text('${row.key + 1}', style: _display(18)),
                       title: SubscriberName(
                         '@${entry.username}',
-                        isSubscriber: entry.isProSubscriber,
+                        isSubscriber: entry.hasMemberAccess,
                       ),
                       subtitle: Text(entry.supportedTeam),
                       trailing: Text(
@@ -3117,7 +3117,7 @@ class _FanWarContributorCard extends StatelessWidget {
                           flex: 3,
                           child: SubscriberName(
                             '@${entry.username}',
-                            isSubscriber: entry.isProSubscriber,
+                            isSubscriber: entry.hasMemberAccess,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(fontWeight: FontWeight.w800),
@@ -4533,7 +4533,7 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                             padding: const EdgeInsets.symmetric(vertical: 6),
                             child: SubscriberName(
                               profile.displayName.toUpperCase(),
-                              isSubscriber: profile.isProSubscriber,
+                              isSubscriber: profile.hasMemberAccess,
                               textAlign: TextAlign.center,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -5884,10 +5884,11 @@ class _ProductionAdminTools extends StatelessWidget {
     BuildContext context, {
     String initialKind = 'videoPhrase',
   }) async {
+    final pointRules = await repository.loadPointRules();
+    if (!context.mounted) return;
     final title = TextEditingController();
     final description = TextEditingController();
     final video = TextEditingController();
-    final points = TextEditingController(text: '10');
     final questions = <_AdminQuestionDraft>[_AdminQuestionDraft()];
     var kind = initialKind == 'playerCard' ? 'playerCard' : 'videoPhrase';
     var status = 'open';
@@ -5906,6 +5907,10 @@ class _ProductionAdminTools extends StatelessWidget {
     String questionTypeForKind(String value) => switch (value) {
       _ => 'text',
     };
+
+    int pointsForKind(String value) => value == 'playerCard'
+        ? (pointRules['playerCard'] ?? 15).toInt()
+        : (pointRules['videoQuestion'] ?? 15).toInt();
 
     void resetQuestions(String value) {
       for (final draft in questions) {
@@ -5968,7 +5973,6 @@ class _ProductionAdminTools extends StatelessWidget {
                       setDialogState(() {
                         kind = value;
                         resetQuestions(value);
-                        points.text = '10';
                       });
                     },
                   ),
@@ -6098,14 +6102,21 @@ class _ProductionAdminTools extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 10),
-                  TextField(
-                    controller: points,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: abuText(
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.stars_rounded),
+                    title: Text(
+                      abuText(
                         context,
-                        'XP for correct answer',
-                        'XP للإجابة الصحيحة',
+                        '${pointsForKind(kind)} XP for a correct answer',
+                        '${pointsForKind(kind)} XP للإجابة الصحيحة',
+                      ),
+                    ),
+                    subtitle: Text(
+                      abuText(
+                        context,
+                        'Controlled by Admin Studio → Point rules. Existing and new challenges always use the current global value.',
+                        'تتحكم بها لوحة الإدارة ← قواعد النقاط. تستخدم التحديات الحالية والجديدة دائماً القيمة العامة الحالية.',
                       ),
                     ),
                   ),
@@ -6136,11 +6147,7 @@ class _ProductionAdminTools extends StatelessWidget {
                     onChanged: (value) =>
                         setDialogState(() => memberOnly = value),
                     title: Text(
-                      abuText(
-                        context,
-                        'YouTube members only',
-                        'لأعضاء يوتيوب فقط',
-                      ),
+                      abuText(context, 'Members only', 'للأعضاء فقط'),
                     ),
                   ),
                   SwitchListTile.adaptive(
@@ -6395,7 +6402,7 @@ class _ProductionAdminTools extends StatelessWidget {
                 kind: kind,
                 title: title.text,
                 description: description.text,
-                rewardPoints: int.tryParse(points.text) ?? 0,
+                rewardPoints: pointsForKind(kind),
                 status: status,
                 startsAt: startsAt,
                 endsAt: endsAt,
@@ -6417,19 +6424,12 @@ class _ProductionAdminTools extends StatelessWidget {
             ),
             FilledButton(
               onPressed: () {
-                final reward = int.tryParse(points.text);
                 String? validationError;
                 if (title.text.trim().isEmpty) {
                   validationError = abuText(
                     context,
                     'Add a challenge title.',
                     'أضف عنواناً للتحدي.',
-                  );
-                } else if (reward == null || reward <= 0) {
-                  validationError = abuText(
-                    context,
-                    'XP for a correct answer must be greater than zero.',
-                    'يجب أن تكون نقاط XP للإجابة الصحيحة أكبر من صفر.',
                   );
                 } else if (!endsAt.isAfter(startsAt)) {
                   validationError = abuText(
@@ -6497,7 +6497,7 @@ class _ProductionAdminTools extends StatelessWidget {
           description: description.text,
           videoUrl: video.text,
           imageUrl: uploadedImageUrl,
-          rewardPoints: int.tryParse(points.text) ?? 0,
+          rewardPoints: pointsForKind(kind),
           availableFrom: startsAt,
           availableUntil: endsAt,
           status: status,
@@ -6511,7 +6511,6 @@ class _ProductionAdminTools extends StatelessWidget {
     title.dispose();
     description.dispose();
     video.dispose();
-    points.dispose();
     for (final question in questions) {
       question.dispose();
     }
@@ -7797,7 +7796,7 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
                           ),
                           title: SubscriberName(
                             label,
-                            isSubscriber: user.isProSubscriber,
+                            isSubscriber: user.hasMemberAccess,
                           ),
                           subtitle: Text(
                             <String>[
@@ -8097,7 +8096,7 @@ class _AdminRolesDialogState extends State<_AdminRolesDialog> {
                         Flexible(
                           child: SubscriberName(
                             name,
-                            isSubscriber: user.isProSubscriber,
+                            isSubscriber: user.hasMemberAccess,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontWeight: FontWeight.w800),
@@ -9412,13 +9411,7 @@ Future<void> _editRewardDefinition(
                   value: memberOnly,
                   onChanged: (value) =>
                       setDialogState(() => memberOnly = value),
-                  title: Text(
-                    abuText(
-                      context,
-                      'YouTube members only',
-                      'لأعضاء يوتيوب فقط',
-                    ),
-                  ),
+                  title: Text(abuText(context, 'Members only', 'للأعضاء فقط')),
                 ),
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,

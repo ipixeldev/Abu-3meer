@@ -1,11 +1,18 @@
 import { query } from '../db/pool.js';
 import { refreshLinkedYouTubeMembership } from './csvMembershipService.js';
-import { activeSubscriptionSql } from './subscriptionAccess.js';
+import {
+  activeMemberAccessSql,
+  currentYouTubeMembershipSql,
+} from './subscriptionAccess.js';
 
 type QueryMembership = (
   text: string,
   params: unknown[],
-) => Promise<{ rows: Array<{ linked: boolean; current_member: boolean; is_pro_subscriber?: boolean }> }>;
+) => Promise<{ rows: Array<{
+  linked: boolean;
+  current_member: boolean;
+  has_member_access: boolean;
+}> }>;
 
 /** Resolve membership before member-gated content or an XP award. */
 export async function resolveChallengeMembership(
@@ -20,27 +27,8 @@ export async function resolveChallengeMembership(
     refreshLinkedYouTubeMembership;
   const read = () => queryMembership(
     `SELECT (yl.user_id IS NOT NULL) AS linked,
-            ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
-            COALESCE(
-              yl.is_member = TRUE
-              AND yl.verification_source = 'admin_snapshot'
-              AND EXISTS (
-                SELECT 1
-                FROM youtube_membership_snapshot_state snapshot_state
-                JOIN youtube_membership_snapshot_imports snapshot_import
-                  ON snapshot_import.id = snapshot_state.active_import_id
-                 AND snapshot_import.expires_at > CURRENT_TIMESTAMP
-                WHERE snapshot_state.singleton = TRUE
-                  AND snapshot_state.active_import_id = yl.snapshot_import_id
-              )
-              AND EXISTS (
-                SELECT 1 FROM youtube_channel_claims claim
-                WHERE claim.user_id = u.id
-                  AND claim.youtube_channel_id = yl.youtube_channel_id
-                  AND claim.status = 'approved'
-              ),
-              FALSE
-            ) AS current_member
+            ${currentYouTubeMembershipSql('u.id')} AS current_member,
+            ${activeMemberAccessSql('u.id')} AS has_member_access
      FROM users u
      LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
      WHERE u.id = $1`,
@@ -48,9 +36,8 @@ export async function resolveChallengeMembership(
   );
 
   const before = (await read()).rows[0];
-  if (before?.is_pro_subscriber === true) return true;
+  if (before?.has_member_access === true) return true;
   if (!before?.linked) return false;
-  if (before.current_member) return true;
 
   try {
     await refreshMembership(userId);
@@ -61,7 +48,6 @@ export async function resolveChallengeMembership(
   }
 
   const after = (await read()).rows[0];
-  if (after?.is_pro_subscriber === true) return true;
   if (!after?.linked) return false;
-  return after.current_member === true;
+  return after.has_member_access === true;
 }

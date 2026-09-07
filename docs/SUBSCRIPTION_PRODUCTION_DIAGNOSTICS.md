@@ -43,8 +43,7 @@ RevenueCat, restore a purchase, refresh a receipt, or change any access state.
 
 A Git commit hash or successful `/ready` response alone does not prove that the
 new image is running. After deploying the current server revision, the startup
-log must show migration `042_admin_subscription_access.sql` as applied or
-already applied.
+log must show migrations 042, 043, and 044 as applied or already applied.
 
 ## Report fields
 
@@ -52,19 +51,27 @@ already applied.
 | --- | --- |
 | `runtimeSupportsAccessReasons` | Whether the running API exposes the modern access-reason contract. `false` means its image predates that contract. |
 | `serverKeyConfigured` | A server-key-shaped `sk_` value exists. It does not prove the credential is valid or belongs to this RevenueCat project. |
-| `sandboxAllowed` near the top | Whether the global `REVENUECAT_ALLOW_SANDBOX` switch is enabled. It should remain `false` in production. |
-| `sandboxAllowed` in an account result | Whether this exact account is permitted by either the global switch or `REVENUECAT_SANDBOX_ALLOWED_USER_IDS`. |
+| `sandboxAllowed` near the top | Whether the escape hatch for RevenueCat Test Store/unknown-provider sandbox rows is enabled. It should remain `false` in production. |
+| `sandboxAllowed` in an account result | Whether this account has that escape hatch. Genuine `app_store`/`play_store` sandbox receipts do not require it. |
 | `snapshotPresent` | The database has a saved RevenueCat verification row for this account. |
 | `sourceEntitlementActive` | RevenueCat's last saved upstream entitlement was active before local access policy was applied. |
-| `isSandbox` | The saved receipt came from sandbox. This remains truthful even when a dedicated review account may use it. |
-| `verificationFresh` | The saved verification is within the server's bounded verification lease. |
-| `accessReason: active` | The saved store entitlement currently passes expiry, verification, and environment policy. |
-| `accessReason: sandbox_not_allowed` | The receipt is sandbox and this account is not globally or individually allowed. |
+| `isSandbox` | The saved receipt came from sandbox. This remains truthful even when a verified Apple/Google test receipt grants member access. |
+| `verificationTimestampValid` | The saved authenticated verification timestamp exists and is not unreasonably in the future. |
+| `verificationAgeSeconds` | Informational age of the saved verification. Age alone does not revoke an otherwise active entitlement before its store expiry. |
+| `accessReason: active` | The saved store entitlement currently passes active-state, expiry, verification-timestamp, and environment policy. |
+| `accessReason: sandbox_not_allowed` | The row is RevenueCat Test Store or has unknown provider provenance and no explicit escape hatch. |
 | `accessReason: no_entitlement` | No recognized `abu_3meer_pro` product is saved for this app account. This alone does not prove an account mismatch. |
 | `accessReason: expired` | The saved entitlement expiry is in the past. |
-| `accessReason: verification_required` | A fresh authenticated server-to-RevenueCat sync is needed. |
+| `accessReason: verification_required` | The saved verification timestamp is missing, malformed, or unreasonably in the future; an authenticated server-to-RevenueCat sync is needed. |
 | `accessReason: inactive` | The saved source is refunded, malformed, or otherwise not active. |
 | `accessActive` | The store snapshot passes the policy represented by this diagnostic report. |
+
+An authenticated active store snapshot remains effective through its saved
+paid/grace-period expiry even when `verificationAgeSeconds` exceeds 24 hours.
+This keeps background prediction settlement consistent for users who do not
+reopen the app daily. RevenueCat webhooks and explicit **Refresh access** syncs
+must remain configured so refunds, transfers, and other upstream revocations
+replace the cached row promptly.
 
 The diagnostic intentionally reports the saved **store** snapshot. Migration
 042 adds a separate admin access override; Admin Studio can grant or block app
@@ -76,20 +83,17 @@ that override; never edit either table directly.
 ## Refresh versus this read-only report
 
 **Refresh access** in the signed-in app performs the live server-to-RevenueCat
-sync. The server first requests the production customer. Only when all of these
-conditions hold does it make the explicit sandbox request:
-
-- the production response has no active production entitlement;
-- the app user's PostgreSQL UUID is in
-  `REVENUECAT_SANDBOX_ALLOWED_USER_IDS` (or the deliberately global sandbox
-  switch is enabled); and
-- the sandbox response contains an active sandbox `abu_3meer_pro` entitlement.
+sync. The server first requests the production customer. When it has no active
+production entitlement, it performs the explicit sandbox request. A returned
+active sandbox entitlement grants access when its persisted provider is
+`app_store` or `play_store`. RevenueCat Test Store and legacy unknown-provider
+rows additionally require either the global `REVENUECAT_ALLOW_SANDBOX` switch
+or the app user's PostgreSQL UUID in `REVENUECAT_SANDBOX_ALLOWED_USER_IDS`.
 
 This production-first order prevents a test purchase from shadowing a real paid
-subscription. Keep `REVENUECAT_ALLOW_SANDBOX=false`; use the narrow UUID
-allowlist only for dedicated TestFlight/App Review accounts. RevenueCat's own
-**Sandbox Testing Access → Allowed App User IDs only** setting must contain the
-same UUID.
+subscription. Keep `REVENUECAT_ALLOW_SANDBOX=false`. After migration 044, tap
+**Refresh access** once for an existing TestFlight/Play tester so `store_name`
+is populated. RevenueCat's own sandbox restriction, if enabled, is independent.
 
 The `dev` evidence already showed the distinction: the production lookup had no
 entitlement while the explicit sandbox lookup contained the active test

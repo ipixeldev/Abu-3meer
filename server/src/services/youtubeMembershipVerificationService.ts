@@ -1,5 +1,9 @@
 import { getClient } from '../db/pool.js';
 import { resolveYouTubeProfileChannelId, YouTubeProfileResolutionError } from './youtubeProfileResolver.js';
+import {
+  invalidatePointCaches,
+  recordMembershipRewardCycleInTransaction,
+} from './pointsService.js';
 
 export type YouTubeMembershipCheckStatus =
   | 'active'
@@ -15,6 +19,10 @@ export type YouTubeMembershipCheckResult = {
     memberSince?: string | null;
     verifiedAt: string;
     snapshotExpiresAt?: string;
+    /** Manual YouTube membership is access, never an auto-renewing store sale. */
+    accessSource: 'youtube' | 'none';
+    willRenew: false;
+    recheckRequiredAt?: string | null;
     /** A profile link establishes CSV eligibility, not proof of ownership. */
     verificationMethod: 'manual_profile_link';
   };
@@ -35,6 +43,7 @@ type SnapshotMember = {
   youtube_channel_id: string;
   membership_level: string | null;
   joined_at: Date | null;
+  total_time_as_member_months: string | number | null;
 };
 
 type MembershipDatabaseClient = Awaited<ReturnType<typeof getClient>>;
@@ -54,6 +63,8 @@ export async function checkYouTubeMembership(input: {
   now?: Date;
   clientFactory?: () => Promise<MembershipDatabaseClient>;
   channelResolver?: (profileLink: string) => Promise<string>;
+  recordMembershipCycle?: typeof recordMembershipRewardCycleInTransaction;
+  invalidateCaches?: () => Promise<void>;
 } = {}): Promise<YouTubeMembershipCheckResult> {
   let channelId: string;
   try {
@@ -66,6 +77,7 @@ export async function checkYouTubeMembership(input: {
   }
   const now = options.now ?? new Date();
   const client = await (options.clientFactory ?? getClient)();
+  let pointsChanged = false;
   try {
     await client.query('BEGIN');
     await client.query(
@@ -101,6 +113,9 @@ export async function checkYouTubeMembership(input: {
           isMember: false,
           youtubeChannelId: channelId,
           verifiedAt: now.toISOString(),
+          accessSource: 'none',
+          willRenew: false,
+          recheckRequiredAt: null,
           verificationMethod: 'manual_profile_link',
         },
       };
@@ -135,7 +150,8 @@ export async function checkYouTubeMembership(input: {
     }
 
     const memberResult = await client.query<SnapshotMember>(
-      `SELECT youtube_channel_id, membership_level, joined_at
+      `SELECT youtube_channel_id, membership_level, joined_at,
+              total_time_as_member_months
        FROM youtube_membership_snapshot_members
        WHERE import_id = $1
          AND status = 'active'
@@ -145,6 +161,14 @@ export async function checkYouTubeMembership(input: {
     );
     const activeMember = memberResult.rows[0];
     const isMember = Boolean(activeMember);
+    const parsedMembershipMonths = activeMember?.total_time_as_member_months == null
+      ? null
+      : Number(activeMember.total_time_as_member_months);
+    const totalTimeAsMemberMonths = parsedMembershipMonths !== null
+      && Number.isFinite(parsedMembershipMonths)
+      && parsedMembershipMonths >= 0
+      ? parsedMembershipMonths
+      : null;
     const previousLink = await client.query(
       `SELECT youtube_channel_id, is_member
        FROM youtube_account_links
@@ -299,13 +323,38 @@ export async function checkYouTubeMembership(input: {
            ON approved_claim.user_id = link.user_id
           AND approved_claim.youtube_channel_id = link.youtube_channel_id
           AND approved_claim.status = 'approved'
+          AND approved_claim.approved_snapshot_import_id = snapshot_import.id
          WHERE link.is_member = TRUE
            AND link.snapshot_import_id = snapshot_import.id
        )
        WHERE snapshot_import.id = $1`,
       [snapshot.id],
     );
+    const recordMembershipCycle = options.recordMembershipCycle
+      // Unit/data-repair callers can inject an isolated client. Production
+      // uses the real ledger in this same transaction by default.
+      ?? (options.clientFactory === undefined
+        ? recordMembershipRewardCycleInTransaction
+        : undefined);
+    if (isMember && recordMembershipCycle) {
+      const reward = await recordMembershipCycle(client, {
+        userId: input.userId,
+        provider: 'youtube',
+        // A replacement CSV is only a new verification lease. Renewal XP
+        // requires YouTube's cumulative tenure to increase; when that field is
+        // unavailable, the stable zero baseline permits activation only.
+        cycleKey: totalTimeAsMemberMonths === null
+          ? 'tenure:unknown'
+          : `tenure:months:${totalTimeAsMemberMonths}`,
+        cycleSequence: totalTimeAsMemberMonths ?? 0,
+        observedAt: now,
+      });
+      pointsChanged = reward.activationPoints > 0 || reward.renewalPoints > 0;
+    }
     await client.query('COMMIT');
+    if (pointsChanged) {
+      await (options.invalidateCaches ?? invalidatePointCaches)();
+    }
     return {
       membership: {
         status: isMember ? 'active' : 'not_in_snapshot',
@@ -317,6 +366,11 @@ export async function checkYouTubeMembership(input: {
           : null,
         verifiedAt: now.toISOString(),
         snapshotExpiresAt: new Date(snapshot.expires_at).toISOString(),
+        accessSource: isMember ? 'youtube' : 'none',
+        willRenew: false,
+        recheckRequiredAt: isMember
+          ? new Date(snapshot.expires_at).toISOString()
+          : null,
         verificationMethod: 'manual_profile_link',
       },
     };

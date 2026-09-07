@@ -56,7 +56,8 @@ export async function challengeRoutes(fastify: FastifyInstance) {
       if (!challenges) {
         const res = await query(
           `SELECT c.id, c.video_id, c.title, c.description, c.kind, c.status,
-                c.reward_points, c.reward_points * 2 AS member_points,
+                COALESCE(point_rule.base_points, c.reward_points) AS reward_points,
+                COALESCE(point_rule.base_points, c.reward_points) AS member_points,
                 c.video_url, c.image_url, c.maximum_attempts, c.member_only,
                 c.notify_on_live, c.starts_at, c.ends_at,
                 COALESCE(
@@ -72,11 +73,16 @@ export async function challengeRoutes(fastify: FastifyInstance) {
                 ) AS questions
          FROM challenges c
          LEFT JOIN challenge_questions q ON q.challenge_id = c.id
+         LEFT JOIN point_rules point_rule
+           ON point_rule.key = CASE c.kind
+             WHEN 'playerCard' THEN 'playerCard'
+             ELSE 'videoQuestion'
+           END
          WHERE c.status IN ('open', 'scheduled')
            AND c.starts_at <= CURRENT_TIMESTAMP
            AND c.ends_at >= CURRENT_TIMESTAMP
            AND (c.member_only = FALSE OR $1 = TRUE)
-         GROUP BY c.id
+         GROUP BY c.id, point_rule.base_points
          ORDER BY c.starts_at DESC`,
           [canAccessMemberContent],
         );
