@@ -1104,7 +1104,13 @@ class ProductionRepository {
       return;
     }
     if (!_googleInitialized) {
-      await GoogleSignIn.instance.initialize();
+      // Android requires the OAuth web-client ID so Google can mint an ID
+      // token for Firebase. Without it the account picker commonly returns
+      // `canceled` even when the user did not cancel.
+      await GoogleSignIn.instance.initialize(
+        serverClientId:
+            '701810344443-pbftvefi2r3mho16h6h98ib3e8hjije5.apps.googleusercontent.com',
+      );
       _googleInitialized = true;
     }
     final account = await GoogleSignIn.instance.authenticate();
@@ -1145,7 +1151,10 @@ class ProductionRepository {
       await user.linkWithPopup(provider);
     } else {
       if (!_googleInitialized) {
-        await GoogleSignIn.instance.initialize();
+        await GoogleSignIn.instance.initialize(
+          serverClientId:
+              '701810344443-pbftvefi2r3mho16h6h98ib3e8hjije5.apps.googleusercontent.com',
+        );
         _googleInitialized = true;
       }
       final account = await GoogleSignIn.instance.authenticate();
@@ -2291,7 +2300,10 @@ class ProductionRepository {
         await user.reauthenticateWithPopup(GoogleAuthProvider());
       } else {
         if (!_googleInitialized) {
-          await GoogleSignIn.instance.initialize();
+          await GoogleSignIn.instance.initialize(
+            serverClientId:
+                '701810344443-pbftvefi2r3mho16h6h98ib3e8hjije5.apps.googleusercontent.com',
+          );
           _googleInitialized = true;
         }
         final account = await GoogleSignIn.instance.authenticate();
