@@ -1,10 +1,10 @@
 # ABU 3MEER Android RevenueCat and Play production guide
 
-The Android package is now `omar.abu3meer.app`, matching iOS. The app label is `ABU 3MEER`.
+The Android package stays `com.abu3meer.app`. iOS remains `omar.abu3meer.app`. This is correct: Apple and Google package IDs do not need to match. The app label is `ABU 3MEER`.
 
 ## RevenueCat
 
-Create/select the Android Play Store app in the existing RevenueCat project with package name `omar.abu3meer.app`. Copy its public SDK key (it must begin with `goog_`) into the release build:
+RevenueCat dashboard: Apps → + New app → Play Store. Enter package name `com.abu3meer.app`. Copy the Android public SDK key (starts with `goog_`) into the release build:
 
 ```sh
 flutter build appbundle --release \
@@ -17,16 +17,18 @@ For production access, turn off RevenueCat sandbox access. For internal testing,
 
 ## Play Console setup
 
-1. Create the app with package name `omar.abu3meer.app` (package names cannot be changed after creation).
-2. Add the two auto-renewing products with IDs `Ostoora3` and `Ostoora3_Pro_Max`, matching the RevenueCat catalog.
-3. Create a Google Cloud service account, grant it Play Console access including financial/order permissions, and upload its JSON to RevenueCat's Play Store app configuration.
-4. Configure Real-time Developer Notifications through a Cloud Pub/Sub topic and connect it in Play Console.
-5. Add testers to an internal testing track, upload the signed AAB, and install from the Play opt-in link. Products are not returned to sideloaded APKs that are not associated with Play.
-6. Complete Play App Content, Data safety, content rating, target API, store listing, privacy policy, and payments profile before production rollout.
+1. Play Console → select **ABU 3MEER - League** → Monetize with Play → Products → Subscriptions → Create subscription.
+2. Create product ID `Ostoora3`; add a monthly base plan; set price; activate it.
+3. Create product ID `Ostoora3_Pro_Max`; add a yearly base plan; set price; activate it.
+4. Play Console → Settings → Developer account → API access → create/select a service account → grant View financial data and Manage orders permissions → download JSON.
+5. RevenueCat → Apps → Play Store app → upload that JSON.
+6. Play Console → Monetize with Play → Monetization setup → Real-time developer notifications; create Pub/Sub topic and connect it.
+7. Play Console → Test and release → Internal testing → create release → upload signed `.aab` → add testers → copy opt-in link.
+8. Complete Play Console Dashboard tasks: app details, store listing, Data safety, content rating, privacy policy, payments profile, and closed-test requirement.
 
 ## Firebase follow-up
 
-Because the package changed from `com.abu3meer.app`, add a new Android app with package `omar.abu3meer.app` in Firebase, register the release and debug SHA-1/SHA-256 fingerprints, download the new `google-services.json`, and replace `android/app/google-services.json`. The checked-in file currently has the package name aligned for compilation, but Firebase OAuth/sign-in will not be production-correct until the new Firebase app credentials are downloaded.
+Do not change Firebase. Android continues using the existing Firebase app/package `com.abu3meer.app`.
 
 ## Build troubleshooting
 

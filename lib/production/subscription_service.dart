@@ -88,7 +88,7 @@ class SubscriptionService extends ChangeNotifier {
   static final instance = SubscriptionService._();
   static const entitlementId = 'abu_3meer_pro';
   static const _testKey = 'test_ueqlcobyKLrPtFjmuGonGtuosoe';
-  // RevenueCat's public SDK key for the App Store app omar.abu3meer.app.
+  // RevenueCat public SDK keys are store-specific; iOS uses appl_, Android uses goog_.
   // This is a client identifier, not a secret REST API credential.
   static const _iosKey = String.fromEnvironment(
     'REVENUECAT_IOS_API_KEY',
