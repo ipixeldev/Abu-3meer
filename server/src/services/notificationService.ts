@@ -597,6 +597,44 @@ interface TargetDeviceRow {
   fcm_token: string;
 }
 
+interface NotificationDeliveryOutcome {
+  campaignId: string;
+  deviceId: string;
+  status: 'sent' | 'failed';
+  providerMessageId: string | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+}
+
+/** Records the provider result for one previously reserved device delivery. */
+export async function recordNotificationDeliveryOutcome(
+  outcome: NotificationDeliveryOutcome,
+  execute: NotificationCampaignQueryExecutor = query,
+) {
+  await execute(
+    `UPDATE notification_deliveries
+     SET status = $3::varchar(20),
+         provider_message_id = $4,
+         error_code = $5,
+         error_message = $6,
+         delivered_at = CASE
+           WHEN $3::varchar(20) = 'sent' THEN CURRENT_TIMESTAMP
+           ELSE NULL
+         END
+     WHERE campaign_id = $1
+       AND device_id = $2
+       AND status = 'processing'`,
+    [
+      outcome.campaignId,
+      outcome.deviceId,
+      outcome.status,
+      outcome.providerMessageId,
+      outcome.errorCode,
+      outcome.errorMessage,
+    ],
+  );
+}
+
 /**
  * Atomically reserves candidate devices before the provider call. Existing
  * sent/processing rows are never reclaimed; only an explicit provider failure
@@ -785,27 +823,16 @@ export async function processNotificationCampaign(campaignId: string) {
             providerConfigurationFailureCount += 1;
             providerConfigurationFailureCodes.add(errorCode!);
           }
-          await dispatchClient.query(
-            `UPDATE notification_deliveries
-             SET status = $3,
-                 provider_message_id = $4,
-                 error_code = $5,
-                 error_message = $6,
-                 delivered_at = CASE
-                   WHEN $3 = 'sent' THEN CURRENT_TIMESTAMP
-                   ELSE NULL
-                 END
-             WHERE campaign_id = $1
-               AND device_id = $2
-               AND status = 'processing'`,
-            [
-              campaign.id,
-              device.id,
-              result.success ? 'sent' : 'failed',
-              result.messageId || null,
+          await recordNotificationDeliveryOutcome(
+            {
+              campaignId: campaign.id,
+              deviceId: device.id,
+              status: result.success ? 'sent' : 'failed',
+              providerMessageId: result.messageId || null,
               errorCode,
-              result.error?.message || null,
-            ],
+              errorMessage: result.error?.message || null,
+            },
+            (text, params) => dispatchClient.query(text, params),
           );
           if (isPermanentPushTokenError(errorCode || undefined)) {
             await dispatchClient.query(

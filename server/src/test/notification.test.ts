@@ -20,6 +20,7 @@ import {
   createNotificationCampaign,
   getNotificationCampaignStatus,
   lockNotificationCampaignForDispatch,
+  recordNotificationDeliveryOutcome,
   revokeDeviceInstallation,
 } from '../services/notificationService.js';
 import {
@@ -449,6 +450,37 @@ describe('push notification domain', () => {
     assert.equal(allowed, true);
     assert.match(statement, /FOR UPDATE/);
     assert.match(statement, /WHERE id = \$1/);
+  });
+
+  it('uses one explicit PostgreSQL type for the reused delivery status parameter', async () => {
+    let statement = '';
+    let parameters: any[] = [];
+    await recordNotificationDeliveryOutcome(
+      {
+        campaignId: '00000000-0000-0000-0000-000000000010',
+        deviceId: '00000000-0000-0000-0000-000000000001',
+        status: 'sent',
+        providerMessageId: 'provider-message-1',
+        errorCode: null,
+        errorMessage: null,
+      },
+      async (text, params) => {
+        statement = text;
+        parameters = params ?? [];
+        return { rowCount: 1, rows: [] };
+      },
+    );
+
+    assert.match(statement, /status = \$3::varchar\(20\)/);
+    assert.match(statement, /WHEN \$3::varchar\(20\) = 'sent'/);
+    assert.deepEqual(parameters, [
+      '00000000-0000-0000-0000-000000000010',
+      '00000000-0000-0000-0000-000000000001',
+      'sent',
+      'provider-message-1',
+      null,
+      null,
+    ]);
   });
 
   it('durable sign-out revocation requires both opaque installation secrets', async () => {
