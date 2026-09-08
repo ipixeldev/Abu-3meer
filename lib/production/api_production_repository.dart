@@ -24,8 +24,7 @@ double parseApiDouble(dynamic value, [double fallback = 0]) {
 @visibleForTesting
 bool notificationCampaignStatusIsConclusive(Map<String, dynamic> status) {
   if (status['terminal'] == true ||
-      status['providerConfigurationError'] == true ||
-      status['requiresTokenRefresh'] == true) {
+      status['providerConfigurationError'] == true) {
     return true;
   }
   final value = status['status']?.toString().trim().toLowerCase();

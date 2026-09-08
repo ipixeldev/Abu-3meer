@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:abu_3meer/production/notification_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -27,4 +28,56 @@ void main() {
     expect(notificationTokenRetryDelay(4), const Duration(minutes: 1));
     expect(notificationTokenRetryDelay(100), const Duration(minutes: 1));
   });
+
+  test('authorized Apple users register regardless of presentation style', () {
+    expect(
+      notificationAuthorizationAllowsRegistration(
+        AuthorizationStatus.authorized,
+      ),
+      isTrue,
+    );
+    expect(
+      notificationAuthorizationAllowsRegistration(
+        AuthorizationStatus.provisional,
+      ),
+      isTrue,
+    );
+    expect(
+      notificationAuthorizationAllowsRegistration(
+        AuthorizationStatus.notDetermined,
+      ),
+      isFalse,
+    );
+    expect(
+      notificationAuthorizationAllowsRegistration(AuthorizationStatus.denied),
+      isFalse,
+    );
+  });
+
+  test(
+    'registration state always syncs preferences after token work',
+    () async {
+      final calls = <String>[];
+
+      await syncNotificationRegistrationAndPreferences(
+        registerToken: () async => calls.add('token'),
+        syncPreferences: () async => calls.add('preferences'),
+      );
+
+      expect(calls, <String>['token', 'preferences']);
+
+      calls.clear();
+      await expectLater(
+        syncNotificationRegistrationAndPreferences(
+          registerToken: () async {
+            calls.add('token');
+            throw StateError('APNs token unavailable');
+          },
+          syncPreferences: () async => calls.add('preferences'),
+        ),
+        throwsStateError,
+      );
+      expect(calls, <String>['token', 'preferences']);
+    },
+  );
 }

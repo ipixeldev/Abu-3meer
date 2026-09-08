@@ -73,4 +73,32 @@ void main() {
       expect(result['sequence'], 2);
     },
   );
+
+  test('token refresh diagnostics do not stop server retry polling', () async {
+    var calls = 0;
+    final result = await pollNotificationCampaignDelivery(
+      maxPolls: 3,
+      wait: (_) async {},
+      fetch: () async {
+        calls += 1;
+        if (calls == 1) {
+          return <String, dynamic>{
+            'status': 'failed',
+            'terminal': false,
+            'requiresTokenRefresh': true,
+            'failureCodes': <String>['messaging/unknown-error'],
+          };
+        }
+        return <String, dynamic>{
+          'status': 'completed',
+          'terminal': true,
+          'sentCount': 0,
+          'failedCount': 1,
+        };
+      },
+    );
+
+    expect(calls, 2);
+    expect(result['status'], 'completed');
+  });
 }

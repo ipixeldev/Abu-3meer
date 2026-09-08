@@ -34,6 +34,27 @@ Duration notificationTokenRetryDelay(int attempt) {
   return delays[attempt.clamp(0, delays.length - 1).toInt()];
 }
 
+@visibleForTesting
+bool notificationAuthorizationAllowsRegistration(
+  AuthorizationStatus authorizationStatus,
+) =>
+    authorizationStatus == AuthorizationStatus.authorized ||
+    authorizationStatus == AuthorizationStatus.provisional;
+
+@visibleForTesting
+Future<void> syncNotificationRegistrationAndPreferences({
+  required Future<void> Function() registerToken,
+  required Future<void> Function() syncPreferences,
+}) async {
+  try {
+    await registerToken();
+  } finally {
+    // Permission/preferences still need to reach the server when native token
+    // acquisition is temporarily unavailable or throws on an Apple device.
+    await syncPreferences();
+  }
+}
+
 @pragma('vm:entry-point')
 Future<void> abuFirebaseMessagingBackgroundHandler(
   RemoteMessage message,
@@ -263,7 +284,7 @@ class NotificationService {
           _registeredToken = null;
           _registeredUserId = null;
         }
-        unawaited(_syncTokenSafely(apiRepo));
+        unawaited(_syncRegistrationStateSafely(apiRepo));
       } else {
         _cancelTokenRegistrationRetry();
         _registeredToken = null;
@@ -271,7 +292,7 @@ class NotificationService {
       }
     });
     if (apiRepo.auth.currentUser != null) {
-      unawaited(_syncTokenSafely(apiRepo));
+      unawaited(_syncRegistrationStateSafely(apiRepo));
     }
   }
 
@@ -296,13 +317,14 @@ class NotificationService {
       return false;
     }
 
-    final authorized =
-        settings.authorizationStatus == AuthorizationStatus.authorized ||
-        settings.authorizationStatus == AuthorizationStatus.provisional;
+    final authorized = notificationAuthorizationAllowsRegistration(
+      settings.authorizationStatus,
+    );
     final isApplePlatform = !kIsWeb && (Platform.isIOS || Platform.isMacOS);
-    final alertsEnabled =
-        !isApplePlatform || settings.alert == AppleNotificationSetting.enabled;
-    final granted = authorized && alertsEnabled;
+    // `authorizationStatus` is the operating-system grant. Individual Apple
+    // presentation styles (banner/alert, sound, Notification Center) can be
+    // changed independently and must not prevent this device from registering.
+    final granted = authorized;
     if (isApplePlatform) {
       debugPrint(
         '[FCM Permission] authorization=${settings.authorizationStatus.name} alerts=${settings.alert.name} notificationCenter=${settings.notificationCenter.name} sound=${settings.sound.name}',
@@ -318,8 +340,7 @@ class NotificationService {
     }
     if (granted && _apiRepo != null) {
       try {
-        await syncTokenWithBackend(_apiRepo!);
-        await syncPreferencesFromLocal();
+        await syncRegistrationStateWithBackend(_apiRepo!);
       } catch (error) {
         // A backend/tunnel outage is not an operating-system permission
         // denial. Registration will retry on auth/token refresh.
@@ -328,6 +349,13 @@ class NotificationService {
     }
     return granted;
   }
+
+  Future<void> syncRegistrationStateWithBackend(
+    ApiProductionRepository apiRepo,
+  ) => syncNotificationRegistrationAndPreferences(
+    registerToken: () => syncTokenWithBackend(apiRepo),
+    syncPreferences: syncPreferencesFromLocal,
+  );
 
   Future<void> syncTokenWithBackend(
     ApiProductionRepository apiRepo, {
@@ -338,8 +366,9 @@ class NotificationService {
     final isApplePlatform = !kIsWeb && Platform.isIOS;
     try {
       final settings = await _fcm.getNotificationSettings();
-      if (settings.authorizationStatus != AuthorizationStatus.authorized &&
-          settings.authorizationStatus != AuthorizationStatus.provisional) {
+      if (!notificationAuthorizationAllowsRegistration(
+        settings.authorizationStatus,
+      )) {
         _cancelTokenRegistrationRetry();
         return;
       }
@@ -489,6 +518,16 @@ class NotificationService {
       await syncTokenWithBackend(repository);
     } catch (error) {
       debugPrint('[FCM] Deferred token sync: $error');
+    }
+  }
+
+  Future<void> _syncRegistrationStateSafely(
+    ApiProductionRepository repository,
+  ) async {
+    try {
+      await syncRegistrationStateWithBackend(repository);
+    } catch (error) {
+      debugPrint('[FCM] Deferred registration-state sync: $error');
     }
   }
 

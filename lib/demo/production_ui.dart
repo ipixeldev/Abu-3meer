@@ -2281,7 +2281,7 @@ class _ProductionShellState extends State<_ProductionShell>
       // attempt, or while the user is granting access in Settings. Retry on
       // every resume; unchanged tokens are deduplicated before the API call.
       _runProductionBackgroundTask(
-        NotificationService.instance.syncTokenWithBackend(
+        NotificationService.instance.syncRegistrationStateWithBackend(
           widget.repository.apiRepo,
         ),
         'Notifications',
