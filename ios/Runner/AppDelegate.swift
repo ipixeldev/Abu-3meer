@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import firebase_messaging
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
