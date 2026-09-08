@@ -2183,6 +2183,14 @@ class ProductionRepository {
     return result;
   }
 
+  Future<Map<String, dynamic>> waitForNotificationCampaignStatus(
+    String campaignId,
+  ) {
+    return pollNotificationCampaignDelivery(
+      fetch: () => apiRepo.fetchNotificationCampaignStatus(campaignId),
+    );
+  }
+
   // ── Media upload helpers ──────────────────────────────────────────────
 
   Future<String> uploadAvatar(XFile file) async {

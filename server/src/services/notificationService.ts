@@ -6,10 +6,12 @@ import {
 } from '../firebase/admin.js';
 import {
   isPermanentPushTokenError,
+  isProviderConfigurationPushError,
   isTransientPushError,
   normalizePushData,
   notificationPreferenceColumn,
   safePushFailureCode,
+  summarizePushFailureCodes,
   type NotificationCategory,
 } from './notificationDomain.js';
 
@@ -64,6 +66,43 @@ export interface CreatedNotificationCampaign {
   scheduledFor: Date;
 }
 
+const notificationCampaignStatuses = new Set([
+  'pending',
+  'processing',
+  'completed',
+  'failed',
+  'cancelled',
+]);
+
+const notificationPlatforms = new Set(['ios', 'android', 'web']);
+
+export interface NotificationPlatformDeliveryStatus {
+  platform: 'ios' | 'android' | 'web' | 'unknown';
+  sentCount: number;
+  failedCount: number;
+  processingCount: number;
+  failureCodes: string[];
+}
+
+export interface NotificationCampaignStatus {
+  campaignId: string;
+  status: string;
+  scheduledAt: string | null;
+  sentAt: string | null;
+  lastAttemptAt: string | null;
+  attemptCount: number;
+  maxAttempts: number;
+  sentCount: number;
+  failedCount: number;
+  processingCount: number;
+  failureCodes: string[];
+  providerConfigurationError: boolean;
+  requiresTokenRefresh: boolean;
+  canRetry: boolean;
+  terminal: boolean;
+  platforms: NotificationPlatformDeliveryStatus[];
+}
+
 export type NotificationCampaignQueryExecutor = (
   text: string,
   params?: any[]
@@ -71,6 +110,116 @@ export type NotificationCampaignQueryExecutor = (
 
 export interface CreateNotificationCampaignOptions {
   rearmCancelled?: boolean;
+}
+
+function safeCount(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function safeIsoTimestamp(value: unknown): string | null {
+  if (value == null) return null;
+  const parsed = new Date(value as string | number | Date);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+/**
+ * Returns a token-free delivery snapshot for Admin Studio polling. The query
+ * deliberately excludes FCM tokens, provider error messages and campaign
+ * content; stored error codes are canonicalized before they leave the server.
+ */
+export async function getNotificationCampaignStatus(
+  campaignId: string,
+  execute: NotificationCampaignQueryExecutor = query,
+): Promise<NotificationCampaignStatus | null> {
+  const campaignResult = await execute(
+    `SELECT id, status, scheduled_for, sent_at, last_attempt_at,
+            attempt_count, sent_count, failed_count
+     FROM notification_campaigns
+     WHERE id = $1`,
+    [campaignId],
+  );
+  if ((campaignResult.rowCount ?? campaignResult.rows.length) === 0) return null;
+
+  const deliveryResult = await execute(
+    `SELECT d.platform, nd.status, nd.error_code,
+            COUNT(*)::int AS delivery_count
+     FROM notification_deliveries nd
+     JOIN devices d ON d.id = nd.device_id
+     WHERE nd.campaign_id = $1
+     GROUP BY d.platform, nd.status, nd.error_code
+     ORDER BY d.platform, nd.status, nd.error_code`,
+    [campaignId],
+  );
+
+  const platforms = new Map<string, NotificationPlatformDeliveryStatus>();
+  let liveSentCount = 0;
+  let liveFailedCount = 0;
+  let processingCount = 0;
+  const allFailureCodes: string[] = [];
+  for (const delivery of deliveryResult.rows) {
+    const rawPlatform = String(delivery.platform ?? '').toLowerCase();
+    const platform = notificationPlatforms.has(rawPlatform)
+      ? rawPlatform as 'ios' | 'android' | 'web'
+      : 'unknown';
+    const summary = platforms.get(platform) ?? {
+      platform,
+      sentCount: 0,
+      failedCount: 0,
+      processingCount: 0,
+      failureCodes: [],
+    };
+    const count = safeCount(delivery.delivery_count);
+    if (delivery.status === 'sent') {
+      summary.sentCount += count;
+      liveSentCount += count;
+    } else if (delivery.status === 'processing') {
+      summary.processingCount += count;
+      processingCount += count;
+    } else if (delivery.status === 'failed') {
+      summary.failedCount += count;
+      liveFailedCount += count;
+      const failureCode = safePushFailureCode({ code: delivery.error_code });
+      if (!summary.failureCodes.includes(failureCode)) {
+        summary.failureCodes.push(failureCode);
+      }
+      allFailureCodes.push(failureCode);
+    }
+    platforms.set(platform, summary);
+  }
+
+  const campaign = campaignResult.rows[0];
+  const rawStatus = String(campaign.status ?? 'failed').toLowerCase();
+  const status = notificationCampaignStatuses.has(rawStatus) ? rawStatus : 'failed';
+  const attemptCount = safeCount(campaign.attempt_count);
+  const diagnostics = summarizePushFailureCodes(allFailureCodes);
+  const terminal =
+    status === 'completed' ||
+    status === 'cancelled' ||
+    (status === 'failed' && attemptCount >= MAX_NOTIFICATION_DELIVERY_ATTEMPTS);
+
+  return {
+    campaignId: String(campaign.id),
+    status,
+    scheduledAt: safeIsoTimestamp(campaign.scheduled_for),
+    sentAt: safeIsoTimestamp(campaign.sent_at),
+    lastAttemptAt: safeIsoTimestamp(campaign.last_attempt_at),
+    attemptCount,
+    maxAttempts: MAX_NOTIFICATION_DELIVERY_ATTEMPTS,
+    // Persisted totals survive later device/account deletion; live totals make
+    // progress visible while a campaign is still processing.
+    sentCount: Math.max(safeCount(campaign.sent_count), liveSentCount),
+    failedCount: Math.max(safeCount(campaign.failed_count), liveFailedCount),
+    processingCount,
+    failureCodes: diagnostics.failureCodes.sort(),
+    providerConfigurationError: diagnostics.providerConfigurationError,
+    requiresTokenRefresh: diagnostics.requiresTokenRefresh,
+    canRetry: status === 'failed' && attemptCount < MAX_NOTIFICATION_DELIVERY_ATTEMPTS,
+    terminal,
+    platforms: [...platforms.values()]
+      .map(item => ({ ...item, failureCodes: item.failureCodes.sort() }))
+      .sort((left, right) => left.platform.localeCompare(right.platform)),
+  };
 }
 
 /**
@@ -580,6 +729,8 @@ export async function processNotificationCampaign(campaignId: string) {
     let sentCount = 0;
     let failedCount = 0;
     let transientFailureCount = 0;
+    let providerConfigurationFailureCount = 0;
+    const providerConfigurationFailureCodes = new Set<string>();
     const data = normalizePushData({
       ...campaign.data_payload,
       campaignId: campaign.id,
@@ -629,6 +780,10 @@ export async function processNotificationCampaign(campaignId: string) {
             : safePushFailureCode(result.error);
           if (isTransientPushError(errorCode || undefined)) {
             transientFailureCount += 1;
+          }
+          if (isProviderConfigurationPushError(errorCode || undefined)) {
+            providerConfigurationFailureCount += 1;
+            providerConfigurationFailureCodes.add(errorCode!);
           }
           await dispatchClient.query(
             `UPDATE notification_deliveries
@@ -686,6 +841,18 @@ export async function processNotificationCampaign(campaignId: string) {
       // never reclaim those devices for an unsafe duplicate send.
       throw new Error(
         `${processingCount} push delivery outcome(s) remain unconfirmed.`,
+      );
+    }
+    if (providerConfigurationFailureCount > 0) {
+      // An APNs/FCM project credential failure is not a bad device token and
+      // must not make a partially successful Android+iOS campaign look
+      // completed. Preserve the failed iOS deliveries for the bounded retry
+      // path and expose only safe provider codes through the campaign error.
+      throw new Error(
+        `${providerConfigurationFailureCount} push delivery failure(s) require ` +
+        `FCM/APNs provider configuration; codes=${[
+          ...providerConfigurationFailureCodes,
+        ].sort().join(',')}.`,
       );
     }
     if (transientFailureCount > 0) {

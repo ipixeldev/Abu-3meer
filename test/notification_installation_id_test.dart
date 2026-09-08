@@ -17,4 +17,14 @@ void main() {
       expect(another, isNot(first));
     },
   );
+
+  test('iOS token registration retries quickly, then caps its backoff', () {
+    expect(notificationTokenRetryDelay(-1), const Duration(seconds: 2));
+    expect(notificationTokenRetryDelay(0), const Duration(seconds: 2));
+    expect(notificationTokenRetryDelay(1), const Duration(seconds: 5));
+    expect(notificationTokenRetryDelay(2), const Duration(seconds: 15));
+    expect(notificationTokenRetryDelay(3), const Duration(seconds: 30));
+    expect(notificationTokenRetryDelay(4), const Duration(minutes: 1));
+    expect(notificationTokenRetryDelay(100), const Duration(minutes: 1));
+  });
 }

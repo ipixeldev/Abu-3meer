@@ -11,6 +11,10 @@ void main() {
     () async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final preferences = AbuAppPreferences.instance;
+      await preferences.load();
+
+      expect(preferences.matchNotifications, isFalse);
+      expect(preferences.challengeNotifications, isFalse);
 
       await preferences.setThemeMode(ThemeMode.light);
       await preferences.setLanguage(AbuLanguage.english);

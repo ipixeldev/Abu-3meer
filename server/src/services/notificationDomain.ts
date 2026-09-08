@@ -14,6 +14,11 @@ const providerCredentialErrorCodes = new Set([
   'messaging/invalid-apns-credentials',
 ]);
 
+/** A project-level FCM/APNs credential failure; rotating a device token cannot fix it. */
+export function isProviderConfigurationPushError(code?: string): boolean {
+  return code != null && providerCredentialErrorCodes.has(code);
+}
+
 export function isPermanentPushTokenError(code?: string): boolean {
   return code != null && permanentTokenErrorCodes.has(code);
 }
@@ -181,9 +186,7 @@ export function summarizePushFailureCodes(
     requiresTokenRefresh: failureCodes.some(
       code => isPermanentPushTokenError(code) || code === 'messaging/unknown-error'
     ),
-    providerConfigurationError: failureCodes.some(code =>
-      providerCredentialErrorCodes.has(code)
-    ),
+    providerConfigurationError: failureCodes.some(isProviderConfigurationPushError),
   };
 }
 

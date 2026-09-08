@@ -1,7 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import Fastify from 'fastify';
 import {
   isPermanentPushTokenError,
+  isProviderConfigurationPushError,
   isTransientPushError,
   isUnclassifiedPushTransportFailure,
   normalizePushData,
@@ -16,6 +18,7 @@ import {
   cancelNotificationCampaignBySource,
   claimNotificationDeliveryDevices,
   createNotificationCampaign,
+  getNotificationCampaignStatus,
   lockNotificationCampaignForDispatch,
   revokeDeviceInstallation,
 } from '../services/notificationService.js';
@@ -24,6 +27,7 @@ import {
   shouldScheduleChallengeNotification,
 } from '../services/challengeNotification.js';
 import { predictionResultNotificationCampaign } from '../services/predictionResultNotification.js';
+import { adminRoutes } from '../routes/adminRoutes.js';
 
 describe('push notification domain', () => {
   it('normalizes every FCM data value to a string and omits nulls', () => {
@@ -47,6 +51,13 @@ describe('push notification domain', () => {
     assert.equal(isTransientPushError('messaging/transport-error'), true);
     assert.equal(isTransientPushError('messaging/registration-token-not-registered'), false);
     assert.equal(isTransientPushError('messaging/third-party-auth-error'), false);
+  });
+
+  it('recognizes project-level APNs credential failures without blaming device tokens', () => {
+    assert.equal(isProviderConfigurationPushError('messaging/third-party-auth-error'), true);
+    assert.equal(isProviderConfigurationPushError('messaging/invalid-apns-credentials'), true);
+    assert.equal(isProviderConfigurationPushError('messaging/mismatched-credential'), false);
+    assert.equal(isPermanentPushTokenError('messaging/third-party-auth-error'), false);
   });
 
   it('summarizes provider failures without including tokens or messages', () => {
@@ -458,5 +469,131 @@ describe('push notification domain', () => {
       'fcm-token-value',
       '0123456789abcdef0123456789abcdef',
     ]);
+  });
+
+  it('returns a token-free campaign status with sanitized iOS provider diagnostics', async () => {
+    const statements: Array<{ text: string; params?: any[] }> = [];
+    const campaignId = '00000000-0000-4000-8000-000000000010';
+    const status = await getNotificationCampaignStatus(
+      campaignId,
+      async (text, params) => {
+        statements.push({ text, params });
+        if (statements.length === 1) {
+          return {
+            rowCount: 1,
+            rows: [{
+              id: campaignId,
+              status: 'failed',
+              scheduled_for: '2026-09-08T10:00:00.000Z',
+              sent_at: null,
+              last_attempt_at: '2026-09-08T10:00:10.000Z',
+              attempt_count: '2',
+              sent_count: '2',
+              failed_count: '4',
+            }],
+          };
+        }
+        return {
+          rowCount: 4,
+          rows: [
+            { platform: 'android', status: 'sent', error_code: null, delivery_count: '2' },
+            {
+              platform: 'ios',
+              status: 'failed',
+              error_code: 'messaging/third-party-auth-error',
+              delivery_count: '3',
+            },
+            {
+              platform: 'ios',
+              status: 'failed',
+              // A legacy/raw provider value is never reflected to Admin Studio.
+              error_code: 'SECRET_PROVIDER_DETAIL',
+              delivery_count: '1',
+            },
+            { platform: 'ios', status: 'processing', error_code: null, delivery_count: '1' },
+          ],
+        };
+      },
+    );
+
+    assert.ok(status);
+    assert.equal(status.status, 'failed');
+    assert.equal(status.sentCount, 2);
+    assert.equal(status.failedCount, 4);
+    assert.equal(status.processingCount, 1);
+    assert.equal(status.attemptCount, 2);
+    assert.equal(status.maxAttempts, 3);
+    assert.equal(status.canRetry, true);
+    assert.equal(status.terminal, false);
+    assert.equal(status.providerConfigurationError, true);
+    assert.deepEqual(status.failureCodes, [
+      'messaging/third-party-auth-error',
+      'messaging/unknown-error',
+    ]);
+    assert.deepEqual(status.platforms, [
+      {
+        platform: 'android',
+        sentCount: 2,
+        failedCount: 0,
+        processingCount: 0,
+        failureCodes: [],
+      },
+      {
+        platform: 'ios',
+        sentCount: 0,
+        failedCount: 4,
+        processingCount: 1,
+        failureCodes: [
+          'messaging/third-party-auth-error',
+          'messaging/unknown-error',
+        ],
+      },
+    ]);
+    assert.equal(statements.length, 2);
+    assert.deepEqual(statements.map(statement => statement.params), [
+      [campaignId],
+      [campaignId],
+    ]);
+    assert.equal(
+      statements.some(statement => /fcm_token|error_message/i.test(statement.text)),
+      false,
+    );
+  });
+
+  it('returns null for an unknown notification campaign without querying deliveries', async () => {
+    let calls = 0;
+    const status = await getNotificationCampaignStatus(
+      '00000000-0000-4000-8000-000000000099',
+      async () => {
+        calls += 1;
+        return { rowCount: 0, rows: [] };
+      },
+    );
+    assert.equal(status, null);
+    assert.equal(calls, 1);
+  });
+
+  it('registers the campaign status endpoint behind notification-sender RBAC', async () => {
+    const app = Fastify({ logger: false });
+    await app.register(adminRoutes, { prefix: '/api/v1' });
+    await app.ready();
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/admin/notifications/00000000-0000-4000-8000-000000000010/status',
+      });
+      // 401 proves the route exists and reaches its permission pre-handler;
+      // an unregistered or misspelled endpoint would return 404.
+      assert.equal(response.statusCode, 401);
+      assert.equal(response.json().error, 'Unauthorized');
+
+      const inventedPath = await app.inject({
+        method: 'GET',
+        url: '/api/v1/admin/notification-status/00000000-0000-4000-8000-000000000010',
+      });
+      assert.equal(inventedPath.statusCode, 404);
+    } finally {
+      await app.close();
+    }
   });
 });

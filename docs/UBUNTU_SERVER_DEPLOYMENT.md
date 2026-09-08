@@ -6,7 +6,7 @@ uploaded images, Firebase authentication/push delivery, API-Football caching,
 and the existing `api.abu3meer.com` Cloudflare Tunnel hostname.
 
 The active Firebase project is `abu-3meer-9fd70`. The native application ID is
-`com.abu3meer.app` on Android and iOS.
+`com.abu3meer.app` on Android and `omar.abu3meer.app` on iOS.
 
 ## 1. What is stored where
 
@@ -346,13 +346,13 @@ and release signing keys used by this app.
 ### iOS
 
 1. In Apple Developer, enable Push Notifications for the App ID
-   `com.abu3meer.app`.
+   `omar.abu3meer.app`.
 2. Under **Certificates, Identifiers & Profiles > Keys**, create an APNs key,
    enable Apple Push Notifications service, and download the `.p8` file. Apple
    permits downloading it only once.
 3. In Firebase Console, open **Project settings > Cloud Messaging**, select the
    iOS app, and upload the APNs authentication key with its Key ID and Apple
-   Team ID (`P9X53J2SQX` for the current Xcode project).
+   Team ID (`A4V5S8R8F8` for the current Xcode project).
 4. In Xcode, keep **Push Notifications** and **Background Modes > Remote
    notifications** enabled. The repository already declares both capabilities.
 5. A development-signed build receives the APNs sandbox entitlement; a
@@ -388,7 +388,11 @@ docker compose logs --since=10m api | grep -E 'FCM|Notifications|notification'
 Admin Studio broadcasts are inserted into `notification_campaigns`, queued in
 BullMQ, split into batches of at most 500 recipients, and recorded in
 `notification_deliveries`. Permanent invalid-token responses deactivate the
-device row. A server showing `pushNotifications: configured` proves the Admin
+device row. Admin Studio can poll
+`GET /api/v1/admin/notifications/<campaign-id>/status` for sanitized totals,
+per-platform results, and canonical FCM/APNs error codes. APNs credential
+errors leave the campaign failed instead of reporting a false completion. A
+server showing `pushNotifications: configured` proves the Admin
 credential is loaded; it does not prove APNs is uploaded or that a user has
 allowed/registered a device, so always complete the real-device test.
 

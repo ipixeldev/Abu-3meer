@@ -114,8 +114,12 @@ class AbuAppPreferences extends ChangeNotifier {
   AbuLanguage language = AbuLanguage.english;
   AbuFontPreset englishFontPreset = AbuFontPreset.classicEnglish;
   AbuFontPreset arabicFontPreset = AbuFontPreset.cairo;
-  bool matchNotifications = true;
-  bool challengeNotifications = true;
+  // Keep notification categories off until the user explicitly enables one.
+  // Otherwise a fresh install renders an already-on switch even though iOS
+  // has never shown its permission prompt, leaving no obvious registration
+  // path for the device token.
+  bool matchNotifications = false;
+  bool challengeNotifications = false;
   bool newsNotifications = false;
   bool _loaded = false;
 
@@ -144,9 +148,9 @@ class AbuAppPreferences extends ChangeNotifier {
       preferences.getString(_arabicFontKey),
       language: AbuLanguage.arabic,
     );
-    matchNotifications = preferences.getBool(_matchNotificationsKey) ?? true;
+    matchNotifications = preferences.getBool(_matchNotificationsKey) ?? false;
     challengeNotifications =
-        preferences.getBool(_challengeNotificationsKey) ?? true;
+        preferences.getBool(_challengeNotificationsKey) ?? false;
     newsNotifications = preferences.getBool(_newsNotificationsKey) ?? false;
     _loaded = true;
     notifyListeners();

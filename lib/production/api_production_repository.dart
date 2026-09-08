@@ -21,6 +21,39 @@ double parseApiDouble(dynamic value, [double fallback = 0]) {
   return double.tryParse(value?.toString() ?? '') ?? fallback;
 }
 
+@visibleForTesting
+bool notificationCampaignStatusIsConclusive(Map<String, dynamic> status) {
+  if (status['terminal'] == true ||
+      status['providerConfigurationError'] == true ||
+      status['requiresTokenRefresh'] == true) {
+    return true;
+  }
+  final value = status['status']?.toString().trim().toLowerCase();
+  return value == 'completed' || value == 'cancelled';
+}
+
+Future<Map<String, dynamic>> pollNotificationCampaignDelivery({
+  required Future<Map<String, dynamic>> Function() fetch,
+  int maxPolls = 31,
+  Duration interval = const Duration(milliseconds: 500),
+  Future<void> Function(Duration)? wait,
+}) async {
+  if (maxPolls < 1) {
+    throw ArgumentError.value(maxPolls, 'maxPolls', 'Must be positive.');
+  }
+  final waitForNextPoll = wait ?? Future<void>.delayed;
+  var latest = <String, dynamic>{};
+  for (var poll = 0; poll < maxPolls; poll += 1) {
+    latest = await fetch();
+    if (notificationCampaignStatusIsConclusive(latest) ||
+        poll == maxPolls - 1) {
+      return latest;
+    }
+    await waitForNextPoll(interval);
+  }
+  return latest;
+}
+
 bool isValidAdminSubscriptionReason(String value) {
   final reason = value.trim();
   return reason.length >= 3 &&
@@ -1831,6 +1864,32 @@ class ApiProductionRepository {
       throw AbuApiException(
         statusCode: 502,
         message: 'The server did not confirm the notification campaign.',
+        details: result,
+      );
+    }
+    return Map<String, dynamic>.from(result);
+  }
+
+  Future<Map<String, dynamic>> fetchNotificationCampaignStatus(
+    String campaignId,
+  ) async {
+    final normalizedId = campaignId.trim();
+    if (normalizedId.isEmpty) {
+      throw ArgumentError.value(
+        campaignId,
+        'campaignId',
+        'A notification campaign ID is required.',
+      );
+    }
+    final result = await api.get(
+      '/admin/notifications/${Uri.encodeComponent(normalizedId)}/status',
+      requireAuth: true,
+      bypassCache: true,
+    );
+    if (result is! Map) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid notification status.',
         details: result,
       );
     }

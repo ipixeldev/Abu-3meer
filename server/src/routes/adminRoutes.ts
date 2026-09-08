@@ -9,6 +9,7 @@ import {
 import { notificationCategories } from '../services/notificationDomain.js';
 import {
   createNotificationCampaign,
+  getNotificationCampaignStatus,
   MAX_NOTIFICATION_DELIVERY_ATTEMPTS,
 } from '../services/notificationService.js';
 import { config } from '../config.js';
@@ -863,6 +864,23 @@ export async function adminRoutes(fastify: FastifyInstance) {
   });
 
   // 7. Notification Broadcast (Permission: notifications.send)
+  fastify.get('/admin/notifications/:campaignId/status', { preHandler: [requirePermission('notifications.send')] }, async (request, reply) => {
+    const parsed = z.object({
+      campaignId: z.string().uuid(),
+    }).safeParse(request.params);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
+    }
+    const status = await getNotificationCampaignStatus(parsed.data.campaignId);
+    if (status == null) {
+      return reply.status(404).send({
+        error: 'NotificationCampaignNotFound',
+        message: 'Notification campaign not found.',
+      });
+    }
+    return status;
+  });
+
   fastify.post('/admin/notifications/broadcast', { preHandler: [requirePermission('notifications.send')] }, async (request, reply) => {
     const schema = z.object({
       title: z.string().trim().min(2).max(100),

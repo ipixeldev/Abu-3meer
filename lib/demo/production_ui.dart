@@ -2276,6 +2276,17 @@ class _ProductionShellState extends State<_ProductionShell>
       return;
     }
     if (state != AppLifecycleState.resumed) return;
+    if (!widget.profile.isGuest) {
+      // iOS may finish issuing its APNs token after the first registration
+      // attempt, or while the user is granting access in Settings. Retry on
+      // every resume; unchanged tokens are deduplicated before the API call.
+      _runProductionBackgroundTask(
+        NotificationService.instance.syncTokenWithBackend(
+          widget.repository.apiRepo,
+        ),
+        'Notifications',
+      );
+    }
     if (_backgroundedAt != null &&
         DateTime.now().difference(_backgroundedAt!) >=
             const Duration(seconds: 30)) {
@@ -13721,27 +13732,70 @@ class _ProductionAdmin extends StatelessWidget {
                                     ? scheduledFor
                                     : null,
                               );
+                          var delivery = result;
+                          final campaignId = result['campaignId']?.toString();
+                          final isScheduled = result['status'] == 'scheduled';
+                          if (!isScheduled &&
+                              campaignId != null &&
+                              campaignId.isNotEmpty) {
+                            try {
+                              delivery = await repository
+                                  .waitForNotificationCampaignStatus(
+                                    campaignId,
+                                  );
+                            } catch (_) {
+                              // The campaign is already durably queued. An
+                              // older server or a brief polling outage must
+                              // not turn a successful send into a false error.
+                            }
+                          }
                           if (!dialogContext.mounted) return;
                           Navigator.pop(dialogContext);
                           if (!context.mounted) return;
-                          final isScheduled = result['status'] == 'scheduled';
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                isScheduled
-                                    ? abuText(
-                                        context,
-                                        'Notification scheduled successfully.',
-                                        'تمت جدولة الإشعار بنجاح.',
-                                      )
-                                    : abuText(
-                                        context,
-                                        'Notification queued for delivery.',
-                                        'تم وضع الإشعار في قائمة الإرسال.',
-                                      ),
-                              ),
-                            ),
-                          );
+                          final sentCount =
+                              (delivery['sentCount'] as num?)?.toInt() ?? 0;
+                          final failedCount =
+                              (delivery['failedCount'] as num?)?.toInt() ?? 0;
+                          final isTerminal = delivery['terminal'] == true;
+                          final providerConfigurationError =
+                              delivery['providerConfigurationError'] == true;
+                          final message = isScheduled
+                              ? abuText(
+                                  context,
+                                  'Notification scheduled successfully.',
+                                  'تمت جدولة الإشعار بنجاح.',
+                                )
+                              : providerConfigurationError
+                              ? abuText(
+                                  context,
+                                  'iPhone delivery failed because APNs is not configured. Upload the APNs authentication key in Firebase Cloud Messaging; Android is unaffected.',
+                                  'فشل إرسال iPhone لأن APNs غير معدّ. ارفع مفتاح APNs في Firebase Cloud Messaging؛ أندرويد لا يتأثر.',
+                                )
+                              : isTerminal && sentCount == 0 && failedCount == 0
+                              ? abuText(
+                                  context,
+                                  'No registered devices matched this notification.',
+                                  'لا توجد أجهزة مسجلة مطابقة لهذا الإشعار.',
+                                )
+                              : isTerminal && failedCount > 0
+                              ? abuText(
+                                  context,
+                                  'Notification sent to $sentCount device(s); $failedCount failed.',
+                                  'تم إرسال الإشعار إلى $sentCount جهاز، وفشل $failedCount.',
+                                )
+                              : isTerminal
+                              ? abuText(
+                                  context,
+                                  'Notification sent to $sentCount device(s).',
+                                  'تم إرسال الإشعار إلى $sentCount جهاز.',
+                                )
+                              : abuText(
+                                  context,
+                                  'Notification is still processing. Delivery continues on the server.',
+                                  'لا يزال الإشعار قيد المعالجة، ويستمر الإرسال في الخادم.',
+                                );
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(content: Text(message)));
                         } catch (error) {
                           if (modalContext.mounted) {
                             setModalState(() => saving = false);

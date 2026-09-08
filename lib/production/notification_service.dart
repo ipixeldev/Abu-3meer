@@ -22,6 +22,18 @@ String newNotificationInstallationId([Random? source]) {
   ).map((value) => value.toRadixString(16).padLeft(2, '0')).join();
 }
 
+@visibleForTesting
+Duration notificationTokenRetryDelay(int attempt) {
+  const delays = <Duration>[
+    Duration(seconds: 2),
+    Duration(seconds: 5),
+    Duration(seconds: 15),
+    Duration(seconds: 30),
+    Duration(minutes: 1),
+  ];
+  return delays[attempt.clamp(0, delays.length - 1).toInt()];
+}
+
 @pragma('vm:entry-point')
 Future<void> abuFirebaseMessagingBackgroundHandler(
   RemoteMessage message,
@@ -73,6 +85,8 @@ class NotificationService {
   bool _appleSystemForegroundPresentationEnabled = false;
   Future<String>? _installationIdFuture;
   Timer? _revocationRetryTimer;
+  Timer? _tokenRegistrationRetryTimer;
+  int _tokenRegistrationRetryAttempt = 0;
 
   Stream<Map<String, dynamic>> get notificationTaps =>
       _notificationTapController.stream;
@@ -245,11 +259,13 @@ class NotificationService {
     _authSubscription = apiRepo.authChanges.listen((user) {
       if (user != null) {
         if (_registeredUserId != user.uid) {
+          _cancelTokenRegistrationRetry();
           _registeredToken = null;
           _registeredUserId = null;
         }
         unawaited(_syncTokenSafely(apiRepo));
       } else {
+        _cancelTokenRegistrationRetry();
         _registeredToken = null;
         _registeredUserId = null;
       }
@@ -319,16 +335,18 @@ class NotificationService {
   }) async {
     _apiRepo = apiRepo;
     if (apiRepo.auth.currentUser == null) return;
+    final isApplePlatform = !kIsWeb && Platform.isIOS;
     try {
       final settings = await _fcm.getNotificationSettings();
       if (settings.authorizationStatus != AuthorizationStatus.authorized &&
           settings.authorizationStatus != AuthorizationStatus.provisional) {
+        _cancelTokenRegistrationRetry();
         return;
       }
 
       // APNs must issue its native token before Firebase can mint an iOS FCM
       // token. The short retry avoids the common first-launch race.
-      if (!kIsWeb && Platform.isIOS) {
+      if (isApplePlatform) {
         String? apnsToken;
         for (var attempt = 0; attempt < 20 && apnsToken == null; attempt++) {
           apnsToken = await _fcm.getAPNSToken();
@@ -340,6 +358,7 @@ class NotificationService {
           debugPrint(
             '[FCM] APNs token is not available yet; registration deferred.',
           );
+          _scheduleTokenRegistrationRetry(apiRepo);
           return;
         }
       }
@@ -347,11 +366,43 @@ class NotificationService {
       final token = await _fcm.getToken();
       if (token != null && token.isNotEmpty) {
         await _registerToken(token, force: forceRegistration);
+        _cancelTokenRegistrationRetry();
+      } else if (isApplePlatform) {
+        _scheduleTokenRegistrationRetry(apiRepo);
       }
     } catch (error) {
       debugPrint('[FCM] Token registration failed: $error');
+      if (isApplePlatform) {
+        _scheduleTokenRegistrationRetry(apiRepo);
+      }
       rethrow;
     }
+  }
+
+  void _scheduleTokenRegistrationRetry(ApiProductionRepository repository) {
+    if (kIsWeb || !Platform.isIOS || _tokenRegistrationRetryTimer != null) {
+      return;
+    }
+    if (!identical(_apiRepo, repository) ||
+        repository.auth.currentUser == null) {
+      return;
+    }
+    final delay = notificationTokenRetryDelay(_tokenRegistrationRetryAttempt++);
+    _tokenRegistrationRetryTimer = Timer(delay, () {
+      _tokenRegistrationRetryTimer = null;
+      if (!identical(_apiRepo, repository) ||
+          repository.auth.currentUser == null) {
+        _tokenRegistrationRetryAttempt = 0;
+        return;
+      }
+      unawaited(_syncTokenSafely(repository));
+    });
+  }
+
+  void _cancelTokenRegistrationRetry() {
+    _tokenRegistrationRetryTimer?.cancel();
+    _tokenRegistrationRetryTimer = null;
+    _tokenRegistrationRetryAttempt = 0;
   }
 
   Future<T> _serializeTokenMutation<T>(Future<T> Function() operation) {
@@ -499,6 +550,7 @@ class NotificationService {
       _schedulePendingRevocationRetry();
       rethrow;
     } finally {
+      _cancelTokenRegistrationRetry();
       _registeredToken = null;
       _registeredUserId = null;
     }

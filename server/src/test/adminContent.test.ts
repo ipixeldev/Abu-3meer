@@ -19,7 +19,10 @@ import {
   redactExclusiveVideoForViewer,
 } from '../services/videoDomain.js';
 import { listPlayerCardsForUser } from '../services/playerCardService.js';
-import { challengeCreateSchema } from '../routes/adminContentRoutes.js';
+import {
+  challengeCreateSchema,
+  challengeInsertSql,
+} from '../routes/adminContentRoutes.js';
 
 test('video challenges accept an omitted Player Card ID', () => {
   const parsed = challengeCreateSchema.safeParse({
@@ -68,6 +71,13 @@ test('Player Guess challenges need only a private player-name answer', () => {
       'اللاعب',
     ]);
   }
+});
+
+test('challenge inserts keep direct contiguous parameters without a point-rule subquery', () => {
+  const parameterNumbers = [...challengeInsertSql.matchAll(/\$(\d+)/g)]
+    .map((match) => Number(match[1]));
+  assert.deepEqual(parameterNumbers, Array.from({ length: 16 }, (_, index) => index + 1));
+  assert.doesNotMatch(challengeInsertSql, /point_rules|CASE\s+\$4/i);
 });
 
 test('redemption transitions keep fulfilled and cancelled requests terminal', () => {

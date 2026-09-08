@@ -241,6 +241,19 @@ const challengeSelect = `
       ELSE 'videoQuestion'
     END`;
 
+// Persist the client fallback directly. Current challenge reads and scoring
+// resolve the authoritative value from point_rules, so this write must not
+// repeat that lookup. A previous CASE reused `$4` and made PostgreSQL infer
+// both varchar and text for the same prepared-statement parameter (42P08).
+export const challengeInsertSql = `
+  INSERT INTO challenges
+    (id, title, description, kind, status, reward_points, member_points,
+     correct_answer, normalized_correct_answer, video_url, image_url,
+     maximum_attempts, member_only, notify_on_live, starts_at, ends_at)
+  VALUES
+    ($1, $2, $3, $4, $5, $6, $7, $8,
+     $9, $10, $11, $12, $13, $14, $15, $16)`;
+
 function redemptionToJson(id: string, data: Record<string, unknown>) {
   const userLabel = [
     data.userDisplayName,
@@ -333,23 +346,7 @@ export async function adminContentRoutes(fastify: FastifyInstance) {
       try {
         await client.query('BEGIN');
         await client.query(
-          `INSERT INTO challenges
-             (id, title, description, kind, status, reward_points, member_points,
-              correct_answer, normalized_correct_answer, video_url, image_url,
-              maximum_attempts, member_only, notify_on_live, starts_at, ends_at)
-           VALUES
-             ($1, $2, $3, $4, $5,
-              COALESCE(
-                (SELECT base_points FROM point_rules WHERE key =
-                  CASE $4 WHEN 'playerCard' THEN 'playerCard' ELSE 'videoQuestion' END),
-                $7
-              ),
-              COALESCE(
-                (SELECT base_points FROM point_rules WHERE key =
-                  CASE $4 WHEN 'playerCard' THEN 'playerCard' ELSE 'videoQuestion' END),
-                $6
-              ),
-              $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+          challengeInsertSql,
           [
             id,
             body.title,
