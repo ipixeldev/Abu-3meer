@@ -159,6 +159,12 @@ export const adminAdjustPoints = onCall({region}, async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Sign in is required.");
   }
+  throw new HttpsError(
+    "failed-precondition",
+    "Manual XP adjustments are not part of Abu 3meer.",
+  );
+  /* Legacy implementation retained only until the disabled callable has been
+   * deployed over any older live version. It is intentionally unreachable.
   const adminId = request.auth.uid;
   const targetUserId = documentId(request.data?.targetUserId, "Target user");
   const delta = requestedDelta(request.data?.delta);
@@ -382,4 +388,5 @@ export const adminAdjustPoints = onCall({region}, async (request) => {
     }
     throw error;
   }
+  */
 });

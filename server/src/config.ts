@@ -21,6 +21,15 @@ function numericIdList(value: string, maximum = 8): string[] {
     .slice(0, maximum);
 }
 
+function uuidList(value: string, maximum = 20): string[] {
+  return value
+    .split(',')
+    .map(item => item.trim().toLowerCase())
+    .filter(item => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(item))
+    .filter((item, index, items) => items.indexOf(item) === index)
+    .slice(0, maximum);
+}
+
 function dailyFootballRequestBudget(value: string): number {
   // The Mega plan permits 150,000 requests/day. Preserve headroom for manual
   // diagnostics and a second deployment during a rolling release.
@@ -31,6 +40,11 @@ export const config = {
   env: process.env.NODE_ENV || 'development',
   port: parseInt(process.env.PORT || '3000', 10),
   host: process.env.HOST || '0.0.0.0',
+
+  support: {
+    // Public business contact, not a secret. Blank disables WhatsApp support.
+    whatsappNumber: (process.env.SUPPORT_WHATSAPP_NUMBER || '').trim(),
+  },
 
   database: {
     url: process.env.DATABASE_URL || 'postgres://abu3meer_admin:change_me_in_production@127.0.0.1:6432/abu3meer_prod',
@@ -50,6 +64,22 @@ export const config = {
     projectId: process.env.FIREBASE_PROJECT_ID || 'abu-3meer-9fd70',
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',
     privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+  },
+
+  revenueCat: {
+    // A RevenueCat secret REST API v1 key. Never use the SDK's public key here.
+    secretApiKey: (process.env.REVENUECAT_SECRET_API_KEY || '').trim(),
+    entitlementId: 'abu_3meer_pro',
+    webhookAuthorization: (process.env.REVENUECAT_WEBHOOK_AUTHORIZATION || '').trim(),
+    // Escape hatch for RevenueCat Test Store/legacy unknown sandbox rows.
+    // Normal App Store/Play test-track receipts do not need this switch.
+    allowSandbox: process.env.REVENUECAT_ALLOW_SANDBOX === 'true',
+    // Genuine Apple/Google sandbox receipts are accepted based on their
+    // persisted store provenance. This opt-in is only for RevenueCat Test
+    // Store or legacy sandbox rows whose provider cannot be verified.
+    sandboxAllowedUserIds: uuidList(
+      process.env.REVENUECAT_SANDBOX_ALLOWED_USER_IDS || '',
+    ),
   },
 
   // No implicit production administrator. The first configured address is the
@@ -130,13 +160,23 @@ export const config = {
   },
 
   pointDefaults: {
+    // Signup and daily attendance are fixed activity awards. They deliberately
+    // remain outside the YouTube membership multiplier.
     signUpBonus: parseInt(process.env.SIGNUP_BONUS_POINTS || '50', 10),
-    exactScore: parseInt(process.env.EXACT_SCORE_POINTS || '30', 10),
+    exactScore: parseInt(process.env.EXACT_SCORE_POINTS || '50', 10),
     firstScorer: parseInt(process.env.FIRST_SCORER_POINTS || '20', 10),
     winnerOutcome: parseInt(process.env.WINNER_OUTCOME_POINTS || '10', 10),
-    videoPhrase: parseInt(process.env.VIDEO_PHRASE_POINTS || '10', 10),
-    playerCard: parseInt(process.env.PLAYER_CARD_POINTS || '10', 10),
+    videoPhrase: parseInt(process.env.VIDEO_PHRASE_POINTS || '15', 10),
+    playerCard: parseInt(process.env.PLAYER_CARD_POINTS || '15', 10),
     dailyStreak: parseInt(process.env.DAILY_STREAK_POINTS || '5', 10),
+    firstMembershipActivation: parseInt(
+      process.env.FIRST_MEMBERSHIP_ACTIVATION_POINTS || '150',
+      10,
+    ),
+    membershipRenewal: parseInt(
+      process.env.MEMBERSHIP_RENEWAL_POINTS || '50',
+      10,
+    ),
     memberMultiplier: parseFloat(process.env.MEMBER_MULTIPLIER || '2.0'),
   },
 };

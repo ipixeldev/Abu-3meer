@@ -1,7 +1,74 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { authenticateUser, requirePermission } from '../middleware/auth.js';
+import {
+  authenticateUser,
+  requireRecentFirebaseAuthentication,
+} from '../middleware/auth.js';
 import { query } from '../db/pool.js';
+import { deleteAccountData } from '../services/accountDeletionService.js';
+import { deleteFirebaseMirrorData } from '../services/firebaseMirrorDeletionService.js';
+import {
+  eligibleLeaderboardSourceTypes,
+  listLeaderboardSeasons,
+} from '../services/leaderboardService.js';
+import {
+  activeSubscriptionSql,
+  activeYouTubeMembershipSql,
+} from '../services/subscriptionAccess.js';
+import { readSubscriptionStatus } from '../services/subscriptionService.js';
+
+const eligibleXpSources = [...eligibleLeaderboardSourceTypes];
+
+interface PublicFanProfileRow {
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  supported_team: string;
+  supported_team_logo: string | null;
+  country: string | null;
+  country_code: string | null;
+  is_youtube_member: boolean;
+  is_pro_subscriber: boolean;
+  total_points: string | number;
+  monthly_points: string | number;
+  season_points: string | number;
+  loyalty_points: string | number;
+  streak_count: string | number;
+  streak_best: string | number;
+  level: string | number;
+  exact_predictions_count: string | number;
+  challenges_completed_count: string | number;
+  player_cards_collected_count: string | number;
+}
+
+export function mapPublicFanProfile(row: PublicFanProfileRow) {
+  const publicId = row.username;
+  return {
+    // `id` remains for released clients, but now contains the public username
+    // handle rather than the internal PostgreSQL UUID.
+    id: publicId,
+    publicId,
+    username: row.username,
+    displayName: row.display_name,
+    avatarUrl: row.avatar_url,
+    supportedTeam: row.supported_team,
+    supportedTeamLogo: row.supported_team_logo,
+    country: row.country,
+    countryCode: row.country_code,
+    isYouTubeMember: row.is_youtube_member,
+    isProSubscriber: row.is_pro_subscriber === true,
+    totalPoints: Number(row.total_points || 0),
+    monthlyPoints: Number(row.monthly_points || 0),
+    seasonPoints: Number(row.season_points || 0),
+    loyaltyPoints: Number(row.loyalty_points || 0),
+    streakCount: Number(row.streak_count || 0),
+    streakBest: Number(row.streak_best || 0),
+    level: Number(row.level || 1),
+    exactPredictionsCount: Number(row.exact_predictions_count || 0),
+    challengesCompletedCount: Number(row.challenges_completed_count || 0),
+    playerCardsCollectedCount: Number(row.player_cards_collected_count || 0),
+  };
+}
 
 const updateProfileSchema = z.object({
   displayName: z.string().trim().min(2).max(50).optional(),
@@ -39,20 +106,82 @@ export async function profileRoutes(fastify: FastifyInstance) {
   // GET /api/v1/profile/me - Fetch authenticated user's own profile
   fastify.get('/profile/me', { preHandler: [authenticateUser] }, async (request, reply) => {
     const user = request.user!;
+    await listLeaderboardSeasons();
     const profileRes = await query(
-      `SELECT total_points, monthly_points, season_points, loyalty_points,
-              streak_count, streak_best, streak_last_checkin, level,
-              exact_predictions_count, challenges_completed_count, player_cards_collected_count,
-              is_guest
-       FROM user_profiles
-       WHERE user_id = $1`,
-      [user.id]
+      `SELECT COALESCE(xp.total_points, 0)::integer AS total_points,
+              COALESCE(xp.monthly_points, 0)::integer AS monthly_points,
+              COALESCE(xp.season_points, 0)::integer AS season_points,
+              0::integer AS loyalty_points,
+              CASE
+                WHEN profile.streak_last_checkin IS NOT NULL
+                 AND CURRENT_TIMESTAMP >= profile.streak_last_checkin + INTERVAL '24 hours'
+                THEN 0
+                ELSE profile.streak_count
+              END::integer AS streak_count,
+              profile.streak_best,
+              profile.streak_last_checkin,
+              profile.streak_last_checkin + INTERVAL '24 hours' AS streak_expires_at,
+              (
+                profile.streak_last_checkin IS NOT NULL
+                AND CURRENT_TIMESTAMP >= profile.streak_last_checkin + INTERVAL '24 hours'
+              ) AS streak_expired,
+              profile.level,
+              profile.exact_predictions_count,
+              profile.challenges_completed_count,
+              profile.player_cards_collected_count,
+              profile.is_guest
+       FROM user_profiles profile
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(pt.final_points), 0) AS total_points,
+                COALESCE(SUM(COALESCE(
+                  pt.monthly_points_delta,
+                  pt.final_points
+                )) FILTER (
+                  WHERE pt.created_at >= (
+                    date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+                    AT TIME ZONE 'UTC'
+                  )
+                ), 0) AS monthly_points,
+                COALESCE(SUM(COALESCE(
+                  pt.season_points_delta,
+                  pt.final_points
+                )) FILTER (
+                  WHERE pt.created_at >= season.starts_at
+                    AND (season.ends_at IS NULL OR pt.created_at < season.ends_at)
+                ), 0) AS season_points
+         FROM point_transactions pt
+         LEFT JOIN LATERAL (
+           SELECT starts_at, ends_at
+           FROM leaderboard_periods
+           WHERE type = 'season' AND is_current = TRUE
+           LIMIT 1
+         ) season ON TRUE
+         WHERE pt.user_id = profile.user_id
+           AND pt.source_type = ANY($2::varchar[])
+       ) xp ON TRUE
+       WHERE profile.user_id = $1`,
+      [user.id, eligibleXpSources]
     );
 
+    const subscriptionAccess = await readSubscriptionStatus(user.id);
     return {
       user: {
         id: user.id,
         firebaseUid: user.firebaseUid,
+        subscriptionAccessMode: subscriptionAccess.subscriptionAccessMode,
+        subscriptionAccessExpiresAt: subscriptionAccess.subscriptionAccessExpiresAt,
+        subscriptionAccessReason: subscriptionAccess.accessReason,
+        subscriptionAccessSource: subscriptionAccess.accessSource,
+        hasMemberAccess: subscriptionAccess.hasMemberAccess,
+        memberAccessSource: subscriptionAccess.memberAccessSource,
+        memberAccessReason: subscriptionAccess.memberAccessReason,
+        memberAccessExpiresAt: subscriptionAccess.memberAccessExpiresAt,
+        youtubeMembershipVerifiedAt:
+          subscriptionAccess.youtubeMembershipVerifiedAt,
+        youtubeMembershipExpiresAt:
+          subscriptionAccess.youtubeMembershipExpiresAt,
+        youtubeMembershipRecheckRequired:
+          subscriptionAccess.youtubeMembershipRecheckRequired,
         email: user.email,
         username: user.username,
         displayName: user.displayName,
@@ -62,7 +191,10 @@ export async function profileRoutes(fastify: FastifyInstance) {
         country: user.country,
         countryCode: user.countryCode,
         onboardingCompleted: user.onboardingCompleted,
-        isYouTubeMember: user.isYouTubeMember,
+        isYouTubeMember: subscriptionAccess.youtubeMembershipActive
+          && subscriptionAccess.hasMemberAccess,
+        youtubeMembershipActive: subscriptionAccess.youtubeMembershipActive,
+        isProSubscriber: subscriptionAccess.isActive,
         roles: user.roles,
         isAdmin: user.isAdmin,
         isSuperAdmin: user.isSuperAdmin,
@@ -75,83 +207,82 @@ export async function profileRoutes(fastify: FastifyInstance) {
   // GET /api/v1/profile/:id - Fetch public fan profile (by user ID or Firebase UID)
   fastify.get('/profile/:id', async (request, reply) => {
     const { id } = request.params as { id: string };
+    await listLeaderboardSeasons();
     const res = await query(
-      `SELECT u.id, u.firebase_uid, u.username, u.display_name, u.avatar_url,
+      `SELECT u.username, u.display_name, u.avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
-              u.is_youtube_member,
-              p.total_points, p.monthly_points, p.season_points, p.loyalty_points,
-              p.streak_count, p.streak_best, p.level, p.exact_predictions_count,
+              ${activeYouTubeMembershipSql('u.id')} AS is_youtube_member,
+              ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
+              COALESCE(xp.total_points, 0)::integer AS total_points,
+              COALESCE(xp.monthly_points, 0)::integer AS monthly_points,
+              COALESCE(xp.season_points, 0)::integer AS season_points,
+              0::integer AS loyalty_points,
+              CASE
+                WHEN p.streak_last_checkin IS NOT NULL
+                 AND CURRENT_TIMESTAMP >= p.streak_last_checkin + INTERVAL '24 hours'
+                THEN 0
+                ELSE p.streak_count
+              END::integer AS streak_count,
+              p.streak_best,
+              p.level, p.exact_predictions_count,
               p.challenges_completed_count, p.player_cards_collected_count
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
+       LEFT JOIN youtube_account_links yl ON yl.user_id = u.id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(pt.final_points), 0) AS total_points,
+                COALESCE(SUM(COALESCE(
+                  pt.monthly_points_delta,
+                  pt.final_points
+                )) FILTER (
+                  WHERE pt.created_at >= (
+                    date_trunc('month', CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+                    AT TIME ZONE 'UTC'
+                  )
+                ), 0) AS monthly_points,
+                COALESCE(SUM(COALESCE(
+                  pt.season_points_delta,
+                  pt.final_points
+                )) FILTER (
+                  WHERE pt.created_at >= season.starts_at
+                    AND (season.ends_at IS NULL OR pt.created_at < season.ends_at)
+                ), 0) AS season_points
+         FROM point_transactions pt
+         LEFT JOIN LATERAL (
+           SELECT starts_at, ends_at
+           FROM leaderboard_periods
+           WHERE type = 'season' AND is_current = TRUE
+           LIMIT 1
+         ) season ON TRUE
+         WHERE pt.user_id = p.user_id
+           AND pt.source_type = ANY($2::varchar[])
+       ) xp ON TRUE
        WHERE u.id::text = $1 OR u.firebase_uid = $1 OR LOWER(u.username) = LOWER($1)
        LIMIT 1`,
-      [id]
+      [id, eligibleXpSources]
     );
 
     if (res.rows.length === 0) {
       return reply.status(404).send({ error: 'NotFound', message: 'Fan profile not found' });
     }
 
-    const row = res.rows[0];
-    return {
-      id: row.id,
-      firebaseUid: row.firebase_uid,
-      username: row.username,
-      displayName: row.display_name,
-      avatarUrl: row.avatar_url,
-      supportedTeam: row.supported_team,
-      supportedTeamLogo: row.supported_team_logo,
-      country: row.country,
-      countryCode: row.country_code,
-      isYouTubeMember: row.is_youtube_member,
-      totalPoints: Number(row.total_points || 0),
-      monthlyPoints: Number(row.monthly_points || 0),
-      seasonPoints: Number(row.season_points || 0),
-      loyaltyPoints: Number(row.loyalty_points || 0),
-      streakCount: Number(row.streak_count || 0),
-      streakBest: Number(row.streak_best || 0),
-      level: Number(row.level || 1),
-      exactPredictionsCount: Number(row.exact_predictions_count || 0),
-      challengesCompletedCount: Number(row.challenges_completed_count || 0),
-      playerCardsCollectedCount: Number(row.player_cards_collected_count || 0),
-    };
+    return mapPublicFanProfile(res.rows[0] as PublicFanProfileRow);
   });
 
   // GET /api/v1/profile/point-history - Fetch user's verified point ledger history
   fastify.get('/profile/point-history', { preHandler: [authenticateUser] }, async (request, reply) => {
     const user = request.user!;
-    let res = await query(
+    const res = await query(
       `SELECT id, source_type, base_points, multiplier, final_points, description, created_at
        FROM point_transactions
        WHERE user_id = $1
+         AND source_type = ANY($2::varchar[])
        ORDER BY created_at DESC
        LIMIT 50`,
-      [user.id]
-    );
-
-    const signupRule = await query(
-      `SELECT base_points FROM point_rules WHERE key = 'signUpBonus'`,
-    );
-    const signupPoints = Number(signupRule.rows[0]?.base_points || 50);
-    await query(
-      `INSERT INTO point_transactions
-         (user_id, source_type, source_id, base_points, multiplier,
-          final_points, description, idempotency_key)
-       VALUES ($1, 'signup_bonus', 'signup', $2, 1.0, $2,
-               'Signup bonus', $3)
-       ON CONFLICT (idempotency_key) DO NOTHING`,
-      [user.id, signupPoints, `signup_bonus_${user.id}`],
-    );
-    // Re-read so legacy accounts see their backfilled sign-up entry on this
-    // very response, alongside the newly durable daily-streak transactions.
-    res = await query(
-      `SELECT id, source_type, base_points, multiplier, final_points, description, created_at
-       FROM point_transactions
-       WHERE user_id = $1
-       ORDER BY created_at DESC
-       LIMIT 50`,
-      [user.id]
+      [
+        user.id,
+        eligibleXpSources,
+      ]
     );
     return res.rows;
   });
@@ -251,6 +382,10 @@ export async function profileRoutes(fastify: FastifyInstance) {
     }
 
     const row = updatedUserRes.rows[0];
+    // An admin may change this account's access while the profile update is in
+    // flight. Read the effective decision after the write instead of returning
+    // the authentication snapshot captured at the start of the request.
+    const subscriptionAccess = await readSubscriptionStatus(user.id);
 
     return {
       success: true,
@@ -268,11 +403,62 @@ export async function profileRoutes(fastify: FastifyInstance) {
         countryCode: row.country_code,
         onboardingCompleted: row.onboarding_completed,
         locationUpdatedAt: row.location_updated_at,
-        isYouTubeMember: row.is_youtube_member,
+        isYouTubeMember: subscriptionAccess.youtubeMembershipActive
+          && subscriptionAccess.hasMemberAccess,
+        youtubeMembershipActive: subscriptionAccess.youtubeMembershipActive,
+        isProSubscriber: subscriptionAccess.isActive,
+        hasMemberAccess: subscriptionAccess.hasMemberAccess,
+        memberAccessSource: subscriptionAccess.memberAccessSource,
+        memberAccessReason: subscriptionAccess.memberAccessReason,
+        memberAccessExpiresAt: subscriptionAccess.memberAccessExpiresAt,
+        youtubeMembershipVerifiedAt:
+          subscriptionAccess.youtubeMembershipVerifiedAt,
+        youtubeMembershipExpiresAt:
+          subscriptionAccess.youtubeMembershipExpiresAt,
+        youtubeMembershipRecheckRequired:
+          subscriptionAccess.youtubeMembershipRecheckRequired,
+        subscriptionAccessMode: subscriptionAccess.subscriptionAccessMode,
+        subscriptionAccessExpiresAt:
+          subscriptionAccess.subscriptionAccessExpiresAt,
+        subscriptionAccessReason: subscriptionAccess.accessReason,
+        subscriptionAccessSource: subscriptionAccess.accessSource,
         accountStatus: row.account_status,
       },
     };
   });
+
+  // DELETE /api/v1/profile/me - Permanently delete the signed-in fan and all
+  // PostgreSQL-owned account data. User-scoped tables reference users with
+  // ON DELETE CASCADE; the service wraps the complete cascade and its
+  // non-identifying audit marker in one transaction.
+  fastify.delete(
+    '/profile/me',
+    {
+      preHandler: [authenticateUser, requireRecentFirebaseAuthentication],
+      config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
+    },
+    async (request, reply) => {
+      // Remove legacy Firestore/Storage data first. If Firebase is unavailable,
+      // PostgreSQL remains intact and the authenticated user can safely retry.
+      // Firebase Auth itself is deleted by Flutter after this endpoint returns.
+      await deleteFirebaseMirrorData(request.user!.firebaseUid);
+      const deleted = await deleteAccountData(
+        request.user!.id,
+        request.id,
+      );
+      if (!deleted) {
+        return reply.status(404).send({
+          error: 'NotFound',
+          message: 'Profile no longer exists.',
+        });
+      }
+      return {
+        success: true,
+        message: 'Account data permanently deleted.',
+        requestId: request.id,
+      };
+    },
+  );
 
   // PUT /api/v1/profile/team - Select/update supported team
   fastify.put('/profile/team', { preHandler: [authenticateUser] }, async (request, reply) => {
@@ -297,54 +483,4 @@ export async function profileRoutes(fastify: FastifyInstance) {
     return { success: true, supportedTeam: parsed.data.teamName, supportedTeamLogo: parsed.data.teamLogo };
   });
 
-  // Admin-only membership management: Normal users CANNOT self-promote to YouTube Member
-  fastify.post(
-    '/admin/users/:id/membership',
-    { preHandler: [requirePermission('users.suspend')] },
-    async (request, reply) => {
-      const { id: identifier } = request.params as { id: string };
-      const schema = z.object({
-        isMember: z.boolean(),
-        channelId: z.string().trim().max(100).optional(),
-        reason: z.string().trim().min(3).max(200),
-      });
-
-      const parsed = schema.safeParse(request.body);
-      if (!parsed.success) {
-        return reply.status(400).send({ error: 'Invalid parameters', issues: parsed.error.issues });
-      }
-
-      const targetResult = await query(
-        `SELECT id
-         FROM users
-         WHERE id::text = $1 OR firebase_uid = $1
-         ORDER BY (id::text = $1) DESC
-         LIMIT 1`,
-        [identifier],
-      );
-      const id = targetResult.rows[0]?.id;
-      if (!id) {
-        return reply.status(404).send({ error: 'NotFound', message: 'User not found.' });
-      }
-
-      await query(
-        `UPDATE users
-         SET is_youtube_member = $1, youtube_channel_id = $2, youtube_member_since = CASE WHEN $1 THEN CURRENT_TIMESTAMP ELSE NULL END, updated_at = CURRENT_TIMESTAMP
-         WHERE id = $3`,
-        [parsed.data.isMember, parsed.data.channelId || null, id]
-      );
-
-      await query(
-        `INSERT INTO admin_audit_logs (admin_user_id, action, target_entity, target_id, after_state)
-         VALUES ($1, 'membership.update', 'user', $2, $3)`,
-        [
-          request.user!.id,
-          id,
-          JSON.stringify({ isMember: parsed.data.isMember, reason: parsed.data.reason }),
-        ]
-      );
-
-      return { success: true, isYouTubeMember: parsed.data.isMember };
-    }
-  );
 }

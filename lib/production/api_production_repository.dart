@@ -6,6 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'api_client.dart';
 import 'external_content_service.dart';
 import 'models.dart';
+import 'subscription_service.dart';
+import 'youtube_membership_check.dart';
 
 @visibleForTesting
 int parseApiInt(dynamic value, [int fallback = 0]) {
@@ -17,6 +19,133 @@ int parseApiInt(dynamic value, [int fallback = 0]) {
 double parseApiDouble(dynamic value, [double fallback = 0]) {
   if (value is num) return value.toDouble();
   return double.tryParse(value?.toString() ?? '') ?? fallback;
+}
+
+@visibleForTesting
+bool notificationCampaignStatusIsConclusive(Map<String, dynamic> status) {
+  if (status['terminal'] == true ||
+      status['providerConfigurationError'] == true) {
+    return true;
+  }
+  final value = status['status']?.toString().trim().toLowerCase();
+  return value == 'completed' || value == 'cancelled';
+}
+
+Future<Map<String, dynamic>> pollNotificationCampaignDelivery({
+  required Future<Map<String, dynamic>> Function() fetch,
+  int maxPolls = 31,
+  Duration interval = const Duration(milliseconds: 500),
+  Future<void> Function(Duration)? wait,
+}) async {
+  if (maxPolls < 1) {
+    throw ArgumentError.value(maxPolls, 'maxPolls', 'Must be positive.');
+  }
+  final waitForNextPoll = wait ?? Future<void>.delayed;
+  var latest = <String, dynamic>{};
+  for (var poll = 0; poll < maxPolls; poll += 1) {
+    latest = await fetch();
+    if (notificationCampaignStatusIsConclusive(latest) ||
+        poll == maxPolls - 1) {
+      return latest;
+    }
+    await waitForNextPoll(interval);
+  }
+  return latest;
+}
+
+bool isValidAdminSubscriptionReason(String value) {
+  final reason = value.trim();
+  return reason.length >= 3 &&
+      reason.length <= 500 &&
+      !RegExp(r'\p{C}', unicode: true).hasMatch(reason);
+}
+
+class AdminUserPage {
+  const AdminUserPage({
+    required this.users,
+    required this.total,
+    required this.limit,
+    required this.offset,
+    required this.hasMore,
+  });
+
+  final List<AbuUserProfile> users;
+  final int total;
+  final int limit;
+  final int offset;
+  final bool hasMore;
+}
+
+@visibleForTesting
+LeaderboardEntry parseApiLeaderboardEntry(dynamic value) {
+  final item = value is Map
+      ? Map<String, dynamic>.from(value)
+      : const <String, dynamic>{};
+  final points = parseApiInt(item['points']);
+  return LeaderboardEntry(
+    uid: (item['publicId'] ?? item['userId'] ?? item['firebaseUid'] ?? '')
+        .toString(),
+    username: (item['username'] ?? '').toString(),
+    displayName: (item['displayName'] ?? item['username'] ?? '').toString(),
+    avatarUrl: (item['avatarUrl'] ?? '').toString(),
+    supportedTeam: (item['supportedTeam'] ?? '').toString(),
+    monthlyPoints: points,
+    seasonPoints: points,
+    totalPoints: points,
+    isMember: item['isYouTubeMember'] == true,
+    isProSubscriber: item['isProSubscriber'] == true,
+  );
+}
+
+@visibleForTesting
+UserLeaderboardRanks parseApiUserLeaderboardRanks(dynamic value) {
+  if (value is! Map) return const UserLeaderboardRanks.unranked();
+  final ranks = Map<String, dynamic>.from(value);
+  return UserLeaderboardRanks(
+    currentMonth: parseApiInt(ranks['monthlyRank']),
+    season: parseApiInt(ranks['seasonRank']),
+  );
+}
+
+class RewardRedemptionReceipt {
+  const RewardRedemptionReceipt({
+    required this.redemptionId,
+    required this.remainingBalance,
+    required this.claimCount,
+    required this.duplicate,
+    this.stockRemaining,
+  });
+
+  final String redemptionId;
+  final int remainingBalance;
+  final int? stockRemaining;
+  final int claimCount;
+  final bool duplicate;
+}
+
+@visibleForTesting
+RewardRedemptionReceipt parseRewardRedemptionReceipt(dynamic value) {
+  if (value is! Map || value['ok'] != true) {
+    throw const FormatException('Invalid reward-redemption response.');
+  }
+  final response = Map<String, dynamic>.from(value);
+  final redemptionId = (response['redemptionId'] ?? '').toString().trim();
+  final remainingBalance = response['remainingBalance'];
+  final claimCount = response['claimCount'];
+  final stockRemaining = response['stockRemaining'];
+  if (redemptionId.isEmpty ||
+      remainingBalance is! num ||
+      claimCount is! num ||
+      (stockRemaining != null && stockRemaining is! num)) {
+    throw const FormatException('Invalid reward-redemption response.');
+  }
+  return RewardRedemptionReceipt(
+    redemptionId: redemptionId,
+    remainingBalance: remainingBalance.toInt(),
+    stockRemaining: (stockRemaining as num?)?.toInt(),
+    claimCount: claimCount.toInt(),
+    duplicate: response['duplicate'] == true,
+  );
 }
 
 @visibleForTesting
@@ -70,7 +199,13 @@ MatchEvent parseApiMatchEvent(dynamic value) {
               .toString(),
         )?.toLocal() ??
         kickoff.toLocal(),
-    status: (match['status'] ?? 'upcoming').toString(),
+    status: switch ((match['status'] ?? 'upcoming').toString()) {
+      'scheduled' => 'draft',
+      'closed' => 'locked',
+      'finished' => 'completed',
+      'cancelled' || 'postponed' => 'disabled',
+      _ => (match['status'] ?? 'upcoming').toString(),
+    },
     homeScore: optionalInt(match['home_score'] ?? match['homeScore']),
     awayScore: optionalInt(match['away_score'] ?? match['awayScore']),
     firstScorer: (match['first_scorer'] ?? match['firstScorer'] ?? '')
@@ -83,6 +218,67 @@ MatchEvent parseApiMatchEvent(dynamic value) {
               .where((item) => item.isNotEmpty)
               .toList(growable: false)
         : const <String>[],
+  );
+}
+
+@visibleForTesting
+SavedPrediction parseApiSavedPrediction(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid prediction response.');
+  }
+  final prediction = Map<String, dynamic>.from(value);
+  final matchStatus = (prediction['match_status'] ?? '').toString();
+  final actualHomeScore = prediction['actual_home_score'];
+  final actualAwayScore = prediction['actual_away_score'];
+  final hasMatch =
+      matchStatus.isNotEmpty ||
+      actualHomeScore != null ||
+      actualAwayScore != null;
+  return SavedPrediction(
+    id: prediction['id']?.toString() ?? '',
+    userId: prediction['user_id']?.toString() ?? '',
+    matchId: prediction['match_id']?.toString() ?? '',
+    homeScore: parseApiInt(prediction['home_score']),
+    awayScore: parseApiInt(prediction['away_score']),
+    firstScorer: prediction['first_scorer']?.toString() ?? '',
+    submittedAt:
+        DateTime.tryParse(prediction['submitted_at']?.toString() ?? '') ??
+        DateTime.now(),
+    updatedAt:
+        DateTime.tryParse(prediction['updated_at']?.toString() ?? '') ??
+        DateTime.now(),
+    rewarded: prediction['rewarded'] == true,
+    pointsAwarded: parseApiInt(prediction['points_awarded']),
+    seenResult: prediction['seen_result'] == true,
+    exactMatchResult: prediction['is_exact_match'] is bool
+        ? prediction['is_exact_match'] as bool
+        : null,
+    firstScorerMatchResult: prediction['is_first_scorer_match'] is bool
+        ? prediction['is_first_scorer_match'] as bool
+        : null,
+    winnerMatchResult: prediction['is_winner_match'] is bool
+        ? prediction['is_winner_match'] as bool
+        : null,
+    homeTeam: prediction['home_team']?.toString() ?? '',
+    awayTeam: prediction['away_team']?.toString() ?? '',
+    match: hasMatch
+        ? parseApiMatchEvent(<String, dynamic>{
+            'id': prediction['match_id'],
+            'competition_name': prediction['competition_name'],
+            'home_team': prediction['home_team'],
+            'away_team': prediction['away_team'],
+            'home_logo_url': prediction['home_logo_url'],
+            'away_logo_url': prediction['away_logo_url'],
+            'kickoff_at': prediction['kickoff_at'],
+            'predictions_open_at': prediction['predictions_open_at'],
+            'predictions_close_at': prediction['predictions_close_at'],
+            'first_scorer_options': prediction['first_scorer_options'],
+            'status': matchStatus,
+            'home_score': actualHomeScore,
+            'away_score': actualAwayScore,
+            'first_scorer': prediction['actual_first_scorer'],
+          })
+        : null,
   );
 }
 
@@ -110,11 +306,62 @@ AbuUserProfile parseAdminUserProfile(dynamic value) {
   final rawRole = (user['role'] ?? 'fan').toString();
   final role = rawRole == 'super_admin' ? 'superAdmin' : rawRole;
   final accountStatus = (user['accountStatus'] ?? 'active').toString();
+  DateTime? optionalTimestamp(String camelCase, String snakeCase) {
+    final raw = user[camelCase] ?? user[snakeCase];
+    if (raw == null || raw.toString().trim().isEmpty) return null;
+    return DateTime.tryParse(raw.toString())?.toLocal();
+  }
+
+  final youtubeChannelId =
+      (user['youtubeChannelId'] ?? user['youtube_channel_id'] ?? '')
+          .toString()
+          .trim();
+  final effectiveYouTubeMember =
+      user['hasMemberAccess'] != false &&
+      (user['isYouTubeMember'] is bool
+          ? user['isYouTubeMember'] == true
+          : user['youtubeMembershipActive'] == true);
   return AbuUserProfile(
     // Mutating endpoints accept either the PostgreSQL ID or Firebase UID. Use
     // the Firebase UID when present so the same model also works in existing
     // client-side identity comparisons.
     uid: (user['firebaseUid'] ?? user['uid'] ?? user['id'] ?? '').toString(),
+    isProSubscriber: user['isProSubscriber'] == true,
+    backendUserId: (user['id'] ?? '').toString(),
+    subscriptionAccessMode: SubscriptionAccessMode.parse(
+      user['subscriptionAccessMode'],
+    ),
+    subscriptionAccessExpiresAt: optionalTimestamp(
+      'subscriptionAccessExpiresAt',
+      'subscription_access_expires_at',
+    ),
+    subscriptionAccessReason:
+        (user['subscriptionAccessReason'] ??
+                user['subscription_access_reason'] ??
+                user['accessReason'] ??
+                'unknown')
+            .toString(),
+    subscriptionAccessSource:
+        (user['subscriptionAccessSource'] ??
+                user['subscription_access_source'] ??
+                user['accessSource'] ??
+                'none')
+            .toString(),
+    serverHasMemberAccess: user['hasMemberAccess'] is bool
+        ? user['hasMemberAccess'] as bool
+        : null,
+    memberAccessSource:
+        (user['memberAccessSource'] ?? user['member_access_source'] ?? 'none')
+            .toString(),
+    memberAccessReason:
+        (user['memberAccessReason'] ??
+                user['member_access_reason'] ??
+                'unknown')
+            .toString(),
+    memberAccessExpiresAt: optionalTimestamp(
+      'memberAccessExpiresAt',
+      'member_access_expires_at',
+    ),
     email: (user['email'] ?? '').toString(),
     username: (user['username'] ?? '').toString(),
     displayName: (user['displayName'] ?? '').toString(),
@@ -124,7 +371,7 @@ AbuUserProfile parseAdminUserProfile(dynamic value) {
     supportedTeamLogo: (user['supportedTeamLogo'] ?? '').toString(),
     avatarUrl: (user['avatarUrl'] ?? '').toString(),
     role: role,
-    membershipMultiplier: user['isYouTubeMember'] == true ? 2.0 : 1.0,
+    membershipMultiplier: effectiveYouTubeMember ? 2.0 : 1.0,
     totalPoints: parseApiInt(user['totalPoints']),
     monthlyPoints: parseApiInt(user['monthlyPoints']),
     seasonPoints: parseApiInt(user['seasonPoints']),
@@ -136,6 +383,28 @@ AbuUserProfile parseAdminUserProfile(dynamic value) {
     level: parseApiInt(user['level'], 1),
     lastActivityAt: DateTime.tryParse((user['lastActiveAt'] ?? '').toString()),
     onboardingCompleted: user['onboardingCompleted'] as bool?,
+    youtubeChannelLinked:
+        user['youtubeChannelLinked'] == true || youtubeChannelId.isNotEmpty,
+    youtubeMembershipLevelId:
+        (user['youtubeMembershipLevelId'] ??
+                user['youtube_membership_level_id'] ??
+                '')
+            .toString(),
+    youtubeMembershipVerifiedAt: optionalTimestamp(
+      'youtubeMembershipVerifiedAt',
+      'youtube_membership_verified_at',
+    ),
+    youtubeMemberSince: optionalTimestamp(
+      'youtubeMemberSince',
+      'youtube_member_since',
+    ),
+    youtubeMembershipExpiresAt: optionalTimestamp(
+      'youtubeMembershipExpiresAt',
+      'youtube_membership_expires_at',
+    ),
+    youtubeMembershipRecheckRequired:
+        user['youtubeMembershipRecheckRequired'] == true ||
+        user['youtube_membership_recheck_required'] == true,
   );
 }
 
@@ -149,9 +418,19 @@ AdminPointAdjustment parseAdminPointAdjustment(dynamic value) {
     id: (item['id'] ?? '').toString(),
     adminId: (item['adminId'] ?? '').toString(),
     adminDisplayName: (item['adminDisplayName'] ?? '').toString(),
+    adminIsProSubscriber: item['adminIsProSubscriber'] == true,
+    adminHasMemberAccess: item['adminHasMemberAccess'] is bool
+        ? item['adminHasMemberAccess'] as bool
+        : item['adminIsProSubscriber'] == true ||
+              item['adminIsYouTubeMember'] == true,
     targetUserId: (item['targetUserId'] ?? '').toString(),
     targetDisplayName: (item['targetDisplayName'] ?? '').toString(),
     targetUsername: (item['targetUsername'] ?? '').toString(),
+    targetIsProSubscriber: item['targetIsProSubscriber'] == true,
+    targetHasMemberAccess: item['targetHasMemberAccess'] is bool
+        ? item['targetHasMemberAccess'] as bool
+        : item['targetIsProSubscriber'] == true ||
+              item['targetIsYouTubeMember'] == true,
     delta: parseApiInt(item['delta']),
     reason: (item['reason'] ?? '').toString(),
     totalBefore: parseApiInt(item['totalBefore']),
@@ -169,6 +448,39 @@ AdminPointAdjustment parseAdminPointAdjustment(dynamic value) {
         DateTime.tryParse((item['createdAt'] ?? '').toString()) ??
         DateTime.fromMillisecondsSinceEpoch(0),
   );
+}
+
+@visibleForTesting
+AbuChallenge parseApiChallenge(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid challenge response.');
+  }
+  return AbuChallenge.fromMap(Map<String, dynamic>.from(value));
+}
+
+@visibleForTesting
+AbuPlayerCard parseApiPlayerCard(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid Player Card response.');
+  }
+  return AbuPlayerCard.fromMap(Map<String, dynamic>.from(value));
+}
+
+@visibleForTesting
+LaunchAnnouncement? parseApiLaunchAnnouncement(dynamic value) {
+  if (value == null) return null;
+  if (value is! Map) {
+    throw const FormatException('Invalid launch-popup response.');
+  }
+  return LaunchAnnouncement.fromMap(Map<String, dynamic>.from(value));
+}
+
+@visibleForTesting
+AbuRewardRedemption parseApiRedemption(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid redemption response.');
+  }
+  return AbuRewardRedemption.fromMap(Map<String, dynamic>.from(value));
 }
 
 class ApiProductionRepository {
@@ -211,8 +523,37 @@ class ApiProductionRepository {
       final accountStatus = (u['accountStatus'] ?? u['account_status'] ?? '')
           .toString();
       final storedAvatarUrl = (u['avatarUrl'] ?? '').toString().trim();
+      DateTime? userTimestamp(String key) =>
+          DateTime.tryParse((u[key] ?? '').toString())?.toLocal();
+      // `youtubeMembershipActive` is raw diagnostic state. The effective
+      // `isYouTubeMember` value already includes a final admin access block,
+      // so never rebuild a badge/multiplier from the raw value when the server
+      // deliberately returned false.
+      final effectiveYouTubeMember =
+          u['hasMemberAccess'] != false &&
+          (u['isYouTubeMember'] is bool
+              ? u['isYouTubeMember'] == true
+              : u['youtubeMembershipActive'] == true);
       return AbuUserProfile(
         uid: u['firebaseUid'] ?? user.uid,
+        backendUserId: (u['id'] ?? '').toString(),
+        isProSubscriber: u['isProSubscriber'] == true,
+        subscriptionAccessMode: SubscriptionAccessMode.parse(
+          u['subscriptionAccessMode'],
+        ),
+        subscriptionAccessExpiresAt: DateTime.tryParse(
+          (u['subscriptionAccessExpiresAt'] ?? '').toString(),
+        ),
+        subscriptionAccessReason: (u['subscriptionAccessReason'] ?? 'unknown')
+            .toString(),
+        subscriptionAccessSource: (u['subscriptionAccessSource'] ?? 'none')
+            .toString(),
+        serverHasMemberAccess: u['hasMemberAccess'] is bool
+            ? u['hasMemberAccess'] as bool
+            : null,
+        memberAccessSource: (u['memberAccessSource'] ?? 'none').toString(),
+        memberAccessReason: (u['memberAccessReason'] ?? 'unknown').toString(),
+        memberAccessExpiresAt: userTimestamp('memberAccessExpiresAt'),
         email: u['email'] ?? user.email ?? '',
         displayName: u['displayName'] ?? user.displayName ?? '',
         username: u['username'] ?? '',
@@ -227,11 +568,11 @@ class ApiProductionRepository {
             ? storedAvatarUrl
             : (user.photoURL ?? '').trim(),
         role: role,
-        membershipMultiplier: (u['isYouTubeMember'] == true) ? 2.0 : 1.0,
-        totalPoints: (p['total_points'] ?? 50).toInt(),
-        monthlyPoints: (p['monthly_points'] ?? 50).toInt(),
-        seasonPoints: (p['season_points'] ?? 50).toInt(),
-        loyaltyPoints: (p['loyalty_points'] ?? 50).toInt(),
+        membershipMultiplier: effectiveYouTubeMember ? 2.0 : 1.0,
+        totalPoints: (p['total_points'] ?? 0).toInt(),
+        monthlyPoints: (p['monthly_points'] ?? 0).toInt(),
+        seasonPoints: (p['season_points'] ?? 0).toInt(),
+        loyaltyPoints: (p['loyalty_points'] ?? 0).toInt(),
         currentStreak: (p['streak_count'] ?? 0).toInt(),
         longestStreak: (p['streak_best'] ?? 0).toInt(),
         level: (p['level'] ?? 1).toInt(),
@@ -241,8 +582,21 @@ class ApiProductionRepository {
         lastCheckInDate: p['streak_last_checkin'] != null
             ? p['streak_last_checkin'].toString().split('T').first
             : '',
+        lastActivityAt: DateTime.tryParse(
+          (p['streak_last_checkin'] ?? '').toString(),
+        ),
         suspended: accountStatus == 'suspended' || accountStatus == 'banned',
         onboardingCompleted: u['onboardingCompleted'] as bool?,
+        youtubeChannelLinked: u['youtubeChannelLinked'] == true,
+        youtubeMembershipLevelId: (u['youtubeMembershipLevelId'] ?? '')
+            .toString(),
+        youtubeMembershipVerifiedAt: userTimestamp(
+          'youtubeMembershipVerifiedAt',
+        ),
+        youtubeMemberSince: userTimestamp('youtubeMemberSince'),
+        youtubeMembershipExpiresAt: userTimestamp('youtubeMembershipExpiresAt'),
+        youtubeMembershipRecheckRequired:
+            u['youtubeMembershipRecheckRequired'] == true,
       );
     }
     throw AbuApiException(
@@ -261,6 +615,98 @@ class ApiProductionRepository {
       statusCode: 502,
       message: 'The server returned an invalid upcoming-match list.',
       details: res,
+    );
+  }
+
+  Future<List<MatchEvent>> fetchManagedMatches() async {
+    final response = await api.get('/admin/matches', requireAuth: true);
+    if (response is List) {
+      return response.map(parseApiMatchEvent).toList(growable: false);
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server returned an invalid managed-match list.',
+      details: response,
+    );
+  }
+
+  Future<MatchEvent> fetchMatch(String matchId) async {
+    final response = await api.get('/matches/${Uri.encodeComponent(matchId)}');
+    if (response is Map && response['match'] is Map) {
+      return parseApiMatchEvent(response['match']);
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server returned an invalid match.',
+      details: response,
+    );
+  }
+
+  Future<MatchEvent> createAdminMatch({
+    required String id,
+    required String homeTeam,
+    required String awayTeam,
+    required String competition,
+    required DateTime kickoffAt,
+    required DateTime predictionsOpenAt,
+    required DateTime predictionsCloseAt,
+    required List<String> firstScorerOptions,
+    String? homeLogoUrl,
+    String? awayLogoUrl,
+  }) async {
+    final response = await api.post(
+      '/admin/matches',
+      requireAuth: true,
+      body: <String, dynamic>{
+        'id': id,
+        'competitionName': competition.trim(),
+        'homeTeam': homeTeam.trim(),
+        'awayTeam': awayTeam.trim(),
+        'kickoffAt': kickoffAt.toUtc().toIso8601String(),
+        'predictionsOpenAt': predictionsOpenAt.toUtc().toIso8601String(),
+        'predictionsCloseAt': predictionsCloseAt.toUtc().toIso8601String(),
+        'firstScorerOptions': firstScorerOptions,
+        if (homeLogoUrl != null && homeLogoUrl.isNotEmpty)
+          'homeLogoUrl': homeLogoUrl,
+        if (awayLogoUrl != null && awayLogoUrl.isNotEmpty)
+          'awayLogoUrl': awayLogoUrl,
+      },
+    );
+    if (response is Map && response['match'] is Map) {
+      return parseApiMatchEvent(response['match']);
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server did not confirm the match.',
+      details: response,
+    );
+  }
+
+  Future<void> setAdminMatchStatus({
+    required String matchId,
+    required String status,
+  }) async {
+    await api.put(
+      '/admin/matches/${Uri.encodeComponent(matchId)}/status',
+      requireAuth: true,
+      body: {'status': status},
+    );
+  }
+
+  Future<void> settleAdminMatch({
+    required String matchId,
+    required int homeScore,
+    required int awayScore,
+    required String firstScorer,
+  }) async {
+    await api.post(
+      '/admin/matches/${Uri.encodeComponent(matchId)}/settle',
+      requireAuth: true,
+      body: <String, dynamic>{
+        'homeScore': homeScore,
+        'awayScore': awayScore,
+        'firstScorer': firstScorer.trim(),
+      },
     );
   }
 
@@ -329,9 +775,15 @@ class ApiProductionRepository {
   /// Loads normalized timeline, lineup, table and statistics through the
   /// self-hosted API. Keeping the football-provider key on the server also
   /// avoids direct-browser CORS failures on Flutter web.
-  Future<MatchDetails> fetchMatchDetails(String matchId) async {
+  Future<MatchDetails> fetchMatchDetails(
+    String matchId, {
+    bool forceRefresh = false,
+  }) async {
     final encodedId = Uri.encodeComponent(matchId);
-    final response = await api.get('/matches/$encodedId/details');
+    final response = await api.get(
+      '/matches/$encodedId/details',
+      bypassCache: forceRefresh,
+    );
     if (response is! Map) {
       throw const FormatException('Invalid match-details response.');
     }
@@ -339,9 +791,13 @@ class ApiProductionRepository {
   }
 
   Future<List<AbuChallenge>> fetchActiveChallenges() async {
-    final res = await api.get('/challenges/active');
+    final res = await api.get(
+      '/challenges/active',
+      requireAuth: true,
+      bypassCache: true,
+    );
     if (res is List) {
-      return res.map((c) => _parseChallenge(c)).toList(growable: false);
+      return res.map(parseApiChallenge).toList(growable: false);
     }
     throw AbuApiException(
       statusCode: 502,
@@ -362,6 +818,314 @@ class ApiProductionRepository {
     return res is Map<String, dynamic>
         ? res
         : {'correct': false, 'pointsAwarded': 0};
+  }
+
+  Future<List<AbuChallenge>> fetchManagedChallenges() async {
+    final response = await api.get('/admin/challenges', requireAuth: true);
+    if (response is! List) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid admin challenge list.',
+        details: response,
+      );
+    }
+    return response.map(parseApiChallenge).toList(growable: false);
+  }
+
+  Future<String> createAdminChallenge({
+    required String kind,
+    required String title,
+    required String description,
+    required String videoUrl,
+    required String imageUrl,
+    required int rewardPoints,
+    required DateTime availableFrom,
+    required DateTime availableUntil,
+    required String status,
+    required int maximumAttempts,
+    required bool memberOnly,
+    required bool notifyOnLive,
+    required List<Map<String, dynamic>> questions,
+    String playerCardId = '',
+  }) async {
+    final response = await api.post(
+      '/admin/challenges',
+      requireAuth: true,
+      body: <String, dynamic>{
+        'kind': kind,
+        'title': title,
+        'description': description,
+        'videoUrl': videoUrl,
+        'imageUrl': imageUrl,
+        'rewardPoints': rewardPoints,
+        'availableFrom': availableFrom.toUtc().toIso8601String(),
+        'availableUntil': availableUntil.toUtc().toIso8601String(),
+        'status': status,
+        'maximumAttempts': maximumAttempts,
+        'memberOnly': memberOnly,
+        'notifyOnLive': notifyOnLive,
+        if (playerCardId.trim().isNotEmpty) 'playerCardId': playerCardId.trim(),
+        'questions': questions,
+      },
+    );
+    if (response is Map && response['id'] != null) {
+      return response['id'].toString();
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server did not confirm the new challenge.',
+      details: response,
+    );
+  }
+
+  Future<void> setAdminChallengeStatus({
+    required String challengeId,
+    required String status,
+  }) async {
+    await api.put(
+      '/admin/challenges/${Uri.encodeComponent(challengeId)}/status',
+      body: {'status': status},
+      requireAuth: true,
+    );
+  }
+
+  Future<void> deleteAdminChallenge(String challengeId) async {
+    await api.delete(
+      '/admin/challenges/${Uri.encodeComponent(challengeId)}',
+      requireAuth: true,
+    );
+  }
+
+  Future<List<AbuPlayerCard>> fetchPlayerCards({bool managed = false}) async {
+    final response = await api.get(
+      managed ? '/admin/player-cards' : '/player-cards',
+      // The fan endpoint is personalized: locked cards have their private
+      // identity fields redacted and unlock state comes from this user's
+      // player_card_claims row.
+      requireAuth: true,
+    );
+    if (response is! List) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid Player Card list.',
+        details: response,
+      );
+    }
+    return response.map(parseApiPlayerCard).toList(growable: false);
+  }
+
+  Future<String> saveAdminPlayerCard(AbuPlayerCard card) async {
+    final response = await api.post(
+      '/admin/player-cards',
+      requireAuth: true,
+      body: <String, dynamic>{
+        if (card.id.isNotEmpty) 'id': card.id,
+        'playerName': card.playerName,
+        'playerNameAr': card.playerNameAr,
+        'imageUrl': card.imageUrl,
+        'teamName': card.teamName,
+        'teamLogoUrl': card.teamLogoUrl,
+        'position': card.position,
+        'rating': card.rating,
+        'rarity': card.rarity,
+        'stats': card.stats,
+        'description': card.description,
+        'descriptionAr': card.descriptionAr,
+        'enabled': card.enabled,
+      },
+    );
+    if (response is Map && response['id'] != null) {
+      return response['id'].toString();
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server did not confirm the Player Card save.',
+      details: response,
+    );
+  }
+
+  Future<void> setAdminPlayerCardEnabled({
+    required String cardId,
+    required bool enabled,
+  }) async {
+    await api.put(
+      '/admin/player-cards/${Uri.encodeComponent(cardId)}/status',
+      body: {'enabled': enabled},
+      requireAuth: true,
+    );
+  }
+
+  Future<void> deleteAdminPlayerCard(String cardId) async {
+    await api.delete(
+      '/admin/player-cards/${Uri.encodeComponent(cardId)}',
+      requireAuth: true,
+    );
+  }
+
+  Future<LaunchAnnouncement?> fetchLaunchAnnouncement() async {
+    // Launch popups are tiny mutable settings. Always revalidate so an admin
+    // reset cannot be replayed from the native client's public GET cache.
+    final response = await api.get(
+      '/settings/launch-announcement',
+      bypassCache: true,
+    );
+    return parseApiLaunchAnnouncement(response);
+  }
+
+  Future<LaunchAnnouncement> saveAdminLaunchAnnouncement({
+    required bool enabled,
+    required String title,
+    required String body,
+    required String imageUrl,
+    required String linkUrl,
+    required String buttonLabel,
+    required String frequency,
+    required DateTime startsAt,
+    required DateTime endsAt,
+  }) async {
+    final response = await api.put(
+      '/admin/settings/launch-announcement',
+      requireAuth: true,
+      body: <String, dynamic>{
+        'enabled': enabled,
+        'title': title,
+        'body': body,
+        'imageUrl': imageUrl,
+        'linkUrl': linkUrl,
+        'buttonLabel': buttonLabel,
+        'frequency': frequency,
+        'startsAt': startsAt.toUtc().toIso8601String(),
+        'endsAt': endsAt.toUtc().toIso8601String(),
+      },
+    );
+    if (response is Map && response['announcement'] is Map) {
+      return parseApiLaunchAnnouncement(response['announcement'])!;
+    }
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server did not confirm the launch popup.',
+      details: response,
+    );
+  }
+
+  Future<void> resetAdminLaunchAnnouncement() async {
+    await api.delete('/admin/settings/launch-announcement', requireAuth: true);
+  }
+
+  Future<RewardRedemptionReceipt> redeemLoyaltyReward({
+    required String rewardId,
+    required String idempotencyKey,
+  }) async {
+    final response = await api.post(
+      '/rewards/${Uri.encodeComponent(rewardId)}/redeem',
+      requireAuth: true,
+      body: {'idempotencyKey': idempotencyKey},
+    );
+    return parseRewardRedemptionReceipt(response);
+  }
+
+  Future<List<AbuRewardRedemption>> fetchAdminRedemptions() async {
+    final response = await api.get('/admin/redemptions', requireAuth: true);
+    if (response is! List) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid redemption list.',
+        details: response,
+      );
+    }
+    return response.map(parseApiRedemption).toList(growable: false);
+  }
+
+  Future<void> updateAdminRedemptionStatus({
+    required String redemptionId,
+    required String status,
+    String note = '',
+  }) async {
+    await api.put(
+      '/admin/redemptions/${Uri.encodeComponent(redemptionId)}/status',
+      requireAuth: true,
+      body: {'status': status, 'note': note},
+    );
+  }
+
+  Future<void> saveAdminAchievement(AbuAchievement achievement) async {
+    await api.post(
+      '/admin/achievements',
+      requireAuth: true,
+      body: <String, dynamic>{
+        if (achievement.id.isNotEmpty) 'id': achievement.id,
+        ...achievement.toMap(),
+      },
+    );
+  }
+
+  Future<void> setAdminAchievementEnabled({
+    required String achievementId,
+    required bool enabled,
+  }) async {
+    await api.put(
+      '/admin/achievements/${Uri.encodeComponent(achievementId)}/status',
+      requireAuth: true,
+      body: {'enabled': enabled},
+    );
+  }
+
+  Future<void> saveAdminLevel(AbuLevel level) async {
+    await api.post(
+      '/admin/levels',
+      requireAuth: true,
+      body: <String, dynamic>{
+        if (level.id.isNotEmpty) 'id': level.id,
+        ...level.toMap(),
+      },
+    );
+  }
+
+  Future<void> setAdminLevelEnabled({
+    required String levelId,
+    required bool enabled,
+  }) async {
+    await api.put(
+      '/admin/levels/${Uri.encodeComponent(levelId)}/status',
+      requireAuth: true,
+      body: {'enabled': enabled},
+    );
+  }
+
+  Future<void> saveAdminReward(AbuLoyaltyReward reward) async {
+    await api.post(
+      '/admin/rewards',
+      requireAuth: true,
+      body: <String, dynamic>{
+        if (reward.id.isNotEmpty) 'id': reward.id,
+        'title': reward.title.trim(),
+        'titleAr': reward.titleAr.trim(),
+        'description': reward.description.trim(),
+        'descriptionAr': reward.descriptionAr.trim(),
+        'imageUrl': reward.imageUrl.trim(),
+        'category': reward.category,
+        'cost': reward.cost,
+        'stock': reward.stock,
+        'unlimitedStock': reward.unlimitedStock,
+        'perUserLimit': reward.perUserLimit,
+        'memberOnly': reward.memberOnly,
+        'enabled': reward.enabled,
+        'startsAt': reward.startsAt?.toUtc().toIso8601String(),
+        'endsAt': reward.endsAt?.toUtc().toIso8601String(),
+        'fulfilmentType': reward.fulfilmentType,
+      },
+    );
+  }
+
+  Future<void> setAdminRewardEnabled({
+    required String rewardId,
+    required bool enabled,
+  }) async {
+    await api.put(
+      '/admin/rewards/${Uri.encodeComponent(rewardId)}/status',
+      requireAuth: true,
+      body: {'enabled': enabled},
+    );
   }
 
   Future<void> submitPrediction({
@@ -400,12 +1164,20 @@ class ApiProductionRepository {
   Future<List<SavedPrediction>> fetchMyPredictions() async {
     final res = await api.get('/predictions/my', requireAuth: true);
     if (res is List) {
-      return res.map((p) => _parsePrediction(p)).toList();
+      return res.map(parseApiSavedPrediction).toList();
     }
     throw AbuApiException(
       statusCode: 502,
       message: 'The server returned an invalid prediction history.',
       details: res,
+    );
+  }
+
+  Future<void> markPredictionResultSeen(String predictionId) async {
+    await api.post(
+      '/predictions/${Uri.encodeComponent(predictionId)}/seen',
+      requireAuth: true,
+      body: const <String, dynamic>{},
     );
   }
 
@@ -423,25 +1195,119 @@ class ApiProductionRepository {
     );
   }
 
-  Future<List<LeaderboardEntry>> fetchTopLeaderboard({
+  LeaderboardEntry _leaderboardEntry(dynamic value) {
+    return parseApiLeaderboardEntry(value);
+  }
+
+  RankedLeaderboardEntry _rankedLeaderboardEntry(dynamic value, int fallback) {
+    final item = value is Map
+        ? Map<String, dynamic>.from(value)
+        : const <String, dynamic>{};
+    final entry = _leaderboardEntry(item);
+    return RankedLeaderboardEntry(
+      entry: entry,
+      rank: parseApiInt(item['rank'], fallback),
+      points: parseApiInt(item['points']),
+    );
+  }
+
+  Future<LeaderboardSnapshot> fetchLeaderboardSnapshot({
     String period = 'monthly',
+    String? seasonId,
   }) async {
-    final res = await api.get('/leaderboards/$period');
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    final authenticated = firebaseUser != null;
+    final res = await api.get(
+      '/leaderboards/$period',
+      queryParams: seasonId == null || seasonId.isEmpty
+          ? null
+          : <String, String>{'seasonId': seasonId},
+      requireAuth: authenticated,
+      bypassCache: authenticated,
+    );
     if (res is Map && res['leaderboard'] is List) {
-      return (res['leaderboard'] as List)
-          .map(
-            (e) => LeaderboardEntry(
-              uid: e['userId'] ?? '',
-              username: e['username'] ?? '',
-              displayName: e['displayName'] ?? '',
-              avatarUrl: e['avatarUrl'] ?? '',
-              supportedTeam: e['supportedTeam'] ?? '',
-              monthlyPoints: (e['points'] ?? 0).toInt(),
-              seasonPoints: (e['points'] ?? 0).toInt(),
-              isMember: e['isYouTubeMember'] == true,
-            ),
-          )
-          .toList(growable: false);
+      final response = Map<String, dynamic>.from(res);
+      final rawEntries = response['leaderboard'] as List;
+      final entries = <RankedLeaderboardEntry>[
+        for (var index = 0; index < rawEntries.length; index++)
+          _rankedLeaderboardEntry(rawEntries[index], index + 1),
+      ];
+      final seasons = <LeaderboardSeason>[
+        for (final season in (response['seasons'] as List? ?? const []))
+          if (season is Map)
+            LeaderboardSeason.fromMap(Map<String, dynamic>.from(season)),
+      ];
+      RankedLeaderboardEntry? currentUser;
+      if (response['currentUser'] is Map) {
+        currentUser = _rankedLeaderboardEntry(response['currentUser'], 0);
+      } else if (!response.containsKey('currentUser')) {
+        // Compatibility only for an older server that did not return the
+        // authenticated fan as part of the same ranked-query snapshot. New
+        // servers always include the key (with null for an unranked fan), so
+        // the podium and personal pill can never mix two points-in-time.
+        final uid = firebaseUser?.uid ?? '';
+        currentUser = entries
+            .where((item) => item.entry.uid == uid)
+            .firstOrNull;
+        if (currentUser == null && firebaseUser != null) {
+          try {
+            final rankResponse = await api.get(
+              '/leaderboards/my-rank',
+              queryParams: seasonId == null || seasonId.isEmpty
+                  ? null
+                  : <String, String>{'seasonId': seasonId},
+              requireAuth: true,
+              bypassCache: true,
+            );
+            if (rankResponse is Map) {
+              final (rankKey, pointsKey) = switch (period) {
+                'previous-month' => (
+                  'previousMonthRank',
+                  'previousMonthPoints',
+                ),
+                'season' => ('seasonRank', 'seasonPoints'),
+                _ => ('monthlyRank', 'monthlyPoints'),
+              };
+              final rank = parseApiInt(rankResponse[rankKey]);
+              final points = parseApiInt(rankResponse[pointsKey]);
+              if (rank > 0) {
+                currentUser = RankedLeaderboardEntry(
+                  entry: LeaderboardEntry(
+                    uid: (rankResponse['publicId'] ?? firebaseUser.uid)
+                        .toString(),
+                    username:
+                        (rankResponse['publicId'] ??
+                                firebaseUser.displayName ??
+                                'Fan')
+                            .toString(),
+                    displayName: firebaseUser.displayName ?? 'Fan',
+                    avatarUrl: firebaseUser.photoURL ?? '',
+                    supportedTeam: '',
+                    monthlyPoints: points,
+                    seasonPoints: points,
+                    totalPoints: points,
+                    isMember: false,
+                  ),
+                  rank: rank,
+                  points: points,
+                );
+              }
+            }
+          } catch (_) {
+            // The public table remains useful if the authenticated personal
+            // rank request is temporarily unavailable.
+          }
+        }
+      }
+      return LeaderboardSnapshot(
+        entries: entries,
+        currentUser: currentUser,
+        totalPlayers: parseApiInt(response['totalPlayers'], entries.length),
+        seasons: seasons,
+        activeSeasonId:
+            (response['activeSeasonId'] ?? response['activeSeason']?['id'])
+                ?.toString(),
+      );
     }
     throw AbuApiException(
       statusCode: 502,
@@ -449,6 +1315,30 @@ class ApiProductionRepository {
       details: res,
     );
   }
+
+  Future<List<LeaderboardEntry>> fetchTopLeaderboard({
+    String period = 'monthly',
+  }) async =>
+      (await fetchLeaderboardSnapshot(period: period)).entries
+          .map((ranked) => ranked.entry)
+          .toList(growable: false);
+
+  Future<UserLeaderboardRanks> fetchMyLeaderboardRanks() async {
+    final res = await api.get(
+      '/leaderboards/my-rank',
+      requireAuth: true,
+      bypassCache: true,
+    );
+    if (res is Map) return parseApiUserLeaderboardRanks(res);
+    throw AbuApiException(
+      statusCode: 502,
+      message: 'The server returned invalid leaderboard ranks.',
+      details: res,
+    );
+  }
+
+  Future<int> fetchMySeasonRank() async =>
+      (await fetchMyLeaderboardRanks()).season;
 
   Future<void> updateSupportedTeam(String teamName, {String? teamLogo}) async {
     await api.put(
@@ -463,7 +1353,8 @@ class ApiProductionRepository {
       final res = await api.get('/profile/$id');
       if (res is Map) {
         return AbuUserProfile(
-          uid: res['firebaseUid'] ?? res['id'] ?? id,
+          uid: res['publicId'] ?? res['firebaseUid'] ?? res['id'] ?? id,
+          isProSubscriber: res['isProSubscriber'] == true,
           email: '',
           displayName: res['displayName'] ?? 'Fan',
           username: res['username'] ?? '',
@@ -516,6 +1407,10 @@ class ApiProductionRepository {
     }
 
     await api.put('/profile/me', body: body, requireAuth: true);
+  }
+
+  Future<void> deleteAccount() async {
+    await api.delete('/profile/me', requireAuth: true);
   }
 
   String? _absoluteHttpUrlOrNull(String? value) {
@@ -580,15 +1475,15 @@ class ApiProductionRepository {
     );
   }
 
-  Future<void> verifyYouTubeMember({
-    String? channelId,
-    String? googleEmail,
-  }) async {
-    await api.post(
-      '/profile/verify-yt-member',
-      body: {'channelId': channelId, 'googleEmail': googleEmail},
+  Future<YouTubeMembershipCheckResult> checkYouTubeMembership(
+    String profileLink,
+  ) async {
+    final response = await api.post(
+      '/profile/youtube/membership/check',
+      body: <String, dynamic>{'profileLink': profileLink},
       requireAuth: true,
     );
+    return parseYouTubeMembershipCheckEnvelope(response);
   }
 
   Future<List<PointLedgerEntry>> fetchPointHistory() async {
@@ -623,12 +1518,14 @@ class ApiProductionRepository {
   Future<void> registerFcmToken(
     String fcmToken,
     String platform, {
+    required String installationId,
     String? locale,
   }) async {
     await api.post(
       '/devices/register',
       body: {
         'fcmToken': fcmToken,
+        'installationId': installationId,
         'platform': platform,
         if (locale != null && locale.isNotEmpty) 'locale': locale,
       },
@@ -644,32 +1541,178 @@ class ApiProductionRepository {
     );
   }
 
+  Future<void> revokeFcmInstallation({
+    required String fcmToken,
+    required String installationId,
+  }) async {
+    await api.post(
+      '/devices/revoke',
+      body: {'fcmToken': fcmToken, 'installationId': installationId},
+    );
+  }
+
   Future<List<AbuUserProfile>> fetchAdminUsers({
     String search = '',
     String? role,
     String? status,
     int limit = 200,
+  }) async => (await fetchAdminUserPage(
+    search: search,
+    role: role,
+    status: status,
+    limit: limit,
+  )).users;
+
+  Future<AdminUserPage> fetchAdminUserPage({
+    String search = '',
+    String? role,
+    String? status,
+    int limit = 200,
+    int offset = 0,
   }) async {
+    final normalizedLimit = limit.clamp(1, 200);
+    final normalizedOffset = offset < 0 ? 0 : offset;
     final response = await api.get(
       '/admin/users',
       queryParams: <String, String>{
         if (search.trim().isNotEmpty) 'q': search.trim(),
         if (role != null && role.isNotEmpty) 'role': role,
         if (status != null && status.isNotEmpty) 'status': status,
-        'limit': limit.clamp(1, 200).toString(),
+        'limit': normalizedLimit.toString(),
+        'offset': normalizedOffset.toString(),
       },
       requireAuth: true,
     );
-    if (response is! Map || response['users'] is! List) {
+    if (response is! Map ||
+        response['users'] is! List ||
+        response['total'] is! num ||
+        response['limit'] is! num ||
+        response['offset'] is! num ||
+        response['hasMore'] is! bool) {
       throw AbuApiException(
         statusCode: 502,
         message: 'The server returned an invalid user directory.',
         details: response,
       );
     }
-    return (response['users'] as List)
-        .map(parseAdminUserProfile)
+    return AdminUserPage(
+      users: (response['users'] as List)
+          .map(parseAdminUserProfile)
+          .toList(growable: false),
+      total: (response['total'] as num).toInt(),
+      limit: (response['limit'] as num).toInt(),
+      offset: (response['offset'] as num).toInt(),
+      hasMore: response['hasMore'] as bool,
+    );
+  }
+
+  Future<List<LeaderboardSeason>> fetchAdminLeaderboardSeasons() async {
+    final response = await api.get(
+      '/admin/leaderboard-seasons',
+      requireAuth: true,
+      bypassCache: true,
+    );
+    if (response is! Map || response['seasons'] is! List) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid season directory.',
+        details: response,
+      );
+    }
+    return (response['seasons'] as List)
+        .whereType<Map>()
+        .map(
+          (season) =>
+              LeaderboardSeason.fromMap(Map<String, dynamic>.from(season)),
+        )
         .toList(growable: false);
+  }
+
+  Future<LeaderboardSeason> saveAdminLeaderboardSeason({
+    required String id,
+    required String displayName,
+    required DateTime startsAt,
+    required DateTime endsAt,
+    required String reason,
+    required bool create,
+  }) async {
+    final encodedId = Uri.encodeComponent(id.trim());
+    final body = <String, dynamic>{
+      if (create) 'id': id.trim(),
+      'displayName': displayName.trim(),
+      'startsAt': startsAt.toUtc().toIso8601String(),
+      'endsAt': endsAt.toUtc().toIso8601String(),
+      'reason': reason.trim(),
+    };
+    final response = create
+        ? await api.post(
+            '/admin/leaderboard-seasons',
+            body: body,
+            requireAuth: true,
+          )
+        : await api.put(
+            '/admin/leaderboard-seasons/$encodedId',
+            body: body,
+            requireAuth: true,
+          );
+    if (response is! Map || response['season'] is! Map) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server did not confirm the season update.',
+        details: response,
+      );
+    }
+    return LeaderboardSeason.fromMap(
+      Map<String, dynamic>.from(response['season'] as Map),
+    );
+  }
+
+  Future<SubscriptionAccessResult> setAdminSubscriptionAccess({
+    required String userId,
+    required SubscriptionAccessMode mode,
+    required String reason,
+    DateTime? expiresAt,
+  }) async {
+    final normalizedUserId = userId.trim();
+    if (!RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+      caseSensitive: false,
+    ).hasMatch(normalizedUserId)) {
+      throw ArgumentError('A valid user is required.');
+    }
+    final normalizedReason = reason.trim();
+    if (normalizedReason.length < 3 || normalizedReason.length > 500) {
+      throw ArgumentError('A reason of 3–500 characters is required.');
+    }
+    if (!isValidAdminSubscriptionReason(normalizedReason)) {
+      throw ArgumentError(
+        'The reason must not contain control or formatting characters.',
+      );
+    }
+    if (expiresAt != null &&
+        (mode != SubscriptionAccessMode.active ||
+            !expiresAt.isAfter(DateTime.now()))) {
+      throw ArgumentError('Only an active grant may have a future expiry.');
+    }
+    final response = await api.put(
+      '/admin/users/${Uri.encodeComponent(normalizedUserId)}/subscription-access',
+      body: {
+        'mode': mode.name,
+        'reason': normalizedReason,
+        if (expiresAt != null) 'expiresAt': expiresAt.toUtc().toIso8601String(),
+      },
+      requireAuth: true,
+    );
+    final data = response is Map ? response['data'] : null;
+    if (data is! Map ||
+        data['entitlementId'] != SubscriptionService.entitlementId ||
+        data['isActive'] is! bool) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server did not confirm the access change. Refresh the user before trying again.',
+      );
+    }
+    return SubscriptionAccessResult.fromEnvelope(response);
   }
 
   Future<void> setAdminUserStatus({
@@ -755,20 +1798,22 @@ class ApiProductionRepository {
     return response.map(parseAdminPointAdjustment).toList(growable: false);
   }
 
-  Future<void> setAdminYouTubeMembership({
-    required String userId,
-    required bool isMember,
-  }) async {
-    await api.post(
-      '/admin/users/${Uri.encodeComponent(userId)}/membership',
-      body: <String, dynamic>{
-        'isMember': isMember,
-        'reason': isMember
-            ? 'Gold membership granted from the admin user directory.'
-            : 'Gold membership revoked from the admin user directory.',
-      },
-      requireAuth: true,
+  Future<Map<String, num>> fetchPointRules() async {
+    final response = await api.get('/point-rules');
+    if (response is! Map) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned invalid point rules.',
+        details: response,
+      );
+    }
+    return Map<String, dynamic>.from(response).map(
+      (key, value) => MapEntry(key, value is num ? value : num.parse('$value')),
     );
+  }
+
+  Future<void> updatePointRules(Map<String, num> rules) async {
+    await api.put('/admin/point-rules', body: rules, requireAuth: true);
   }
 
   Future<void> updateNotificationPreferences({
@@ -791,53 +1836,76 @@ class ApiProductionRepository {
     );
   }
 
-  Future<Map<String, dynamic>> sendPushNotificationTest() async {
+  Future<Map<String, dynamic>> createNotificationBroadcast({
+    required String title,
+    required String body,
+    required String idempotencyKey,
+    String? imageUrl,
+    DateTime? scheduledAt,
+  }) async {
     final result = await api.post(
-      '/notifications/test',
-      body: const <String, dynamic>{},
+      '/admin/notifications/broadcast',
+      body: <String, dynamic>{
+        'title': title.trim(),
+        'body': body.trim(),
+        'idempotencyKey': idempotencyKey,
+        'category': 'general',
+        'targetAudience': 'all',
+        'data': const <String, String>{'route': '/home'},
+        if (imageUrl != null && imageUrl.trim().isNotEmpty)
+          'imageUrl': imageUrl.trim(),
+        if (scheduledAt != null)
+          'scheduledAt': scheduledAt.toUtc().toIso8601String(),
+      },
       requireAuth: true,
     );
-    return Map<String, dynamic>.from(result as Map);
+    if (result is! Map) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server did not confirm the notification campaign.',
+        details: result,
+      );
+    }
+    return Map<String, dynamic>.from(result);
   }
 
-  AbuChallenge _parseChallenge(dynamic c) {
-    return AbuChallenge(
-      id: c['id'] ?? '',
-      title: c['title'] ?? '',
-      description: c['description'] ?? '',
-      kind: c['kind'] ?? 'videoPhrase',
-      status: c['status'] ?? 'open',
-      rewardPoints: (c['reward_points'] ?? 10).toInt(),
-      availableFrom: DateTime.tryParse(c['starts_at'] ?? '') ?? DateTime.now(),
-      availableUntil: DateTime.tryParse(c['ends_at'] ?? '') ?? DateTime.now(),
-      videoUrl: c['video_url'] ?? '',
-      imageUrl: c['image_url'] ?? '',
-      questions: const [],
-      maximumAttempts: (c['maximum_attempts'] ?? 3).toInt(),
-      memberOnly: c['member_only'] == true,
+  Future<Map<String, dynamic>> fetchNotificationCampaignStatus(
+    String campaignId,
+  ) async {
+    final normalizedId = campaignId.trim();
+    if (normalizedId.isEmpty) {
+      throw ArgumentError.value(
+        campaignId,
+        'campaignId',
+        'A notification campaign ID is required.',
+      );
+    }
+    final result = await api.get(
+      '/admin/notifications/${Uri.encodeComponent(normalizedId)}/status',
+      requireAuth: true,
+      bypassCache: true,
     );
+    if (result is! Map) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid notification status.',
+        details: result,
+      );
+    }
+    return Map<String, dynamic>.from(result);
   }
 
-  SavedPrediction _parsePrediction(dynamic p) {
-    return SavedPrediction(
-      id: p['id']?.toString() ?? '',
-      userId: p['user_id']?.toString() ?? '',
-      matchId: p['match_id'] ?? '',
-      homeScore: (p['home_score'] ?? 0).toInt(),
-      awayScore: (p['away_score'] ?? 0).toInt(),
-      firstScorer: p['first_scorer'] ?? '',
-      submittedAt: DateTime.tryParse(p['submitted_at'] ?? '') ?? DateTime.now(),
-      updatedAt: DateTime.tryParse(p['updated_at'] ?? '') ?? DateTime.now(),
-      rewarded: p['rewarded'] == true,
-      pointsAwarded: (p['points_awarded'] ?? 0).toInt(),
-      seenResult: p['seen_result'] == true,
-      homeTeam: p['home_team'] ?? '',
-      awayTeam: p['away_team'] ?? '',
+  Future<List<ExclusiveVideo>> fetchExclusiveVideos({
+    bool managed = false,
+    bool forceRefresh = false,
+  }) async {
+    final res = await api.get(
+      managed ? '/admin/videos' : '/videos/exclusive',
+      // The fan feed is account-specific because Gold-only links are redacted
+      // by the server for non-members.
+      requireAuth: true,
+      bypassCache: forceRefresh,
     );
-  }
-
-  Future<List<ExclusiveVideo>> fetchExclusiveVideos() async {
-    final res = await api.get('/videos/exclusive');
     if (res is List) {
       return res.map((v) => ExclusiveVideo.fromJson(v)).toList(growable: false);
     }
@@ -845,6 +1913,52 @@ class ApiProductionRepository {
       statusCode: 502,
       message: 'The server returned an invalid exclusive-video list.',
       details: res,
+    );
+  }
+
+  Future<LatestVideo> fetchLatestPublicVideo({
+    bool forceRefresh = false,
+  }) async {
+    final result = await api.get(
+      '/videos/latest',
+      requireAuth: false,
+      bypassCache: forceRefresh,
+    );
+    if (result is! Map) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned invalid latest-video data.',
+        details: result,
+      );
+    }
+    final data = Map<String, dynamic>.from(result);
+    final id = (data['id'] ?? '').toString().trim();
+    final url = (data['url'] ?? '').toString().trim();
+    final title = (data['title'] ?? '').toString().trim();
+    final thumbnailUrl = (data['thumbnailUrl'] ?? '').toString().trim();
+    final publishedAt = DateTime.tryParse(
+      (data['publishedAt'] ?? '').toString(),
+    );
+    final youtubeIdPattern = RegExp(r'^[A-Za-z0-9_-]{11}$');
+    final videoUrl = Uri.tryParse(url);
+    if (!youtubeIdPattern.hasMatch(id) ||
+        videoUrl == null ||
+        videoUrl.host.isEmpty ||
+        title.isEmpty ||
+        thumbnailUrl.isEmpty ||
+        publishedAt == null) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned invalid latest-video data.',
+        details: result,
+      );
+    }
+    return LatestVideo(
+      id: id,
+      title: title,
+      url: url,
+      thumbnailUrl: thumbnailUrl,
+      publishedAt: publishedAt,
     );
   }
 

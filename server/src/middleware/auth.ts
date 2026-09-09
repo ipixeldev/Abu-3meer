@@ -2,6 +2,18 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { verifyFirebaseToken } from '../firebase/admin.js';
 import { getClient, query } from '../db/pool.js';
 import { config } from '../config.js';
+import {
+  awardPointsInTransaction,
+  invalidatePointCaches,
+  signupBonusIdempotencyKey,
+} from '../services/pointsService.js';
+import { redactRequestUrl } from '../security/logRedaction.js';
+import { googleProviderSubjectFromFirebaseIdentities } from '../services/firebaseIdentityService.js';
+import {
+  activeMemberAccessSql,
+  activeSubscriptionSql,
+  activeYouTubeMembershipSql,
+} from '../services/subscriptionAccess.js';
 
 export interface AuthenticatedUser {
   id: string;
@@ -16,12 +28,18 @@ export interface AuthenticatedUser {
   countryCode: string | null;
   onboardingCompleted: boolean;
   isYouTubeMember: boolean;
+  isProSubscriber: boolean;
+  hasMemberAccess: boolean;
   accountStatus: 'active' | 'suspended' | 'banned' | 'pending_deletion';
   roles: string[];
   permissions: Set<string>;
   isAdmin: boolean;
   isSuperAdmin: boolean;
   isGuest: boolean;
+  /** Google provider UID (`sub`) already linked to this Firebase account. */
+  googleProviderUid: string | null;
+  /** Firebase's signed-in-at time from the verified ID token (epoch seconds). */
+  authTime: number;
 }
 
 declare module 'fastify' {
@@ -62,12 +80,17 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
   try {
     const firebaseUid = decoded.uid;
     const email = decoded.email || null;
-
+    const googleProviderUid = googleProviderSubjectFromFirebaseIdentities(
+      decoded.firebase?.identities,
+    );
     // Lookup user in PostgreSQL
     const userLookupSql =
       `SELECT u.id, u.firebase_uid, u.email, u.username, u.display_name, u.avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
-              u.is_youtube_member, u.account_status, u.onboarding_completed,
+              ${activeYouTubeMembershipSql('u.id')} AS is_youtube_member,
+              ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
+              ${activeMemberAccessSql('u.id')} AS has_member_access,
+              u.account_status, u.onboarding_completed,
               p.is_guest,
               COALESCE(
                 array_agg(DISTINCT ur.role_id) FILTER (WHERE ur.role_id IS NOT NULL),
@@ -80,11 +103,15 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
        FROM users u
        JOIN user_profiles p ON p.user_id = u.id
        LEFT JOIN user_roles ur ON ur.user_id = u.id
+         AND (
+           ur.role_id <> 'member'
+           OR ${activeYouTubeMembershipSql('u.id')}
+         )
        LEFT JOIN role_permissions rp ON rp.role_id = ur.role_id
        WHERE u.firebase_uid = $1
        GROUP BY u.id, u.firebase_uid, u.email, u.username, u.display_name, u.avatar_url,
                 u.supported_team, u.supported_team_logo, u.country, u.country_code,
-                u.is_youtube_member, u.account_status, u.onboarding_completed,
+                u.account_status, u.onboarding_completed,
                 p.is_guest`;
     let res = await query(userLookupSql, [firebaseUid]);
 
@@ -120,8 +147,9 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
     }
 
     if (res.rows.length === 0) {
-      // Provision identity, profile, sign-up ledger, and roles atomically. This
-      // also repairs accounts left half-created by an interrupted older build.
+      // Provision identity, profile, one-time signup award, and roles
+      // atomically. This also repairs accounts left half-created by an
+      // interrupted older build.
       const initialUsername = (email ? email.split('@')[0] : `fan_${firebaseUid.slice(0, 6)}`)
         .toLowerCase()
         .replace(/[^a-z0-9_]/g, '');
@@ -137,6 +165,7 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
       else if (isAdminEmail) assignedRoles.push('admin');
 
       const client = await getClient();
+      let didAwardSignupBonus = false;
       try {
         await client.query('BEGIN');
         const newUserRes = await client.query(
@@ -159,23 +188,31 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
           ],
         );
         const userId = newUserRes.rows[0].id;
-        const signupPoints = config.pointDefaults.signUpBonus;
         await client.query(
           `INSERT INTO user_profiles
              (user_id, total_points, monthly_points, season_points, loyalty_points)
-           VALUES ($1, $2, $2, $2, $2)
+           VALUES ($1, 0, 0, 0, 0)
            ON CONFLICT (user_id) DO NOTHING`,
-          [userId, signupPoints],
+          [userId],
         );
-        await client.query(
-          `INSERT INTO point_transactions
-             (user_id, source_type, source_id, base_points, multiplier,
-              final_points, description, idempotency_key)
-           VALUES ($1, 'signup_bonus', 'signup', $2, 1.0, $2,
-                   'Signup bonus', $3)
-           ON CONFLICT (idempotency_key) DO NOTHING`,
-          [userId, signupPoints, `signup_bonus_${userId}`],
+        const signupRule = await client.query(
+          `SELECT base_points
+           FROM point_rules
+           WHERE key = 'signUpBonus'`,
         );
+        const signupAward = await awardPointsInTransaction(client, {
+          userId,
+          sourceType: 'signup_bonus',
+          sourceId: 'signup',
+          basePoints: Number(
+            signupRule.rows[0]?.base_points ?? config.pointDefaults.signUpBonus,
+          ),
+          multiplier: 1,
+          description: 'One-time signup XP',
+          idempotencyKey: signupBonusIdempotencyKey(userId),
+        });
+        didAwardSignupBonus =
+          signupAward.alreadyAwarded !== true && signupAward.pointsAwarded > 0;
         for (const roleId of assignedRoles) {
           await client.query(
             `INSERT INTO user_roles (user_id, role_id)
@@ -185,6 +222,7 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
           );
         }
         await client.query('COMMIT');
+        if (didAwardSignupBonus) await invalidatePointCaches();
       } catch (error) {
         await client.query('ROLLBACK').catch(() => undefined);
         throw error;
@@ -260,12 +298,16 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
       countryCode: row.country_code || null,
       onboardingCompleted: row.onboarding_completed === true,
       isYouTubeMember: row.is_youtube_member,
+      isProSubscriber: row.is_pro_subscriber === true,
+      hasMemberAccess: row.has_member_access === true,
       accountStatus: row.account_status,
       roles,
       permissions,
       isAdmin: roles.includes('admin') || roles.includes('super_admin'),
       isSuperAdmin: roles.includes('super_admin'),
       isGuest: row.is_guest,
+      googleProviderUid,
+      authTime: decoded.auth_time,
     };
   } catch (err) {
     request.log.error({ err }, 'Authenticated database operation failed');
@@ -275,6 +317,35 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
       requestId: request.id,
     });
   }
+}
+
+export const SENSITIVE_ACTION_MAX_AUTH_AGE_SECONDS = 5 * 60;
+
+/**
+ * Firebase signs `auth_time` into every ID token. Destructive account actions
+ * must use that value rather than the token's more recent issuance time, since
+ * silently refreshing an old session must not count as reauthentication.
+ */
+export function hasRecentFirebaseAuthentication(
+  authTime: number | undefined,
+  nowEpochSeconds = Math.floor(Date.now() / 1000),
+): boolean {
+  if (!Number.isFinite(authTime) || !Number.isFinite(nowEpochSeconds)) return false;
+  const ageSeconds = nowEpochSeconds - Number(authTime);
+  return ageSeconds >= 0 && ageSeconds <= SENSITIVE_ACTION_MAX_AUTH_AGE_SECONDS;
+}
+
+export async function requireRecentFirebaseAuthentication(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  const authTime = request.user?.authTime;
+  if (hasRecentFirebaseAuthentication(authTime)) return;
+
+  return reply.status(401).send({
+    error: 'RecentAuthenticationRequired',
+    message: 'Sign in again before permanently deleting your account.',
+  });
 }
 
 /**
@@ -304,9 +375,8 @@ export function requirePermission(permission: string) {
         JSON.stringify({
           requiredPermission: permission,
           userRoles: user.roles,
-          path: request.url,
+          path: redactRequestUrl(request.url),
           method: request.method,
-          ip: request.ip,
         }),
       ]
     ).catch(() => {});

@@ -1,6 +1,6 @@
 // Global, brand-level constants for the Abu 3meer Community demo.
 class AppConfig {
-  static const String appName = 'ABU 3MEER COMMUNITY';
+  static const String appName = 'ABU 3MEER';
   static const String shortName = 'COMMUNITY';
   static const String tagline = 'Predict. Compete. Become a Legend.';
   static const String mission =

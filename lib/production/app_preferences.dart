@@ -3,6 +3,100 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 enum AbuLanguage { english, arabic }
 
+/// Bundled typography choices. Each language keeps an independent selection,
+/// so switching languages also restores the user's font for that script.
+enum AbuFontPreset {
+  classicEnglish(
+    id: 'classic_english',
+    language: AbuLanguage.english,
+    englishLabel: 'Classic · Inter + Barlow',
+    arabicLabel: 'كلاسيكي · إنتر + بارلو',
+    bodyFontFamily: 'Inter',
+    displayFontFamily: 'Barlow Condensed',
+    fallbackFontFamilies: ['Noto Sans Arabic'],
+  ),
+  montserrat(
+    id: 'montserrat',
+    language: AbuLanguage.english,
+    englishLabel: 'Montserrat',
+    arabicLabel: 'مونتسيرات',
+    bodyFontFamily: 'Montserrat',
+    displayFontFamily: 'Montserrat',
+    fallbackFontFamilies: ['Noto Sans Arabic'],
+  ),
+  nunitoSans(
+    id: 'nunito_sans',
+    language: AbuLanguage.english,
+    englishLabel: 'Nunito Sans',
+    arabicLabel: 'نونيتو سانس',
+    bodyFontFamily: 'Nunito Sans',
+    displayFontFamily: 'Nunito Sans',
+    fallbackFontFamilies: ['Noto Sans Arabic'],
+  ),
+  cairo(
+    id: 'cairo',
+    language: AbuLanguage.arabic,
+    englishLabel: 'Cairo',
+    arabicLabel: 'كايرو',
+    bodyFontFamily: 'Cairo',
+    displayFontFamily: 'Cairo',
+    fallbackFontFamilies: ['Inter'],
+  ),
+  tajawal(
+    id: 'tajawal',
+    language: AbuLanguage.arabic,
+    englishLabel: 'Tajawal',
+    arabicLabel: 'تجوال',
+    bodyFontFamily: 'Tajawal',
+    displayFontFamily: 'Tajawal',
+    fallbackFontFamilies: ['Inter'],
+  ),
+  notoSansArabic(
+    id: 'noto_sans_arabic',
+    language: AbuLanguage.arabic,
+    englishLabel: 'Noto Sans Arabic',
+    arabicLabel: 'نوتو سانس عربي',
+    bodyFontFamily: 'Noto Sans Arabic',
+    displayFontFamily: 'Noto Sans Arabic',
+    fallbackFontFamilies: ['Inter'],
+  );
+
+  const AbuFontPreset({
+    required this.id,
+    required this.language,
+    required this.englishLabel,
+    required this.arabicLabel,
+    required this.bodyFontFamily,
+    required this.displayFontFamily,
+    required this.fallbackFontFamilies,
+  });
+
+  final String id;
+  final AbuLanguage language;
+  final String englishLabel;
+  final String arabicLabel;
+  final String bodyFontFamily;
+  final String displayFontFamily;
+  final List<String> fallbackFontFamilies;
+
+  String labelFor(AbuLanguage interfaceLanguage) =>
+      interfaceLanguage == AbuLanguage.arabic ? arabicLabel : englishLabel;
+
+  static List<AbuFontPreset> optionsFor(AbuLanguage language) => values
+      .where((preset) => preset.language == language)
+      .toList(growable: false);
+
+  static AbuFontPreset fromStoredId(
+    String? id, {
+    required AbuLanguage language,
+  }) => values.firstWhere(
+    (preset) => preset.id == id && preset.language == language,
+    orElse: () => language == AbuLanguage.arabic
+        ? AbuFontPreset.cairo
+        : AbuFontPreset.classicEnglish,
+  );
+}
+
 class AbuAppPreferences extends ChangeNotifier {
   AbuAppPreferences._();
 
@@ -10,49 +104,65 @@ class AbuAppPreferences extends ChangeNotifier {
 
   static const _themeKey = 'abu_theme_mode';
   static const _languageKey = 'abu_language';
+  static const _englishFontKey = 'abu_font_english';
+  static const _arabicFontKey = 'abu_font_arabic';
   static const _matchNotificationsKey = 'abu_notifications_matches';
   static const _challengeNotificationsKey = 'abu_notifications_challenges';
-  static const _rewardNotificationsKey = 'abu_notifications_rewards';
   static const _newsNotificationsKey = 'abu_notifications_news';
 
   ThemeMode themeMode = ThemeMode.dark;
   AbuLanguage language = AbuLanguage.english;
-  bool matchNotifications = true;
-  bool challengeNotifications = true;
-  bool rewardNotifications = true;
+  AbuFontPreset englishFontPreset = AbuFontPreset.classicEnglish;
+  AbuFontPreset arabicFontPreset = AbuFontPreset.cairo;
+  // Keep notification categories off until the user explicitly enables one.
+  // Otherwise a fresh install renders an already-on switch even though iOS
+  // has never shown its permission prompt, leaving no obvious registration
+  // path for the device token.
+  bool matchNotifications = false;
+  bool challengeNotifications = false;
   bool newsNotifications = false;
   bool _loaded = false;
 
   Locale get locale => Locale(language == AbuLanguage.arabic ? 'ar' : 'en');
   bool get isArabic => language == AbuLanguage.arabic;
+  AbuFontPreset get activeFontPreset =>
+      isArabic ? arabicFontPreset : englishFontPreset;
+  List<AbuFontPreset> get availableFontPresets =>
+      AbuFontPreset.optionsFor(language);
 
   Future<void> load() async {
     if (_loaded) return;
     final preferences = await SharedPreferences.getInstance();
-    themeMode = preferences.getString(_themeKey) == 'light'
-        ? ThemeMode.light
-        : ThemeMode.dark;
+    // Abu 3meer is intentionally dark-only. Normalize legacy preferences so
+    // an old light-mode value can never reappear after an upgrade.
+    themeMode = ThemeMode.dark;
+    await preferences.setString(_themeKey, 'dark');
     language = preferences.getString(_languageKey) == 'ar'
         ? AbuLanguage.arabic
         : AbuLanguage.english;
-    matchNotifications = preferences.getBool(_matchNotificationsKey) ?? true;
+    englishFontPreset = AbuFontPreset.fromStoredId(
+      preferences.getString(_englishFontKey),
+      language: AbuLanguage.english,
+    );
+    arabicFontPreset = AbuFontPreset.fromStoredId(
+      preferences.getString(_arabicFontKey),
+      language: AbuLanguage.arabic,
+    );
+    matchNotifications = preferences.getBool(_matchNotificationsKey) ?? false;
     challengeNotifications =
-        preferences.getBool(_challengeNotificationsKey) ?? true;
-    rewardNotifications = preferences.getBool(_rewardNotificationsKey) ?? true;
+        preferences.getBool(_challengeNotificationsKey) ?? false;
     newsNotifications = preferences.getBool(_newsNotificationsKey) ?? false;
     _loaded = true;
     notifyListeners();
   }
 
   Future<void> setThemeMode(ThemeMode value) async {
-    if (themeMode == value) return;
-    themeMode = value;
-    notifyListeners();
+    if (themeMode != ThemeMode.dark) {
+      themeMode = ThemeMode.dark;
+      notifyListeners();
+    }
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(
-      _themeKey,
-      value == ThemeMode.light ? 'light' : 'dark',
-    );
+    await preferences.setString(_themeKey, 'dark');
   }
 
   Future<void> setLanguage(AbuLanguage value) async {
@@ -63,6 +173,28 @@ class AbuAppPreferences extends ChangeNotifier {
     await preferences.setString(
       _languageKey,
       value == AbuLanguage.arabic ? 'ar' : 'en',
+    );
+  }
+
+  Future<void> setFontPreset(AbuFontPreset value) async {
+    if (value.language != language) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Font preset must match the currently selected language.',
+      );
+    }
+    if (activeFontPreset == value) return;
+    if (language == AbuLanguage.arabic) {
+      arabicFontPreset = value;
+    } else {
+      englishFontPreset = value;
+    }
+    notifyListeners();
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      language == AbuLanguage.arabic ? _arabicFontKey : _englishFontKey,
+      value.id,
     );
   }
 
@@ -78,12 +210,6 @@ class AbuAppPreferences extends ChangeNotifier {
         value: value,
         apply: () => challengeNotifications = value,
       );
-
-  Future<void> setRewardNotifications(bool value) => _setNotificationPreference(
-    key: _rewardNotificationsKey,
-    value: value,
-    apply: () => rewardNotifications = value,
-  );
 
   Future<void> setNewsNotifications(bool value) => _setNotificationPreference(
     key: _newsNotificationsKey,
@@ -133,7 +259,11 @@ String localizedPointTransactionReason({
     _PointTransactionKind.videoChallenge =>
       isArabic ? 'إكمال تحدي الفيديو' : 'Video challenge completed',
     _PointTransactionKind.playerCard =>
-      isArabic ? 'العثور على بطاقة لاعب' : 'Player Card found',
+      isArabic ? 'إجابة تخمين اللاعب' : 'Player Guess answered',
+    _PointTransactionKind.membershipActivation =>
+      isArabic ? 'مكافأة تفعيل العضوية' : 'First membership activation',
+    _PointTransactionKind.membershipRenewal =>
+      isArabic ? 'مكافأة تجديد العضوية' : 'Membership renewal',
     _PointTransactionKind.achievement =>
       isArabic ? 'مكافأة إنجاز' : 'Achievement bonus',
     _PointTransactionKind.adminAdjustment =>
@@ -165,7 +295,12 @@ String localizedPointSourceLabel({
       isArabic ? 'الفائز بالمباراة' : 'Match winner',
     _PointTransactionKind.videoChallenge =>
       isArabic ? 'تحدي الفيديو' : 'Video challenge',
-    _PointTransactionKind.playerCard => isArabic ? 'بطاقة لاعب' : 'Player Card',
+    _PointTransactionKind.playerCard =>
+      isArabic ? 'تخمين اللاعب' : 'Player Guess',
+    _PointTransactionKind.membershipActivation =>
+      isArabic ? 'تفعيل العضوية' : 'Membership activation',
+    _PointTransactionKind.membershipRenewal =>
+      isArabic ? 'تجديد العضوية' : 'Membership renewal',
     _PointTransactionKind.achievement => isArabic ? 'إنجاز' : 'Achievement',
     _PointTransactionKind.adminAdjustment =>
       isArabic ? 'تعديل نقاط' : 'Points adjustment',
@@ -181,6 +316,8 @@ enum _PointTransactionKind {
   matchWinner,
   videoChallenge,
   playerCard,
+  membershipActivation,
+  membershipRenewal,
   achievement,
   adminAdjustment,
   unknown,
@@ -219,14 +356,23 @@ _PointTransactionKind _pointTransactionKind(String sourceType, String reason) {
       normalizedReason.contains('match winner')) {
     return _PointTransactionKind.matchWinner;
   }
+  if ({'playercard'}.contains(source) ||
+      normalizedReason.contains('player card')) {
+    return _PointTransactionKind.playerCard;
+  }
   if ({'videophrase', 'videoquestion', 'videochallenge'}.contains(source) ||
       normalizedReason.contains('solved challenge') ||
       normalizedReason.contains('challenge completed')) {
     return _PointTransactionKind.videoChallenge;
   }
-  if ({'playercard'}.contains(source) ||
-      normalizedReason.contains('player card')) {
-    return _PointTransactionKind.playerCard;
+  if ({'membershipactivation', 'firstmembershipactivation'}.contains(source) ||
+      normalizedReason.contains('first membership activation')) {
+    return _PointTransactionKind.membershipActivation;
+  }
+  if ({'membershiprenewal', 'subscriptionrenewal'}.contains(source) ||
+      normalizedReason.contains('membership renewal') ||
+      normalizedReason.contains('subscription renewal')) {
+    return _PointTransactionKind.membershipRenewal;
   }
   if ({'achievement', 'achievementbonus'}.contains(source) ||
       normalizedReason.startsWith('achievement:')) {

@@ -1,0 +1,126 @@
+enum YouTubeMembershipCheckStatus {
+  active,
+  notInSnapshot,
+  snapshotUnavailable,
+  noYouTubeChannel,
+}
+
+/// Result of comparing a channel profile link with the current server CSV.
+///
+/// The server resolves public @handle links to stable channel IDs. No Google
+/// access token is used, and a supplied link does not prove channel ownership.
+class YouTubeMembershipCheckResult {
+  const YouTubeMembershipCheckResult({
+    required this.status,
+    required this.isYouTubeMember,
+    required this.verifiedAt,
+    this.youtubeChannelId,
+    this.snapshotExpiresAt,
+    this.membershipLevelId,
+    this.memberSince,
+    this.accessSource = 'none',
+    this.willRenew = false,
+    this.recheckRequiredAt,
+  });
+
+  final YouTubeMembershipCheckStatus status;
+  final bool isYouTubeMember;
+  final String? youtubeChannelId;
+  final String? membershipLevelId;
+  final DateTime? memberSince;
+  final DateTime verifiedAt;
+  final DateTime? snapshotExpiresAt;
+  final String accessSource;
+  final bool willRenew;
+  final DateTime? recheckRequiredAt;
+
+  factory YouTubeMembershipCheckResult.fromJson(dynamic value) {
+    if (value is! Map) {
+      throw const FormatException('Invalid YouTube membership-check response.');
+    }
+    final map = Map<String, dynamic>.from(value);
+    final status = switch (map['status']?.toString().trim()) {
+      'active' => YouTubeMembershipCheckStatus.active,
+      'not_in_snapshot' => YouTubeMembershipCheckStatus.notInSnapshot,
+      'snapshot_unavailable' =>
+        YouTubeMembershipCheckStatus.snapshotUnavailable,
+      'no_youtube_channel' => YouTubeMembershipCheckStatus.noYouTubeChannel,
+      _ => throw const FormatException(
+        'Invalid YouTube membership-check status.',
+      ),
+    };
+    final isMember = map['isMember'];
+    final channelIdValue = map['youtubeChannelId'];
+    final channelId = channelIdValue?.toString().trim();
+    final verifiedAt = DateTime.tryParse(
+      map['verifiedAt']?.toString().trim() ?? '',
+    );
+    final snapshotExpiresAtValue = map['snapshotExpiresAt'];
+    final snapshotExpiresAt = snapshotExpiresAtValue == null
+        ? null
+        : DateTime.tryParse(snapshotExpiresAtValue.toString().trim());
+    final accessSource =
+        (map['accessSource'] ?? (isMember == true ? 'youtube' : 'none'))
+            .toString()
+            .trim();
+    final willRenewValue = map['willRenew'];
+    final recheckRequiredAtValue = map['recheckRequiredAt'];
+    final recheckRequiredAt = recheckRequiredAtValue == null
+        ? snapshotExpiresAt
+        : DateTime.tryParse(recheckRequiredAtValue.toString().trim());
+    final statusMatchesFlag =
+        (status == YouTubeMembershipCheckStatus.active && isMember == true) ||
+        (status != YouTubeMembershipCheckStatus.active && isMember == false);
+    final requiresChannel = status == YouTubeMembershipCheckStatus.active;
+    final hasValidChannel =
+        channelId != null &&
+        RegExp(r'^UC[A-Za-z0-9_-]{22}$').hasMatch(channelId);
+    if (isMember is! bool ||
+        !statusMatchesFlag ||
+        verifiedAt == null ||
+        (requiresChannel && !hasValidChannel) ||
+        (channelId != null && !hasValidChannel) ||
+        (snapshotExpiresAtValue != null && snapshotExpiresAt == null) ||
+        !const {'youtube', 'none'}.contains(accessSource) ||
+        (willRenewValue != null && willRenewValue is! bool) ||
+        willRenewValue == true ||
+        (recheckRequiredAtValue != null && recheckRequiredAt == null) ||
+        (status == YouTubeMembershipCheckStatus.active &&
+            (snapshotExpiresAt == null || accessSource != 'youtube'))) {
+      throw const FormatException('Invalid YouTube membership-check response.');
+    }
+
+    final membershipLevel = map['membershipLevelId']?.toString().trim();
+    final memberSinceValue = map['memberSince'];
+    final memberSince = memberSinceValue == null
+        ? null
+        : DateTime.tryParse(memberSinceValue.toString().trim());
+    if (memberSinceValue != null && memberSince == null) {
+      throw const FormatException('Invalid YouTube membership-check response.');
+    }
+
+    return YouTubeMembershipCheckResult(
+      status: status,
+      isYouTubeMember: isMember,
+      youtubeChannelId: channelId,
+      membershipLevelId: membershipLevel == null || membershipLevel.isEmpty
+          ? null
+          : membershipLevel,
+      memberSince: memberSince?.toLocal(),
+      verifiedAt: verifiedAt.toLocal(),
+      snapshotExpiresAt: snapshotExpiresAt?.toLocal(),
+      accessSource: accessSource,
+      willRenew: false,
+      recheckRequiredAt: recheckRequiredAt?.toLocal(),
+    );
+  }
+}
+
+YouTubeMembershipCheckResult parseYouTubeMembershipCheckEnvelope(
+  dynamic value,
+) {
+  if (value is! Map || value['membership'] is! Map) {
+    throw const FormatException('Invalid YouTube membership-check response.');
+  }
+  return YouTubeMembershipCheckResult.fromJson(value['membership']);
+}

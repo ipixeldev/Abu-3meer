@@ -1,6 +1,9 @@
-import { config } from '../config.js';
 import { getClient } from '../db/pool.js';
-import { redis } from '../redis/client.js';
+import { config } from '../config.js';
+import {
+  awardPointsInTransaction,
+  invalidatePointCaches,
+} from './pointsService.js';
 
 export interface StreakResult {
   streakCount: number;
@@ -8,8 +11,22 @@ export interface StreakResult {
   alreadyCheckedIn: boolean;
 }
 
+export const streakInactivityWindowMs = 24 * 60 * 60 * 1000;
+
 function utcDateKey(value: Date): string {
   return value.toISOString().slice(0, 10);
+}
+
+export function dailyStreakIdempotencyKey(userId: string, value: Date): string {
+  return `streak:${userId}:${utcDateKey(value)}`;
+}
+
+export function hasStreakExpired(
+  lastCheckIn: Date | null,
+  now: Date,
+): boolean {
+  if (!lastCheckIn) return false;
+  return now.getTime() - lastCheckIn.getTime() >= streakInactivityWindowMs;
 }
 
 export function deriveStreakCount(
@@ -23,30 +40,60 @@ export function deriveStreakCount(
 
   const today = utcDateKey(now);
   const lastDay = utcDateKey(lastCheckIn);
-  if (lastDay === today) {
+  const expired = hasStreakExpired(lastCheckIn, now);
+  if (lastDay === today && !expired) {
     return { alreadyCheckedIn: true, nextStreak: currentStreak };
   }
 
-  const yesterday = new Date(now);
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   return {
     alreadyCheckedIn: false,
-    nextStreak: lastDay === utcDateKey(yesterday) ? currentStreak + 1 : 1,
+    // A streak is based on actual app attendance, not only calendar labels.
+    // Crossing midnight still advances it, but 24 hours without a launch
+    // always starts a new streak even when the previous check-in was on the
+    // immediately preceding UTC date.
+    nextStreak: expired ? 1 : currentStreak + 1,
   };
 }
 
+async function persistStreakActivity(
+  client: Awaited<ReturnType<typeof getClient>>,
+  userId: string,
+  streakCount: number,
+  now: Date,
+): Promise<void> {
+  // Keep the attendance timestamp and the account's last-active timestamp in
+  // the same transaction. The profile row is already locked by the caller,
+  // so concurrent launches cannot award twice or move the timestamp backwards.
+  const result = await client.query(
+    `WITH updated_profile AS (
+       UPDATE user_profiles
+       SET streak_count = $1,
+           streak_best = GREATEST(streak_best, $1),
+           streak_last_checkin = GREATEST(streak_last_checkin, $2),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = $3
+       RETURNING user_id
+     )
+     UPDATE users
+     SET last_active_at = GREATEST(last_active_at, $2)
+     WHERE id IN (SELECT user_id FROM updated_profile)`,
+    [streakCount, now, userId],
+  );
+  if (result.rowCount !== 1) {
+    throw new Error('Unable to update the streak profile.');
+  }
+}
+
 /**
- * Performs the streak state change, point-ledger insert and balance update in
- * one database transaction. The profile row lock plus the ledger idempotency
- * key makes concurrent app launches safe: only one call can award points.
+ * Updates the attendance streak and fixed daily XP in one transaction. A
+ * profile row lock plus the UTC-day ledger key makes concurrent launches safe.
+ * Daily attendance deliberately never receives the YouTube member multiplier.
  */
 export async function checkInDailyStreak(
   userId: string,
-  isYouTubeMember: boolean,
 ): Promise<StreakResult> {
-  const now = new Date();
-  const today = utcDateKey(now);
   const client = await getClient();
+  let didAwardPoints = false;
 
   try {
     await client.query('BEGIN');
@@ -62,6 +109,10 @@ export async function checkInDailyStreak(
       throw Object.assign(new Error('User profile not found.'), { statusCode: 404 });
     }
 
+    // Capture the check-in time only after the profile lock is acquired. This
+    // prevents a request that waited on another launch from overwriting the
+    // newer activity timestamp with an earlier pre-lock timestamp.
+    const now = new Date();
     const profile = profileRes.rows[0];
     const currentStreak = Number(profile.streak_count || 0);
     const lastCheckIn = profile.streak_last_checkin
@@ -70,6 +121,10 @@ export async function checkInDailyStreak(
     const derived = deriveStreakCount(currentStreak, lastCheckIn, now);
 
     if (derived.alreadyCheckedIn) {
+      // The daily XP entry remains once-per-UTC-day, but every launch refreshes
+      // the inactivity clock. Without this touch, a morning launch followed by
+      // an evening launch would incorrectly expire 24 hours after the morning.
+      await persistStreakActivity(client, userId, currentStreak, now);
       await client.query('COMMIT');
       return {
         streakCount: currentStreak,
@@ -79,70 +134,32 @@ export async function checkInDailyStreak(
     }
 
     const ruleRes = await client.query(
-      `SELECT base_points, member_multiplier
+      `SELECT base_points
        FROM point_rules
        WHERE key = 'dailyStreak'`,
     );
-    const basePoints = Number(
-      ruleRes.rows[0]?.base_points ?? config.pointDefaults.dailyStreak,
-    );
-    const multiplier = isYouTubeMember
-      ? Number(ruleRes.rows[0]?.member_multiplier ?? config.pointDefaults.memberMultiplier)
-      : 1;
-    const finalPoints = Math.round(basePoints * multiplier);
-    const idempotencyKey = `streak:${userId}:${today}`;
+    const award = await awardPointsInTransaction(client, {
+      userId,
+      sourceType: 'daily_streak',
+      sourceId: utcDateKey(now),
+      basePoints: Number(
+        ruleRes.rows[0]?.base_points ?? config.pointDefaults.dailyStreak,
+      ),
+      multiplier: 1,
+      description: `Daily login XP (Day ${derived.nextStreak})`,
+      idempotencyKey: dailyStreakIdempotencyKey(userId, now),
+    });
+    didAwardPoints = award.alreadyAwarded !== true && award.pointsAwarded > 0;
 
-    const ledgerInsert = await client.query(
-      `INSERT INTO point_transactions
-         (user_id, source_type, source_id, base_points, multiplier,
-          final_points, description, idempotency_key)
-       VALUES ($1, 'daily_streak', $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (idempotency_key) DO NOTHING
-       RETURNING id`,
-      [
-        userId,
-        today,
-        basePoints,
-        multiplier,
-        finalPoints,
-        `Daily streak check-in (Day ${derived.nextStreak})`,
-        idempotencyKey,
-      ],
-    );
-
-    const wasAwarded = ledgerInsert.rowCount === 1;
-    const profileUpdate = await client.query(
-      `UPDATE user_profiles
-       SET streak_count = $1,
-           streak_best = GREATEST(streak_best, $1),
-           streak_last_checkin = $2,
-           total_points = total_points + $3,
-           monthly_points = monthly_points + $3,
-           season_points = season_points + $3,
-           loyalty_points = loyalty_points + $3,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE user_id = $4`,
-      [derived.nextStreak, now, wasAwarded ? finalPoints : 0, userId],
-    );
-    if (profileUpdate.rowCount !== 1) {
-      throw new Error('Unable to update the streak profile.');
-    }
+    await persistStreakActivity(client, userId, derived.nextStreak, now);
 
     await client.query('COMMIT');
-
-    await Promise.all([
-      redis.del('cache:leaderboard:monthly:top100'),
-      redis.del('cache:leaderboard:season:top100'),
-    ]).catch((error) => {
-      console.warn('[StreakService] Check-in committed; cache invalidation failed:', error);
-    });
+    if (didAwardPoints) await invalidatePointCaches();
 
     return {
       streakCount: derived.nextStreak,
-      pointsAwarded: wasAwarded ? finalPoints : 0,
-      // This also heals the narrow legacy state where a ledger row committed
-      // before the old implementation updated streak_last_checkin.
-      alreadyCheckedIn: !wasAwarded,
+      pointsAwarded: didAwardPoints ? award.pointsAwarded : 0,
+      alreadyCheckedIn: award.alreadyAwarded === true,
     };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);

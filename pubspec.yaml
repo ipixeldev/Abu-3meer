@@ -1,8 +1,8 @@
 name: abu_3meer
-description: "Abu 3meer — predict exact scores, answer video questions, find Player Cards, and climb the leaderboard."
+description: "Abu 3meer — predict exact scores, answer video questions, guess featured players, and climb the leaderboard."
 publish_to: 'none'
 
-version: 1.1.0+3
+version: 1.1.0+28
 
 environment:
   sdk: ^3.13.0
@@ -17,9 +17,6 @@ dependencies:
 
   # State management
   # Routing (deep links, web URLs, nested shells)
-  # Typography (fetches + caches fonts; falls back gracefully offline)
-  google_fonts: ^6.2.1
-
   # Local persistence for non-sensitive preferences.
   # Date / number formatting
   intl: ^0.20.2
@@ -43,6 +40,10 @@ dependencies:
   firebase_messaging: ^16.6.0
   flutter_local_notifications: ^22.3.0
   glass_liquid_navbar: ^0.2.0
+  sign_in_with_apple: ^8.2.0
+  file_selector: ^1.1.0
+  purchases_flutter: ^10.11.0
+  purchases_ui_flutter: ^10.11.0
 
 dev_dependencies:
   flutter_test:
@@ -56,5 +57,38 @@ flutter:
   assets:
     - assets/images/
     - assets/animations/
+    - assets/branding/
+    - assets/fonts/licenses/
+
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Variable.ttf
+    - family: Barlow Condensed
+      fonts:
+        - asset: assets/fonts/BarlowCondensed-ExtraBold.ttf
+          weight: 800
+    - family: Montserrat
+      fonts:
+        - asset: assets/fonts/Montserrat-Variable.ttf
+    - family: Nunito Sans
+      fonts:
+        - asset: assets/fonts/NunitoSans-Variable.ttf
+    - family: Cairo
+      fonts:
+        - asset: assets/fonts/Cairo-Variable.ttf
+    - family: Noto Sans Arabic
+      fonts:
+        - asset: assets/fonts/NotoSansArabic-Variable.ttf
+    - family: Tajawal
+      fonts:
+        - asset: assets/fonts/Tajawal-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Tajawal-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Tajawal-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Tajawal-ExtraBold.ttf
+          weight: 800
 
   # Brand and editorial assets are bundled for reliable mobile/PWA rendering.

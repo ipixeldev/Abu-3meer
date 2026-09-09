@@ -16,6 +16,7 @@ analyzer:
     - lib/core/**
     - lib/features/**
     - build/**
+    - server/build/**
     - android/**
     - ios/**
     - web/**

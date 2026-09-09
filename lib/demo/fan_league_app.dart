@@ -4,32 +4,45 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:lottie/lottie.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:glass_liquid_navbar/glass_liquid_navbar.dart' as glass_nav;
 
 import '../production/brand.dart';
+import '../core/widgets/subscriber_badge.dart';
 import '../production/api_client.dart';
+import '../production/admin_dashboard_stats.dart';
 import '../production/app_preferences.dart';
 import '../production/external_content_service.dart';
 import '../production/ehzerha_embed.dart';
 import '../production/models.dart';
 import '../production/production_repository.dart';
+import '../production/shell_navigation.dart';
 import '../production/location_service.dart';
 import '../production/notification_service.dart';
+import '../production/youtube_membership_snapshot.dart';
+import '../production/youtube_membership_check.dart';
 import '../features/match/screens/match_facts_screen.dart';
 import '../features/videos/exclusive_videos_view.dart';
+import '../features/membership/manual_membership_dialog.dart';
+import '../features/subscriptions/subscription_panel.dart';
+import '../features/admin/admin_subscription_dialog.dart';
+import '../features/support/whatsapp_support_button.dart';
+import '../production/subscription_service.dart';
 
 part 'fan_league_extended.dart';
 part 'trivia_arena.dart';
 part 'production_ui.dart';
 part 'production_features.dart';
 part 'phase3_admin_points.dart';
+part 'youtube_membership_snapshot_admin.dart';
+part 'admin_dashboard_stats.dart';
 
 const _ink = Color(0xFF080B10);
 const _surface = Color(0xFF11161E);
@@ -41,10 +54,8 @@ const _muted = Color(0xFF929CAA);
 const _blue = Color(0xFF3878FF);
 const _red = Color(0xFFFF4D62);
 
-// Light mode deliberately uses a separate, editorial sports palette. These
-// colours are not lightened versions of the dark neon theme: royal blue is the
-// primary action colour, coral is the energy accent, and cool porcelain
-// surfaces keep long fixture and leaderboard screens comfortable to read.
+// Retained as internal fallbacks for shared theme-building code. The app is
+// locked to ThemeMode.dark and no light-mode control is exposed to users.
 const _lightInk = Color(0xFF172033);
 const _lightCanvas = Color(0xFFF3F6FB);
 const _lightSurface = Color(0xFFFFFFFF);
@@ -56,26 +67,18 @@ const _lightPrimaryDark = Color(0xFF173B98);
 const _lightAccent = Color(0xFFC44762);
 const _lightSuccess = Color(0xFF087F5B);
 
-bool _isDarkTheme(BuildContext context) =>
-    Theme.of(context).brightness == Brightness.dark;
+bool _isDarkTheme(BuildContext context) => true;
 
-/// The production accent deliberately changes with the selected appearance.
-/// Dark mode keeps the original stadium-lime identity, while light mode uses
-/// the higher-contrast royal blue palette requested for daylight surfaces.
-Color _productionPrimary(BuildContext context) =>
-    _isDarkTheme(context) ? _lime : _lightPrimary;
+/// Abu 3meer uses the stadium-lime accent throughout its dark-only interface.
+Color _productionPrimary(BuildContext context) => _lime;
 
-Color _productionOnPrimary(BuildContext context) =>
-    _isDarkTheme(context) ? _ink : Colors.white;
+Color _productionOnPrimary(BuildContext context) => _ink;
 
-Color _productionSurface(BuildContext context) =>
-    _isDarkTheme(context) ? _surface : _lightSurface;
+Color _productionSurface(BuildContext context) => _surface;
 
-Color _productionLine(BuildContext context) =>
-    _isDarkTheme(context) ? _line : _lightLine;
+Color _productionLine(BuildContext context) => _line;
 
-Color _productionMuted(BuildContext context) =>
-    _isDarkTheme(context) ? _muted : _lightMuted;
+Color _productionMuted(BuildContext context) => _muted;
 
 const _latestVideoId = 'u_pHQ5jAoWk';
 const _latestVideoUrl = 'https://www.youtube.com/watch?v=$_latestVideoId';
@@ -197,8 +200,14 @@ class FanLeagueApp extends StatelessWidget {
           GlobalCupertinoLocalizations.delegate,
         ],
         themeMode: preferences.themeMode,
-        theme: _abuTheme(brightness: Brightness.light),
-        darkTheme: _abuTheme(brightness: Brightness.dark),
+        theme: _abuTheme(
+          brightness: Brightness.light,
+          fontPreset: preferences.activeFontPreset,
+        ),
+        darkTheme: _abuTheme(
+          brightness: Brightness.dark,
+          fontPreset: preferences.activeFontPreset,
+        ),
         builder: (context, child) => Directionality(
           textDirection: preferences.isArabic
               ? TextDirection.rtl
@@ -211,11 +220,17 @@ class FanLeagueApp extends StatelessWidget {
   }
 }
 
-ThemeData _abuTheme({required Brightness brightness}) {
+ThemeData _abuTheme({
+  required Brightness brightness,
+  required AbuFontPreset fontPreset,
+}) {
   final dark = brightness == Brightness.dark;
-  final base = dark
-      ? ThemeData.dark(useMaterial3: true)
-      : ThemeData.light(useMaterial3: true);
+  final base = ThemeData(
+    brightness: brightness,
+    useMaterial3: true,
+    fontFamily: fontPreset.bodyFontFamily,
+    fontFamilyFallback: fontPreset.fallbackFontFamilies,
+  );
   final surface = dark ? _surface : _lightSurface;
   final surface2 = dark ? _surface2 : _lightSurface2;
   final line = dark ? _line : _lightLine;
@@ -252,7 +267,8 @@ ThemeData _abuTheme({required Brightness brightness}) {
     canvasColor: dark ? base.canvasColor : _lightCanvas,
     colorScheme: scheme,
     dividerColor: dark ? base.dividerColor : line,
-    textTheme: GoogleFonts.interTextTheme(base.textTheme).apply(
+    textTheme: base.textTheme.apply(
+      fontFamily: fontPreset.bodyFontFamily,
       bodyColor: dark ? Colors.white : _lightInk,
       displayColor: dark ? Colors.white : _lightInk,
     ),
@@ -821,10 +837,12 @@ class _PageFrame extends StatelessWidget {
     required this.title,
     required this.kicker,
     required this.child,
+    this.isSubscriberTitle = false,
   });
   final String title;
   final String kicker;
   final Widget child;
+  final bool isSubscriberTitle;
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
@@ -878,7 +896,12 @@ class _PageFrame extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 7),
-                          Text(title, style: _display(44)),
+                          SubscriberName(
+                            title,
+                            isSubscriber: isSubscriberTitle,
+                            style: _display(44),
+                            badgeSize: 28,
+                          ),
                         ],
                       ),
                     ),
@@ -926,7 +949,12 @@ class _PageFrame extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 7),
-                Text(title, style: _display(compact ? 32 : 38)),
+                SubscriberName(
+                  title,
+                  isSubscriber: isSubscriberTitle,
+                  style: _display(compact ? 32 : 38),
+                  badgeSize: 26,
+                ),
               ],
               SizedBox(
                 height: compact
@@ -2623,12 +2651,6 @@ class _SettingsPageState extends State<_SettingsPage> {
                   title: Text('Language'),
                   trailing: Text('English', style: TextStyle(color: _muted)),
                 ),
-                const ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.dark_mode_rounded),
-                  title: Text('Appearance'),
-                  trailing: Text('Dark', style: TextStyle(color: _muted)),
-                ),
               ],
             ),
           ),
@@ -3814,11 +3836,13 @@ class _Pill extends StatelessWidget {
 class _SideItem extends StatelessWidget {
   const _SideItem({
     required this.icon,
+    this.customIcon,
     required this.label,
     required this.selected,
     required this.onTap,
   });
   final IconData icon;
+  final Widget? customIcon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -3836,7 +3860,8 @@ class _SideItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 13),
           child: Row(
             children: [
-              Icon(icon, color: selected ? primary : muted, size: 20),
+              customIcon ??
+                  Icon(icon, color: selected ? primary : muted, size: 20),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -4122,10 +4147,15 @@ TextStyle _display(
   Color? color,
   double height = 1,
   double spacing = -.4,
-}) => GoogleFonts.barlowCondensed(
-  fontSize: size,
-  fontWeight: FontWeight.w800,
-  color: color,
-  height: height,
-  letterSpacing: spacing,
-);
+}) {
+  final preferences = AbuAppPreferences.instance;
+  return TextStyle(
+    fontFamily: preferences.activeFontPreset.displayFontFamily,
+    fontFamilyFallback: preferences.activeFontPreset.fallbackFontFamilies,
+    fontSize: size,
+    fontWeight: FontWeight.w800,
+    color: color,
+    height: height,
+    letterSpacing: preferences.isArabic ? 0 : spacing,
+  );
+}

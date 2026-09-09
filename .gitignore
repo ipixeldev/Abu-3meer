@@ -43,6 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
 
 # Widget Preview related
 .widget_preview/
@@ -57,6 +58,9 @@ functions/lib/
 # Local credentials and environment files
 .env
 **/.env
+**/.env.*
+!**/.env.example
+**/.asc/
 *firebase-adminsdk*.json
 *firebase-service-account*.json
 *service-account*.json
@@ -65,11 +69,14 @@ functions/lib/
 *.mobileprovision
 **/.cloudflared/
 /server/secrets/
+/APPSTORECONNECTACCESS/
+/server/build/
 /android/app/abu3meer-debug.keystore
 
 # Local browser-verification artifacts
 .playwright-cli/
 /output/
+/artifacts/
 
 # Per-machine API endpoint configuration. Temporary Cloudflare URLs must never
 # be committed because they expire whenever the quick tunnel is restarted.

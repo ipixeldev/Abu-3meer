@@ -1,7 +1,18 @@
-import { query, getClient } from '../db/pool.js';
-import { awardPoints, getPointRules } from './pointsService.js';
+import { query, getClient, getDirectClient } from '../db/pool.js';
+import {
+  awardPoints,
+  getPointRules,
+  memberMultiplierForSource,
+} from './pointsService.js';
+import { refreshStaleYouTubeMembershipsForUsers } from './csvMembershipService.js';
 import { normalizeChallengeAnswer } from './challengeService.js';
 import { config } from '../config.js';
+import { activeMemberAccessSql } from './subscriptionAccess.js';
+import {
+  createNotificationCampaign,
+  type CreatedNotificationCampaign,
+} from './notificationService.js';
+import { predictionResultNotificationCampaign } from './predictionResultNotification.js';
 
 export interface SubmitPredictionParams {
   userId: string;
@@ -49,9 +60,7 @@ export function evaluatePrediction(input: {
   const isFirstScorer =
     predictedScorer.length > 0 &&
     actualScorer.length > 0 &&
-    (actualScorer === predictedScorer ||
-      actualScorer.includes(predictedScorer) ||
-      predictedScorer.includes(actualScorer));
+    actualScorer === predictedScorer;
 
   const predictedWinner =
     input.predictedHome > input.predictedAway
@@ -202,7 +211,16 @@ export async function submitPrediction(params: SubmitPredictionParams) {
   }
 }
 
-export async function settleMatchPredictions(matchId: string): Promise<{ processedCount: number; pointsDistributed: number }> {
+export interface MatchPredictionSettlementResult {
+  processedCount: number;
+  pointsDistributed: number;
+  notificationCampaigns: CreatedNotificationCampaign[];
+  alreadyProcessing?: boolean;
+}
+
+async function settleMatchPredictionsUnlocked(
+  matchId: string,
+): Promise<MatchPredictionSettlementResult> {
   const matchRes = await query(
     `SELECT id, home_team, away_team, home_score, away_score, first_scorer, reward_processed
      FROM matches
@@ -217,12 +235,22 @@ export async function settleMatchPredictions(matchId: string): Promise<{ process
     throw new Error('Match does not have official final scores yet');
   }
 
+  const pendingPredictionUsers = await query<{ user_id: string }>(
+    `SELECT DISTINCT user_id
+     FROM predictions
+     WHERE match_id = $1 AND NOT rewarded`,
+    [matchId],
+  );
+  await refreshStaleYouTubeMembershipsForUsers(
+    pendingPredictionUsers.rows.map((row) => row.user_id),
+  );
+
   const predictionsRes = await query(
     `SELECT p.id, p.user_id, p.home_score, p.away_score, p.first_scorer,
             p.rewarded,
-            u.is_youtube_member
+            ${activeMemberAccessSql('p.user_id')} AS has_member_access
      FROM predictions p
-     JOIN users u ON u.id = p.user_id
+     LEFT JOIN youtube_account_links yl ON yl.user_id = p.user_id
      WHERE p.match_id = $1 AND NOT p.rewarded`,
     [matchId]
   );
@@ -248,8 +276,6 @@ export async function settleMatchPredictions(matchId: string): Promise<{ process
       actualAway,
       actualFirstScorer: match.first_scorer,
     });
-    const multiplier = pred.is_youtube_member ? 2.0 : 1.0;
-
     const components = [
       {
         correct: result.isExact,
@@ -282,7 +308,11 @@ export async function settleMatchPredictions(matchId: string): Promise<{ process
         sourceType: component.sourceType,
         sourceId: matchId,
         basePoints: component.basePoints,
-        multiplier,
+        multiplier: memberMultiplierForSource(
+          component.sourceType,
+          pred.has_member_access === true,
+          rules.memberMultiplier ?? config.pointDefaults.memberMultiplier,
+        ),
         description: `${component.label}: ${match.home_team} vs ${match.away_team}`,
         idempotencyKey: `pred_reward:${pred.id}:${component.key}`,
       });
@@ -292,7 +322,7 @@ export async function settleMatchPredictions(matchId: string): Promise<{ process
       }
     }
 
-    await query(
+    const updated = await query(
       `UPDATE predictions
        SET points_awarded = $1,
            rewarded = true,
@@ -300,7 +330,8 @@ export async function settleMatchPredictions(matchId: string): Promise<{ process
            is_exact_match = $2,
            is_first_scorer_match = $3,
            is_winner_match = $4
-       WHERE id = $5`,
+       WHERE id = $5 AND rewarded = false
+       RETURNING id`,
       [
         totalAward,
         result.isExact,
@@ -310,10 +341,122 @@ export async function settleMatchPredictions(matchId: string): Promise<{ process
       ]
     );
 
-    processedCount++;
+    if (updated.rowCount === 1) processedCount++;
   }
 
-  await query('UPDATE matches SET reward_processed = true, reward_processed_at = CURRENT_TIMESTAMP WHERE id = $1', [matchId]);
+  // Recompute the denormalized counter from the durable settled rows. This is
+  // idempotent and also repairs a process interruption that happened after a
+  // prediction was marked rewarded but before its profile counter changed.
+  await query(
+    `UPDATE user_profiles profile
+     SET exact_predictions_count = (
+           SELECT COUNT(*)::INTEGER
+           FROM predictions prediction
+           WHERE prediction.user_id = profile.user_id
+             AND prediction.rewarded = TRUE
+             AND prediction.is_exact_match = TRUE
+         ),
+         updated_at = CURRENT_TIMESTAMP
+     WHERE profile.user_id IN (
+       SELECT prediction.user_id
+       FROM predictions prediction
+       WHERE prediction.match_id = $1
+     )`,
+    [matchId],
+  );
 
-  return { processedCount, pointsDistributed };
+  // Result notifications are rebuilt from the settled rows, not only this
+  // invocation's in-memory loop. If campaign persistence failed after points
+  // were committed, a BullMQ retry can safely backfill the missing alert.
+  const settledPredictions = await query(
+    `SELECT id, user_id, points_awarded
+     FROM predictions
+     WHERE match_id = $1 AND rewarded = true`,
+    [matchId],
+  );
+  const notificationCampaigns: CreatedNotificationCampaign[] = [];
+  for (const prediction of settledPredictions.rows) {
+    const campaign = await createNotificationCampaign(
+      predictionResultNotificationCampaign({
+        predictionId: String(prediction.id),
+        userId: String(prediction.user_id),
+        matchId,
+        homeTeam: String(match.home_team),
+        awayTeam: String(match.away_team),
+        homeScore: Number(actualHome),
+        awayScore: Number(actualAway),
+        pointsAwarded: Number(prediction.points_awarded || 0),
+      }),
+    );
+    if (campaign.campaignId) notificationCampaigns.push(campaign);
+  }
+
+  // This is the durable completion marker for the whole settlement, including
+  // denormalized repairs and campaign persistence. If the process dies before
+  // here, periodic PostgreSQL recovery rebuilds the settlement job even when
+  // every prediction row was already marked rewarded.
+  await query(
+    `UPDATE matches
+     SET reward_processed = true,
+         reward_processed_at = CURRENT_TIMESTAMP
+     WHERE id = $1`,
+    [matchId],
+  );
+
+  return { processedCount, pointsDistributed, notificationCampaigns };
+}
+
+export async function settleMatchPredictions(
+  matchId: string,
+): Promise<MatchPredictionSettlementResult> {
+  // Manual result publishing, provider reconciliation and a retried BullMQ
+  // job can converge on the same match. A session advisory lock gives the
+  // settlement one owner while point-ledger and notification source keys
+  // provide durable idempotency across restarts.
+  const lockClient = await getDirectClient();
+  let settlementLockAcquired = false;
+  let membershipLockAcquired = false;
+  try {
+    const lock = await lockClient.query<{ acquired: boolean }>(
+      'SELECT pg_try_advisory_lock(hashtext($1)) AS acquired',
+      [`prediction-settlement:${matchId}`],
+    );
+    if (lock.rows[0]?.acquired !== true) {
+      return {
+        processedCount: 0,
+        pointsDistributed: 0,
+        notificationCampaigns: [],
+        alreadyProcessing: true,
+      };
+    }
+    settlementLockAcquired = true;
+
+    // Snapshot replacement and claim decisions take the exclusive form of
+    // this lock. Keep a shared session lock from the membership read through
+    // every point write so an import cannot change x1/x2 eligibility midway
+    // through settlement. The work itself may use pooled connections; the
+    // PostgreSQL advisory lock still protects the database-wide operation.
+    await lockClient.query(
+      `SELECT pg_advisory_lock_shared(
+         hashtextextended('youtube-membership-snapshot-import', 0)
+       )`,
+    );
+    membershipLockAcquired = true;
+    return await settleMatchPredictionsUnlocked(matchId);
+  } finally {
+    if (membershipLockAcquired) {
+      await lockClient.query(
+        `SELECT pg_advisory_unlock_shared(
+           hashtextextended('youtube-membership-snapshot-import', 0)
+         )`,
+      ).catch(() => undefined);
+    }
+    if (settlementLockAcquired) {
+      await lockClient.query(
+        'SELECT pg_advisory_unlock(hashtext($1))',
+        [`prediction-settlement:${matchId}`],
+      ).catch(() => undefined);
+    }
+    lockClient.release();
+  }
 }

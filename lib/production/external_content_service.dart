@@ -177,34 +177,6 @@ class AbuExternalContentService {
     }
   }
 
-  /// Verifies if the authenticated Google user is a member/subscriber of the Abu 3meer YouTube channel.
-  Future<bool> checkYouTubeMembership(String googleAccessToken) async {
-    if (googleAccessToken.isEmpty) return false;
-    try {
-      // Check user subscriptions and memberships for the Abu 3meer channel ID
-      final endpoint = Uri.https(
-        'www.googleapis.com',
-        '/youtube/v3/subscriptions',
-        {'part': 'snippet', 'mine': 'true', 'forChannelId': youtubeChannelId},
-      );
-      final response = await _client
-          .get(
-            endpoint,
-            headers: {'Authorization': 'Bearer $googleAccessToken'},
-          )
-          .timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final items = data['items'] as List<dynamic>? ?? const [];
-        return items.isNotEmpty;
-      }
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-
   Future<LatestVideo> _fetchLatestVideo() async {
     final endpoint = Uri.https('api.rss2json.com', '/v1/api.json', {
       'rss_url': _youtubeFeed,

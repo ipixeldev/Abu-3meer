@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import firebase_messaging
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -7,6 +8,10 @@ import UIKit
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
+    // UIScene initializes Flutter plugins after this callback. Firebase
+    // Messaging must own the notification-center delegate before launch
+    // finishes so iOS notification delivery and tap handling are registered.
+    FLTFirebaseMessagingPlugin.configureNotificationCenterDelegate()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

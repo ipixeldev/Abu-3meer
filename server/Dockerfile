@@ -22,7 +22,13 @@ RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
 COPY migrations ./migrations
 
-RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
+# Migration SQL is read at runtime by the unprivileged `node` user.  Normalize
+# permissions here so a restrictive checkout/umask on the deployment host
+# cannot make a migration unreadable and trap the container in a restart loop.
+RUN chmod -R a+rX /app/migrations \
+    && chown -R node:node /app/migrations \
+    && mkdir -p /app/uploads \
+    && chown -R node:node /app/uploads
 
 EXPOSE 3000
 

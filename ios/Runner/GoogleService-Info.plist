@@ -3,9 +3,11 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>701810344443-l6tgomd9ftjpair1lsck5jvebdas9ngb.apps.googleusercontent.com</string>
+	<string>701810344443-uc6eqqbhej377f2gpjcuimn2co4rk0ai.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.701810344443-l6tgomd9ftjpair1lsck5jvebdas9ngb</string>
+	<string>com.googleusercontent.apps.701810344443-uc6eqqbhej377f2gpjcuimn2co4rk0ai</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>701810344443-21odj0mdeq7d8pl4rfrk1bagpqejt9lb.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
 	<string>AIzaSyDN6OBPnm4wqgAcILPqWGG8jYFLZHq63G4</string>
 	<key>GCM_SENDER_ID</key>
@@ -13,7 +15,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.abu3meer.app</string>
+	<string>omar.abu3meer.app</string>
 	<key>PROJECT_ID</key>
 	<string>abu-3meer-9fd70</string>
 	<key>STORAGE_BUCKET</key>
@@ -29,6 +31,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:701810344443:ios:d6a1af8e1afb3d725a4b5e</string>
+	<string>1:701810344443:ios:8ae6ab7d5f63ffa75a4b5e</string>
 </dict>
 </plist>

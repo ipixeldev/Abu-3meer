@@ -4,6 +4,9 @@ DateTime _date(Object? value) => switch (value) {
   Timestamp timestamp => timestamp.toDate(),
   DateTime date => date,
   int milliseconds => DateTime.fromMillisecondsSinceEpoch(milliseconds),
+  String text =>
+    DateTime.tryParse(text)?.toLocal() ??
+        DateTime.fromMillisecondsSinceEpoch(0),
   _ => DateTime.fromMillisecondsSinceEpoch(0),
 };
 
@@ -13,6 +16,18 @@ String footballSeasonId(DateTime value) {
   final utc = value.toUtc();
   final startYear = utc.month >= DateTime.july ? utc.year : utc.year - 1;
   return '$startYear-${startYear + 1}';
+}
+
+enum SubscriptionAccessMode {
+  active,
+  inactive,
+  store;
+
+  static SubscriptionAccessMode parse(Object? value) => switch (value) {
+    'active' => active,
+    'inactive' => inactive,
+    _ => store,
+  };
 }
 
 class AbuUserProfile {
@@ -44,9 +59,35 @@ class AbuUserProfile {
     this.lastCheckInDate = '',
     this.lastActivityAt,
     this.onboardingCompleted,
+    this.youtubeChannelLinked = false,
+    this.youtubeMembershipLevelId = '',
+    this.youtubeMembershipVerifiedAt,
+    this.youtubeMemberSince,
+    this.backendUserId = '',
+    this.isProSubscriber = false,
+    this.subscriptionAccessMode = SubscriptionAccessMode.store,
+    this.subscriptionAccessExpiresAt,
+    this.subscriptionAccessReason = 'unknown',
+    this.subscriptionAccessSource = 'none',
+    this.serverHasMemberAccess,
+    this.memberAccessSource = 'none',
+    this.memberAccessReason = 'unknown',
+    this.memberAccessExpiresAt,
+    this.youtubeMembershipExpiresAt,
+    this.youtubeMembershipRecheckRequired = false,
   });
 
   final String uid;
+  final String backendUserId;
+  final bool isProSubscriber;
+  final SubscriptionAccessMode subscriptionAccessMode;
+  final DateTime? subscriptionAccessExpiresAt;
+  final String subscriptionAccessReason;
+  final String subscriptionAccessSource;
+  final bool? serverHasMemberAccess;
+  final String memberAccessSource;
+  final String memberAccessReason;
+  final DateTime? memberAccessExpiresAt;
   final String email;
   final String username;
   final String displayName;
@@ -72,6 +113,12 @@ class AbuUserProfile {
   final int playerCardsCollected;
   final String lastCheckInDate;
   final DateTime? lastActivityAt;
+  final bool youtubeChannelLinked;
+  final String youtubeMembershipLevelId;
+  final DateTime? youtubeMembershipVerifiedAt;
+  final DateTime? youtubeMemberSince;
+  final DateTime? youtubeMembershipExpiresAt;
+  final bool youtubeMembershipRecheckRequired;
 
   /// Explicit PostgreSQL onboarding state. Legacy Firestore-only profiles do
   /// not have this field, so `null` deliberately falls back to field inference.
@@ -89,8 +136,13 @@ class AbuUserProfile {
   bool get canManageContent =>
       isAdmin || role == 'editor' || role == 'contentManager';
   bool get canModerate => isAdmin || role == 'moderator';
-  bool get canManageRoles => isAdmin;
+  bool get canUploadMembershipSnapshot =>
+      role == 'moderator' || role == 'admin' || role == 'superAdmin';
+  bool get canManageRoles => !isGuest && role == 'superAdmin';
+  bool get canManageSubscriptions => isAdmin;
   bool get isYouTubeMember => membershipMultiplier > 1;
+  bool get hasMemberAccess =>
+      serverHasMemberAccess ?? (isYouTubeMember || isProSubscriber);
   String get countryFlag {
     final c = countryCode.trim().isNotEmpty
         ? countryCode.trim().toLowerCase()
@@ -177,8 +229,43 @@ class AbuUserProfile {
     String? lastCheckInDate,
     DateTime? lastActivityAt,
     bool? onboardingCompleted,
+    bool? youtubeChannelLinked,
+    bool? isProSubscriber,
+    SubscriptionAccessMode? subscriptionAccessMode,
+    DateTime? subscriptionAccessExpiresAt,
+    bool clearSubscriptionAccessExpiresAt = false,
+    String? subscriptionAccessReason,
+    String? subscriptionAccessSource,
+    bool? hasMemberAccess,
+    String? memberAccessSource,
+    String? memberAccessReason,
+    DateTime? memberAccessExpiresAt,
+    bool clearMemberAccessExpiresAt = false,
+    String? youtubeMembershipLevelId,
+    DateTime? youtubeMembershipVerifiedAt,
+    DateTime? youtubeMemberSince,
+    DateTime? youtubeMembershipExpiresAt,
+    bool clearYoutubeMembershipExpiresAt = false,
+    bool? youtubeMembershipRecheckRequired,
   }) => AbuUserProfile(
     uid: uid,
+    backendUserId: backendUserId,
+    isProSubscriber: isProSubscriber ?? this.isProSubscriber,
+    subscriptionAccessMode:
+        subscriptionAccessMode ?? this.subscriptionAccessMode,
+    subscriptionAccessExpiresAt: clearSubscriptionAccessExpiresAt
+        ? null
+        : subscriptionAccessExpiresAt ?? this.subscriptionAccessExpiresAt,
+    subscriptionAccessReason:
+        subscriptionAccessReason ?? this.subscriptionAccessReason,
+    subscriptionAccessSource:
+        subscriptionAccessSource ?? this.subscriptionAccessSource,
+    serverHasMemberAccess: hasMemberAccess ?? serverHasMemberAccess,
+    memberAccessSource: memberAccessSource ?? this.memberAccessSource,
+    memberAccessReason: memberAccessReason ?? this.memberAccessReason,
+    memberAccessExpiresAt: clearMemberAccessExpiresAt
+        ? null
+        : memberAccessExpiresAt ?? this.memberAccessExpiresAt,
     email: email ?? this.email,
     username: username ?? this.username,
     displayName: displayName ?? this.displayName,
@@ -205,6 +292,18 @@ class AbuUserProfile {
     lastCheckInDate: lastCheckInDate ?? this.lastCheckInDate,
     lastActivityAt: lastActivityAt ?? this.lastActivityAt,
     onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
+    youtubeChannelLinked: youtubeChannelLinked ?? this.youtubeChannelLinked,
+    youtubeMembershipLevelId:
+        youtubeMembershipLevelId ?? this.youtubeMembershipLevelId,
+    youtubeMembershipVerifiedAt:
+        youtubeMembershipVerifiedAt ?? this.youtubeMembershipVerifiedAt,
+    youtubeMemberSince: youtubeMemberSince ?? this.youtubeMemberSince,
+    youtubeMembershipExpiresAt: clearYoutubeMembershipExpiresAt
+        ? null
+        : youtubeMembershipExpiresAt ?? this.youtubeMembershipExpiresAt,
+    youtubeMembershipRecheckRequired:
+        youtubeMembershipRecheckRequired ??
+        this.youtubeMembershipRecheckRequired,
   );
 
   factory AbuUserProfile.fromDocument(
@@ -223,6 +322,9 @@ class AbuUserProfile {
       role: data['role'] as String? ?? 'user',
       membershipMultiplier: (data['membershipMultiplier'] as num? ?? 1)
           .toDouble(),
+      serverHasMemberAccess: data['hasMemberAccess'] is bool
+          ? data['hasMemberAccess'] as bool
+          : null,
       totalPoints: (data['totalPoints'] as num? ?? 0).toInt(),
       monthlyPoints: (data['monthlyPoints'] as num? ?? 0).toInt(),
       seasonPoints: (data['seasonPoints'] as num? ?? 0).toInt(),
@@ -325,6 +427,7 @@ class AbuChallenge {
     this.questions = const <AbuChallengeQuestion>[],
     this.maximumAttempts = 5,
     this.attemptsUsed = 0,
+    this.solved = false,
     this.memberOnly = false,
     this.notifyOnLive = false,
     this.imageUrl = '',
@@ -342,6 +445,7 @@ class AbuChallenge {
   final List<AbuChallengeQuestion> questions;
   final int maximumAttempts;
   final int attemptsUsed;
+  final bool solved;
   final bool memberOnly;
   final bool notifyOnLive;
   final String imageUrl;
@@ -372,7 +476,7 @@ class AbuChallenge {
       kind: data['challengeType'] as String? ?? data['kind'] as String? ?? kind,
       title:
           data['title'] as String? ??
-          (kind == 'playerCard' ? 'Find the Player Card' : 'Secret phrase'),
+          (kind == 'playerCard' ? 'Guess the Player' : 'Video question'),
       description: data['description'] as String? ?? '',
       rewardPoints: (data['rewardPoints'] as num? ?? 0).toInt(),
       status: data['status'] as String? ?? 'draft',
@@ -380,6 +484,7 @@ class AbuChallenge {
       imageUrl: data['imageUrl'] as String? ?? '',
       maximumAttempts: (data['maximumAttempts'] as num? ?? 5).toInt(),
       attemptsUsed: (data['attemptsUsed'] as num? ?? 0).toInt(),
+      solved: data['solved'] as bool? ?? false,
       memberOnly: data['memberOnly'] as bool? ?? false,
       notifyOnLive: data['notifyOnLive'] as bool? ?? false,
       questions: (data['questions'] as List<dynamic>? ?? const [])
@@ -394,9 +499,49 @@ class AbuChallenge {
     );
   }
 
+  factory AbuChallenge.fromMap(Map<String, dynamic> data) {
+    return AbuChallenge(
+      id: (data['id'] ?? '').toString(),
+      kind: (data['kind'] ?? 'videoPhrase').toString(),
+      title: (data['title'] ?? '').toString(),
+      description: (data['description'] ?? '').toString(),
+      rewardPoints:
+          (data['rewardPoints'] as num? ?? data['reward_points'] as num? ?? 0)
+              .toInt(),
+      status: (data['status'] ?? 'draft').toString(),
+      videoUrl: (data['videoUrl'] ?? data['video_url'] ?? '').toString(),
+      imageUrl: (data['imageUrl'] ?? data['image_url'] ?? '').toString(),
+      maximumAttempts:
+          (data['maximumAttempts'] as num? ??
+                  data['maximum_attempts'] as num? ??
+                  3)
+              .toInt(),
+      attemptsUsed:
+          (data['attemptsUsed'] as num? ?? data['attempts_used'] as num? ?? 0)
+              .toInt(),
+      solved: data['solved'] as bool? ?? false,
+      memberOnly:
+          data['memberOnly'] as bool? ?? data['member_only'] as bool? ?? false,
+      notifyOnLive:
+          data['notifyOnLive'] as bool? ??
+          data['notify_on_live'] as bool? ??
+          false,
+      questions: (data['questions'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map(
+            (value) =>
+                AbuChallengeQuestion.fromMap(Map<String, dynamic>.from(value)),
+          )
+          .toList(growable: false),
+      availableFrom: _date(data['availableFrom'] ?? data['starts_at']),
+      availableUntil: _date(data['availableUntil'] ?? data['ends_at']),
+    );
+  }
+
   AbuChallenge copyWith({
     List<AbuChallengeQuestion>? questions,
     int? attemptsUsed,
+    bool? solved,
   }) => AbuChallenge(
     id: id,
     kind: kind,
@@ -411,6 +556,7 @@ class AbuChallenge {
     questions: questions ?? this.questions,
     maximumAttempts: maximumAttempts,
     attemptsUsed: attemptsUsed ?? this.attemptsUsed,
+    solved: solved ?? this.solved,
     memberOnly: memberOnly,
     notifyOnLive: notifyOnLive,
   );
@@ -559,6 +705,22 @@ class LaunchAnnouncement {
       endsAt: data['endsAt'] == null
           ? DateTime.now().add(const Duration(days: 3650))
           : _date(data['endsAt']),
+    );
+  }
+
+  factory LaunchAnnouncement.fromMap(Map<String, dynamic> data) {
+    return LaunchAnnouncement(
+      enabled: data['enabled'] as bool? ?? false,
+      title: (data['title'] ?? '').toString(),
+      body: (data['body'] ?? '').toString(),
+      imageUrl: (data['imageUrl'] ?? data['image_url'] ?? '').toString(),
+      linkUrl: (data['linkUrl'] ?? data['link_url'] ?? '').toString(),
+      buttonLabel: (data['buttonLabel'] ?? data['button_label'] ?? 'OPEN')
+          .toString(),
+      revision: (data['revision'] as num? ?? 0).toInt(),
+      frequency: (data['frequency'] ?? 'once').toString(),
+      startsAt: _date(data['startsAt'] ?? data['starts_at']),
+      endsAt: _date(data['endsAt'] ?? data['ends_at']),
     );
   }
 }
@@ -773,6 +935,9 @@ class MatchDetails {
     this.season = '',
     this.provider = '',
     this.isProviderLimited = false,
+    this.status = '',
+    this.homeScore,
+    this.awayScore,
   });
 
   final List<MatchTimelineEvent> timeline;
@@ -782,6 +947,9 @@ class MatchDetails {
   final String venue;
   final String season;
   final String provider;
+  final String status;
+  final int? homeScore;
+  final int? awayScore;
 
   /// TheSportsDB's public key deliberately caps timeline, lineup, statistics,
   /// and league-table responses at five records.
@@ -802,6 +970,9 @@ class MatchDetails {
     String? season,
     String? provider,
     bool? isProviderLimited,
+    String? status,
+    int? homeScore,
+    int? awayScore,
   }) => MatchDetails(
     timeline: timeline ?? this.timeline,
     lineup: lineup ?? this.lineup,
@@ -811,6 +982,9 @@ class MatchDetails {
     season: season ?? this.season,
     provider: provider ?? this.provider,
     isProviderLimited: isProviderLimited ?? this.isProviderLimited,
+    status: status ?? this.status,
+    homeScore: homeScore ?? this.homeScore,
+    awayScore: awayScore ?? this.awayScore,
   );
 
   factory MatchDetails.fromMap(Map<String, dynamic> map) => MatchDetails(
@@ -841,6 +1015,9 @@ class MatchDetails {
     venue: map['venue']?.toString() ?? '',
     season: map['season']?.toString() ?? '',
     provider: map['provider']?.toString() ?? '',
+    status: map['status']?.toString() ?? '',
+    homeScore: ((map['homeScore'] ?? map['home_score']) as num?)?.toInt(),
+    awayScore: ((map['awayScore'] ?? map['away_score']) as num?)?.toInt(),
     isProviderLimited: map['isProviderLimited'] == true,
   );
 }
@@ -984,6 +1161,9 @@ class SavedPrediction {
     required this.rewarded,
     this.pointsAwarded = 0,
     this.seenResult = false,
+    this.exactMatchResult,
+    this.firstScorerMatchResult,
+    this.winnerMatchResult,
     this.homeTeam = '',
     this.awayTeam = '',
     this.match,
@@ -1000,23 +1180,34 @@ class SavedPrediction {
   final bool rewarded;
   final int pointsAwarded;
   final bool seenResult;
+  final bool? exactMatchResult;
+  final bool? firstScorerMatchResult;
+  final bool? winnerMatchResult;
   final String homeTeam;
   final String awayTeam;
   final MatchEvent? match;
 
-  bool get isPending =>
-      match == null ||
-      match!.homeScore == null ||
-      match!.awayScore == null ||
-      !const {'completed', 'archived'}.contains(match!.status);
+  /// Settlement is authoritative. A provider can publish a final score before
+  /// the reward transaction has completed, so match status alone must never
+  /// move a saved prediction out of the pending state.
+  bool get isPending => !rewarded;
   bool get exactScoreCorrect =>
-      !isPending &&
-      match!.homeScore == homeScore &&
-      match!.awayScore == awayScore;
+      exactMatchResult ??
+      (!isPending &&
+          match!.homeScore == homeScore &&
+          match!.awayScore == awayScore);
   bool get firstScorerCorrect =>
-      !isPending &&
-      match!.firstScorer.trim().toLowerCase() ==
-          firstScorer.trim().toLowerCase();
+      firstScorerMatchResult ??
+      (!isPending &&
+          match!.firstScorer.trim().toLowerCase() ==
+              firstScorer.trim().toLowerCase());
+  bool get winnerCorrect {
+    if (winnerMatchResult case final persisted?) return persisted;
+    if (isPending) return false;
+    return homeScore.compareTo(awayScore) ==
+        match!.homeScore!.compareTo(match!.awayScore!);
+  }
+
   factory SavedPrediction.fromDocument(
     DocumentSnapshot<Map<String, dynamic>> doc, {
     MatchEvent? match,
@@ -1052,6 +1243,9 @@ class SavedPrediction {
     bool? rewarded,
     int? pointsAwarded,
     bool? seenResult,
+    bool? exactMatchResult,
+    bool? firstScorerMatchResult,
+    bool? winnerMatchResult,
     String? homeTeam,
     String? awayTeam,
     MatchEvent? match,
@@ -1067,6 +1261,10 @@ class SavedPrediction {
     rewarded: rewarded ?? this.rewarded,
     pointsAwarded: pointsAwarded ?? this.pointsAwarded,
     seenResult: seenResult ?? this.seenResult,
+    exactMatchResult: exactMatchResult ?? this.exactMatchResult,
+    firstScorerMatchResult:
+        firstScorerMatchResult ?? this.firstScorerMatchResult,
+    winnerMatchResult: winnerMatchResult ?? this.winnerMatchResult,
     homeTeam: homeTeam ?? this.homeTeam,
     awayTeam: awayTeam ?? this.awayTeam,
     match: match ?? this.match,
@@ -1175,14 +1373,22 @@ class AdminPointAdjustment {
     required this.monthlyPeriod,
     required this.seasonId,
     required this.createdAt,
+    this.adminIsProSubscriber = false,
+    this.targetIsProSubscriber = false,
+    this.adminHasMemberAccess = false,
+    this.targetHasMemberAccess = false,
   });
 
   final String id;
   final String adminId;
   final String adminDisplayName;
+  final bool adminIsProSubscriber;
+  final bool adminHasMemberAccess;
   final String targetUserId;
   final String targetDisplayName;
   final String targetUsername;
+  final bool targetIsProSubscriber;
+  final bool targetHasMemberAccess;
   final int delta;
   final String reason;
   final int totalBefore;
@@ -1206,9 +1412,19 @@ class AdminPointAdjustment {
       id: doc.id,
       adminId: data['adminId'] as String? ?? '',
       adminDisplayName: data['adminDisplayName'] as String? ?? '',
+      adminIsProSubscriber: data['adminIsProSubscriber'] == true,
+      adminHasMemberAccess: data['adminHasMemberAccess'] is bool
+          ? data['adminHasMemberAccess'] as bool
+          : data['adminIsProSubscriber'] == true ||
+                data['adminIsYouTubeMember'] == true,
       targetUserId: data['targetUserId'] as String? ?? '',
       targetDisplayName: data['targetDisplayName'] as String? ?? '',
       targetUsername: data['targetUsername'] as String? ?? '',
+      targetIsProSubscriber: data['targetIsProSubscriber'] == true,
+      targetHasMemberAccess: data['targetHasMemberAccess'] is bool
+          ? data['targetHasMemberAccess'] as bool
+          : data['targetIsProSubscriber'] == true ||
+                data['targetIsYouTubeMember'] == true,
       delta: (data['delta'] as num? ?? 0).toInt(),
       reason: data['reason'] as String? ?? '',
       totalBefore: (data['totalBefore'] as num? ?? 0).toInt(),
@@ -1270,6 +1486,7 @@ class LeaderboardEntry {
     required this.monthlyPoints,
     required this.seasonPoints,
     required this.isMember,
+    this.isProSubscriber = false,
     this.displayName = '',
     this.totalPoints = 0,
     this.monthlyPeriod = '',
@@ -1284,6 +1501,8 @@ class LeaderboardEntry {
   final int monthlyPoints;
   final int seasonPoints;
   final bool isMember;
+  final bool isProSubscriber;
+  bool get hasMemberAccess => isMember || isProSubscriber;
   final int totalPoints;
   final String monthlyPeriod;
   final String seasonId;
@@ -1302,6 +1521,7 @@ class LeaderboardEntry {
       monthlyPoints: (data['monthlyPoints'] as num? ?? 0).toInt(),
       seasonPoints: (data['seasonPoints'] as num? ?? 0).toInt(),
       isMember: data['isMember'] as bool? ?? false,
+      isProSubscriber: data['isProSubscriber'] == true,
       totalPoints:
           (data['totalPoints'] as num? ?? data['seasonPoints'] as num? ?? 0)
               .toInt(),
@@ -1311,7 +1531,7 @@ class LeaderboardEntry {
   }
 }
 
-enum LeaderboardPeriod { monthly, season, allTime }
+enum LeaderboardPeriod { currentMonth, previousMonth, season }
 
 class LeaderboardSeason {
   const LeaderboardSeason({
@@ -1320,6 +1540,8 @@ class LeaderboardSeason {
     this.startsAt,
     this.endsAt,
     this.active = false,
+    this.managementMode = 'automatic',
+    this.updatedAt,
   });
 
   final String id;
@@ -1327,6 +1549,8 @@ class LeaderboardSeason {
   final DateTime? startsAt;
   final DateTime? endsAt;
   final bool active;
+  final String managementMode;
+  final DateTime? updatedAt;
 
   factory LeaderboardSeason.fromDocument(
     DocumentSnapshot<Map<String, dynamic>> doc,
@@ -1338,8 +1562,79 @@ class LeaderboardSeason {
       startsAt: _optionalDate(data['startsAt']),
       endsAt: _optionalDate(data['endsAt']),
       active: data['active'] as bool? ?? false,
+      managementMode: data['managementMode'] as String? ?? 'automatic',
+      updatedAt: _optionalDate(data['updatedAt']),
     );
   }
+
+  factory LeaderboardSeason.fromMap(Map<String, dynamic> data) {
+    DateTime? parseDate(dynamic value) {
+      if (value == null) return null;
+      return DateTime.tryParse(value.toString())?.toUtc();
+    }
+
+    final id = (data['id'] ?? data['seasonId'] ?? '').toString();
+    return LeaderboardSeason(
+      id: id,
+      displayName: (data['displayName'] ?? data['name'] ?? id).toString(),
+      startsAt: parseDate(data['startsAt'] ?? data['starts_at']),
+      endsAt: parseDate(data['endsAt'] ?? data['ends_at']),
+      active: data['active'] == true || data['isCurrent'] == true,
+      managementMode:
+          (data['managementMode'] ?? data['management_mode'] ?? 'automatic')
+              .toString(),
+      updatedAt: parseDate(data['updatedAt'] ?? data['updated_at']),
+    );
+  }
+}
+
+DateTime leaderboardSeasonFirstMonthEndsAt(DateTime startsAt) {
+  final start = startsAt.toUtc();
+  final targetYear = start.month == DateTime.december
+      ? start.year + 1
+      : start.year;
+  final targetMonth = start.month == DateTime.december
+      ? DateTime.january
+      : start.month + 1;
+  final lastTargetDay = DateTime.utc(targetYear, targetMonth + 1, 0).day;
+  final targetDay = start.day > lastTargetDay ? lastTargetDay : start.day;
+  return DateTime.utc(
+    targetYear,
+    targetMonth,
+    targetDay,
+    start.hour,
+    start.minute,
+    start.second,
+    start.millisecond,
+    start.microsecond,
+  );
+}
+
+bool leaderboardPreviousMonthAvailable({
+  required Iterable<LeaderboardSeason> seasons,
+  required String? activeSeasonId,
+  required DateTime now,
+}) {
+  LeaderboardSeason? activeSeason;
+  if (activeSeasonId != null && activeSeasonId.isNotEmpty) {
+    for (final season in seasons) {
+      if (season.id == activeSeasonId) {
+        activeSeason = season;
+        break;
+      }
+    }
+  }
+  if (activeSeason == null) {
+    for (final season in seasons) {
+      if (season.active) {
+        activeSeason = season;
+        break;
+      }
+    }
+  }
+  final startsAt = activeSeason?.startsAt;
+  if (startsAt == null) return true;
+  return !now.toUtc().isBefore(leaderboardSeasonFirstMonthEndsAt(startsAt));
 }
 
 class RankedLeaderboardEntry {
@@ -1352,6 +1647,21 @@ class RankedLeaderboardEntry {
   final LeaderboardEntry entry;
   final int rank;
   final int points;
+}
+
+/// A fan's standing in the two live recognition periods shown on profile cards.
+///
+/// A zero value means the fan has not earned rank-eligible XP in that period.
+class UserLeaderboardRanks {
+  const UserLeaderboardRanks({
+    required this.currentMonth,
+    required this.season,
+  });
+
+  const UserLeaderboardRanks.unranked() : currentMonth = 0, season = 0;
+
+  final int currentMonth;
+  final int season;
 }
 
 class LeaderboardSnapshot {
@@ -1697,6 +2007,25 @@ class AbuRewardRedemption {
       updatedAt: _optionalDate(data['updatedAt']),
     );
   }
+
+  factory AbuRewardRedemption.fromMap(Map<String, dynamic> data) {
+    return AbuRewardRedemption(
+      id: (data['id'] ?? '').toString(),
+      rewardId: (data['rewardId'] ?? data['reward_id'] ?? '').toString(),
+      rewardTitle: (data['rewardTitle'] ?? data['reward_title'] ?? '')
+          .toString(),
+      cost: (data['cost'] as num? ?? 0).toInt(),
+      status: (data['status'] ?? 'pending').toString(),
+      createdAt: _date(data['createdAt'] ?? data['created_at']),
+      userId: (data['userId'] ?? data['user_id'] ?? '').toString(),
+      userDisplayName:
+          (data['userDisplayName'] ?? data['user_display_name'] ?? '')
+              .toString(),
+      note: (data['note'] ?? data['adminNote'] ?? '').toString(),
+      fulfilledAt: _optionalDate(data['fulfilledAt'] ?? data['fulfilled_at']),
+      updatedAt: _optionalDate(data['updatedAt'] ?? data['updated_at']),
+    );
+  }
 }
 
 class AbuPlayerCard {
@@ -1765,6 +2094,41 @@ class AbuPlayerCard {
       unlockedAt: unlockedAt,
       sourceChallengeId:
           sourceChallengeId ?? data['sourceChallengeId'] as String? ?? '',
+    );
+  }
+
+  factory AbuPlayerCard.fromMap(Map<String, dynamic> data) {
+    final rawStats = data['stats'];
+    final stats = rawStats is Map
+        ? Map<String, dynamic>.from(rawStats).map(
+            (key, value) => MapEntry(
+              key,
+              value is num ? value.toInt() : int.tryParse('$value') ?? 0,
+            ),
+          )
+        : const <String, int>{};
+    return AbuPlayerCard(
+      id: (data['id'] ?? '').toString(),
+      playerName: (data['playerName'] ?? data['player_name'] ?? '').toString(),
+      playerNameAr: (data['playerNameAr'] ?? data['player_name_ar'] ?? '')
+          .toString(),
+      imageUrl: (data['imageUrl'] ?? data['card_image_url'] ?? '').toString(),
+      teamName: (data['teamName'] ?? data['team'] ?? '').toString(),
+      teamLogoUrl: (data['teamLogoUrl'] ?? data['team_logo_url'] ?? '')
+          .toString(),
+      position: (data['position'] ?? '').toString(),
+      rating: (data['rating'] as num? ?? 0).toInt(),
+      rarity: (data['rarity'] ?? data['card_tier'] ?? 'common').toString(),
+      stats: stats,
+      description: (data['description'] ?? '').toString(),
+      descriptionAr: (data['descriptionAr'] ?? data['description_ar'] ?? '')
+          .toString(),
+      unlocked: data['unlocked'] as bool? ?? false,
+      enabled: data['enabled'] as bool? ?? true,
+      sourceChallengeId:
+          (data['sourceChallengeId'] ?? data['source_challenge_id'] ?? '')
+              .toString(),
+      unlockedAt: _optionalDate(data['unlockedAt'] ?? data['unlocked_at']),
     );
   }
 

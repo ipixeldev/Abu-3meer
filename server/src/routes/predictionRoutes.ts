@@ -10,13 +10,20 @@ export async function predictionRoutes(fastify: FastifyInstance) {
   const pointRulesHandler = async () => {
     const rules = await getPointRules();
     return {
+      signUpBonus: rules.signUpBonus ?? config.pointDefaults.signUpBonus,
+      dailyStreak: rules.dailyStreak ?? config.pointDefaults.dailyStreak,
       exactPrediction: rules.exactPrediction ?? config.pointDefaults.exactScore,
       firstScorer: rules.firstScorer ?? config.pointDefaults.firstScorer,
       winnerOutcome: rules.winnerOutcome ?? config.pointDefaults.winnerOutcome,
       videoQuestion: rules.videoQuestion ?? config.pointDefaults.videoPhrase,
       playerCard: rules.playerCard ?? config.pointDefaults.playerCard,
-      dailyStreak: rules.dailyStreak ?? config.pointDefaults.dailyStreak,
-      memberMultiplier: config.pointDefaults.memberMultiplier,
+      firstMembershipActivation:
+        rules.firstMembershipActivation ??
+        config.pointDefaults.firstMembershipActivation,
+      membershipRenewal:
+        rules.membershipRenewal ?? config.pointDefaults.membershipRenewal,
+      memberMultiplier:
+        rules.memberMultiplier ?? config.pointDefaults.memberMultiplier,
     };
   };
 
@@ -79,11 +86,14 @@ export async function predictionRoutes(fastify: FastifyInstance) {
   fastify.get('/predictions/my', { preHandler: [authenticateUser] }, async (request, reply) => {
     const user = request.user!;
     const res = await query(
-      `SELECT p.id, p.match_id, p.home_score, p.away_score, p.first_scorer,
+      `SELECT p.id, p.user_id, p.match_id, p.home_score, p.away_score, p.first_scorer,
               p.points_awarded, p.rewarded, p.seen_result,
               p.is_exact_match, p.is_first_scorer_match, p.is_winner_match,
               p.submitted_at, p.updated_at,
-              m.home_team, m.away_team, m.home_logo_url, m.away_logo_url, m.kickoff_at,
+              m.competition_name, m.home_team, m.away_team,
+              m.home_logo_url, m.away_logo_url, m.kickoff_at,
+              m.predictions_open_at, m.predictions_close_at,
+              m.first_scorer_options,
               m.status as match_status, m.home_score as actual_home_score, m.away_score as actual_away_score,
               m.first_scorer as actual_first_scorer
        FROM predictions p

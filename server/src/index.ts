@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import { config } from './config.js';
 import { runMigrations } from './db/migrate.js';
+import { closeDatabasePools } from './db/pool.js';
 import { startWorkers } from './queues/workers.js';
 import { redis } from './redis/client.js';
 import { authRoutes } from './routes/authRoutes.js';
@@ -19,28 +20,34 @@ import { leaderboardRoutes } from './routes/leaderboardRoutes.js';
 import { streakRoutes } from './routes/streakRoutes.js';
 import { deviceRoutes } from './routes/deviceRoutes.js';
 import { adminRoutes } from './routes/adminRoutes.js';
+import { adminStatsRoutes } from './routes/adminStatsRoutes.js';
+import { adminContentRoutes } from './routes/adminContentRoutes.js';
 import { healthRoutes } from './routes/healthRoutes.js';
 import { videoRoutes } from './routes/videoRoutes.js';
 import { publicMediaRoutes, uploadRoutes } from './routes/uploadRoutes.js';
+import { youtubeMembershipRoutes } from './routes/youtubeMembershipRoutes.js';
+import { subscriptionRoutes } from './routes/subscriptionRoutes.js';
+import { adminSubscriptionRoutes } from './routes/adminSubscriptionRoutes.js';
+import { supportRoutes } from './routes/supportRoutes.js';
+import { clampYouTubeMembershipSnapshotExpiryToPolicy } from './services/youtubeMembershipSnapshotService.js';
+import { serializeRequestForLog } from './security/logRedaction.js';
+import { startYouTubeVideoSynchronization } from './services/youtubeVideoSyncService.js';
 
 const fastify = Fastify({
   genReqId: () => crypto.randomUUID(),
   logger: {
     level: config.env === 'production' ? 'info' : 'debug',
     serializers: {
-      req(req) {
-        return {
-          id: req.id,
-          method: req.method,
-          url: req.url,
-          ip: req.ip,
-        };
-      },
+      req: serializeRequestForLog,
     },
   },
   trustProxy: true,
   bodyLimit: 1048576, // 1MB maximum payload
 });
+
+let stopWorkers: (() => Promise<void>) | null = null;
+let stopYouTubeVideoSync: (() => void) | null = null;
+let shuttingDown = false;
 
 async function main() {
   console.log('=== Starting Abu 3meer Production Backend (Hardened) ===');
@@ -148,18 +155,29 @@ async function main() {
     await v1.register(leaderboardRoutes);
     await v1.register(streakRoutes);
     await v1.register(deviceRoutes);
+    await v1.register(adminStatsRoutes);
     await v1.register(adminRoutes);
+    await v1.register(adminContentRoutes);
     await v1.register(videoRoutes);
     await v1.register(uploadRoutes);
+    await v1.register(youtubeMembershipRoutes);
+    await v1.register(subscriptionRoutes);
+    await v1.register(adminSubscriptionRoutes);
+    await v1.register(supportRoutes);
   }, { prefix: '/api/v1' });
 
   // A server with a stale schema must never advertise itself as healthy. Let
   // startup fail so Docker restarts it and the operator sees the migration
   // error instead of silent profile/prediction write failures.
   await runMigrations();
+  await clampYouTubeMembershipSnapshotExpiryToPolicy();
+
+  // Public channel uploads are discovered independently of membership and are
+  // stored separately from the manually curated Exclusive-video catalogue.
+  stopYouTubeVideoSync = startYouTubeVideoSynchronization(fastify.log);
 
   // Start BullMQ background workers
-  startWorkers();
+  stopWorkers = await startWorkers();
 
   // Listen
   try {
@@ -175,9 +193,14 @@ async function main() {
 const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM'];
 for (const signal of signals) {
   process.on(signal, async () => {
+    if (shuttingDown) return;
+    shuttingDown = true;
     console.log(`[Process] Received ${signal}, shutting down gracefully...`);
     await fastify.close();
+    stopYouTubeVideoSync?.();
+    await stopWorkers?.();
     await redis.quit();
+    await closeDatabasePools();
     process.exit(0);
   });
 }

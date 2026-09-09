@@ -15,6 +15,22 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 ## iOS
 
+### ios upload_metadata
+
+```sh
+[bundle exec] fastlane ios upload_metadata
+```
+
+Upload localized App Store metadata without changing the binary or submitting for review
+
+### ios upload_screenshots
+
+```sh
+[bundle exec] fastlane ios upload_screenshots
+```
+
+Upload localized App Store screenshots without changing metadata, the binary, or review state
+
 ### ios check_testflight
 
 ```sh
@@ -22,6 +38,30 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 ```
 
 
+
+### ios upload_testflight
+
+```sh
+[bundle exec] fastlane ios upload_testflight
+```
+
+Upload an existing IPA and distribute it to both Abu 3meer TestFlight groups
+
+### ios select_app_store_build
+
+```sh
+[bundle exec] fastlane ios select_app_store_build
+```
+
+Select an already processed build for App Store version 1.1.0 without submitting for review
+
+### ios submit_app_store_review
+
+```sh
+[bundle exec] fastlane ios submit_app_store_review
+```
+
+Submit App Store version 1.1.0 for review and release after approval
 
 ----
 

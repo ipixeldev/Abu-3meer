@@ -2,6 +2,7 @@ import admin from 'firebase-admin';
 import { config } from '../config.js';
 
 let initialized = false;
+let messagingTransportConfigured = false;
 
 export function firebaseMessagingIsConfigured(): boolean {
   return Boolean(config.firebase.clientEmail && config.firebase.privateKey);
@@ -38,11 +39,16 @@ export async function verifyFirebaseToken(idToken: string): Promise<admin.auth.D
 
 export type PushBatchResponse = admin.messaging.BatchResponse;
 
+export interface PushNotificationOptions {
+  imageUrl?: string | null;
+}
+
 export async function sendPushNotification(
   tokens: string[],
   title: string,
   body: string,
-  data?: Record<string, string>
+  data?: Record<string, string>,
+  options: PushNotificationOptions = {}
 ): Promise<PushBatchResponse> {
   if (!tokens.length) {
     return { responses: [], successCount: 0, failureCount: 0 };
@@ -57,11 +63,14 @@ export async function sendPushNotification(
   }
   initFirebaseAdmin();
 
+  const imageUrl = options.imageUrl?.trim() || undefined;
+
   const message: admin.messaging.MulticastMessage = {
     tokens,
     notification: {
       title,
       body,
+      ...(imageUrl ? { imageUrl } : {}),
     },
     data: data || {},
     apns: {
@@ -69,18 +78,30 @@ export async function sendPushNotification(
         aps: {
           sound: 'default',
           badge: 1,
+          ...(imageUrl ? { mutableContent: true } : {}),
         },
       },
+      ...(imageUrl ? { fcmOptions: { imageUrl } } : {}),
     },
     android: {
       priority: 'high',
       notification: {
         sound: 'default',
+        ...(imageUrl ? { imageUrl } : {}),
         // Must match the channel created by NotificationService in Flutter.
         channelId: 'abu_3meer_high_importance',
       },
     },
   };
 
-  return await admin.messaging().sendEachForMulticast(message);
+  const messaging = admin.messaging();
+  if (!messagingTransportConfigured) {
+    // Configure the stable HTTP/1.1 transport before the only provider call.
+    // Retrying an HTTP/2 batch after an ambiguous socket/session failure can
+    // deliver the same logical notification twice even though the first call
+    // did not return an acknowledgement to this process.
+    messaging.enableLegacyHttpTransport();
+    messagingTransportConfigured = true;
+  }
+  return await messaging.sendEachForMulticast(message);
 }

@@ -4,13 +4,15 @@ import { authenticateUser } from '../middleware/auth.js';
 import {
   getNotificationPreferences,
   registerDeviceToken,
-  sendTestNotification,
+  revokeDeviceInstallation,
   unregisterDeviceToken,
   updateNotificationPreferences,
 } from '../services/notificationService.js';
 
 const registerDeviceSchema = z.object({
   fcmToken: z.string().trim().min(10).max(500),
+  installationId: z.string().trim().min(16).max(128)
+    .regex(/^[A-Za-z0-9_-]+$/).optional(),
   platform: z.enum(['ios', 'android', 'web']),
   appVersion: z.string().trim().max(30).optional(),
   deviceModel: z.string().trim().max(100).optional(),
@@ -26,7 +28,28 @@ const notificationPreferencesSchema = z.object({
   newsEnabled: z.boolean(),
 });
 
+const revokeDeviceSchema = z.object({
+  fcmToken: z.string().trim().min(10).max(500),
+  installationId: z.string().trim().min(16).max(128)
+    .regex(/^[A-Za-z0-9_-]+$/),
+});
+
 export async function deviceRoutes(fastify: FastifyInstance) {
+  // A logout can outlive its Firebase session. Requiring both opaque device
+  // secrets permits only revocation and avoids leaving the old account's
+  // token active when connectivity returns after sign-out.
+  fastify.post('/devices/revoke', async (request, reply) => {
+    const parsed = revokeDeviceSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'ValidationError', issues: parsed.error.issues });
+    }
+    await revokeDeviceInstallation(
+      parsed.data.fcmToken,
+      parsed.data.installationId,
+    );
+    return { success: true };
+  });
+
   fastify.post('/devices/register', { preHandler: [authenticateUser] }, async (request, reply) => {
     const user = request.user!;
     const parsed = registerDeviceSchema.safeParse(request.body);
@@ -62,22 +85,4 @@ export async function deviceRoutes(fastify: FastifyInstance) {
     }
     return await updateNotificationPreferences(request.user!.id, parsed.data);
   });
-
-  fastify.post(
-    '/notifications/test',
-    {
-      preHandler: [authenticateUser],
-      config: { rateLimit: { max: 3, timeWindow: '1 minute' } },
-    },
-    async (request, reply) => {
-      const result = await sendTestNotification(request.user!.id);
-      if (result.noRegisteredDevice) {
-        return reply.status(409).send({
-          error: 'NoRegisteredDevice',
-          message: 'No active push token is registered for this account yet.',
-        });
-      }
-      return result;
-    }
-  );
 }

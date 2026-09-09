@@ -103,6 +103,7 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       PORT: 3000
       HOST: 0.0.0.0
+      SUPPORT_WHATSAPP_NUMBER: ${SUPPORT_WHATSAPP_NUMBER:-}
       DATABASE_URL: postgres://${POSTGRES_USER:-abu3meer_admin}:${POSTGRES_PASSWORD:-change_me_in_production}@pgbouncer:6432/${POSTGRES_DB:-abu3meer_prod}
       DIRECT_DATABASE_URL: postgres://${POSTGRES_USER:-abu3meer_admin}:${POSTGRES_PASSWORD:-change_me_in_production}@postgres:5432/${POSTGRES_DB:-abu3meer_prod}
       REDIS_HOST: redis
@@ -111,6 +112,14 @@ services:
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-abu-3meer-9fd70}
       FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL:-}
       FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY:-}
+      REVENUECAT_SECRET_API_KEY: ${REVENUECAT_SECRET_API_KEY:-}
+      REVENUECAT_WEBHOOK_AUTHORIZATION: ${REVENUECAT_WEBHOOK_AUTHORIZATION:-}
+      REVENUECAT_ALLOW_SANDBOX: ${REVENUECAT_ALLOW_SANDBOX:-false}
+      REVENUECAT_SANDBOX_ALLOWED_USER_IDS: ${REVENUECAT_SANDBOX_ALLOWED_USER_IDS:-}
+      # Public channel ID for latest-video discovery; no OAuth credentials.
+      YOUTUBE_CREATOR_CHANNEL_ID: ${YOUTUBE_CREATOR_CHANNEL_ID:-}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+      YOUTUBE_MEMBERSHIP_SNAPSHOT_MAX_AGE_HOURS: ${YOUTUBE_MEMBERSHIP_SNAPSHOT_MAX_AGE_HOURS:-168}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       CORS_ORIGINS: ${CORS_ORIGINS:-https://abu3meer.com,https://www.abu3meer.com,https://abu-3meer-9fd70.web.app,https://abu-3meer-9fd70.firebaseapp.com}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}

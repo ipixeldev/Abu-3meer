@@ -1,6 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeChallengeAnswer } from '../services/challengeService.js';
+import {
+  isChallengeAnswerAccepted,
+  normalizeChallengeAnswer,
+} from '../services/challengeService.js';
 
 describe('Security & Anti-Abuse Hardening Unit Tests', () => {
   describe('1. Challenge Answer Normalization & Tampering Resistance', () => {
@@ -19,6 +22,24 @@ describe('Security & Anti-Abuse Hardening Unit Tests', () => {
     it('unifies taa marbuta (ة -> ه) and yaa (ى -> ي)', () => {
       assert.equal(normalizeChallengeAnswer('برشلونة'), 'برشلونه');
       assert.equal(normalizeChallengeAnswer('موسى'), 'موسي');
+    });
+
+    it('accepts only exact normalized configured answers', () => {
+      assert.equal(
+        isChallengeAnswerAccepted('  مُحَمَّد صَلَاح ', ['محمد صلاح', 'Mo Salah']),
+        true,
+      );
+      assert.equal(isChallengeAnswerAccepted('محمد', ['محمد صلاح']), false);
+      assert.equal(isChallengeAnswerAccepted('صلاح', ['محمد صلاح']), false);
+      assert.equal(isChallengeAnswerAccepted('Mo', ['Mo Salah']), false);
+    });
+
+    it('uses the legacy answer only when no accepted-answer list exists', () => {
+      assert.equal(isChallengeAnswerAccepted('Barcelona', [], 'Barcelona'), true);
+      assert.equal(
+        isChallengeAnswerAccepted('Barcelona', ['Real Madrid'], 'Barcelona'),
+        false,
+      );
     });
   });
 

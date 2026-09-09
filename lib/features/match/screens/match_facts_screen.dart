@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../../production/models.dart';
@@ -5,6 +7,152 @@ import '../../../production/production_repository.dart';
 
 /// Stable order shared by the match-centre navigation and regression tests.
 const matchCenterTabOrder = <String>['facts', 'lineup', 'table'];
+
+String _matchDetailIdentityPart(String value) =>
+    value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+
+/// Keeps every provider section monotonic while a live match is refreshing.
+///
+/// Providers occasionally return a shorter snapshot while an upstream feed is
+/// rebuilding. The newest values still win for matching rows, but a temporary
+/// partial response can no longer make already-published events, players,
+/// statistics, or table rows disappear from the screen.
+MatchDetails retainPublishedMatchDetailSections(
+  MatchDetails current,
+  MatchDetails incoming,
+) {
+  final timeline = <String, MatchTimelineEvent>{};
+  for (final event in current.timeline) {
+    final key = [
+      event.minute,
+      event.type,
+      event.player,
+      event.team,
+      event.isHome,
+    ].map((value) => _matchDetailIdentityPart(value.toString())).join('|');
+    timeline[key] = event;
+  }
+  for (final event in incoming.timeline) {
+    final key = [
+      event.minute,
+      event.type,
+      event.player,
+      event.team,
+      event.isHome,
+    ].map((value) => _matchDetailIdentityPart(value.toString())).join('|');
+    final previous = timeline[key];
+    timeline[key] = previous == null
+        ? event
+        : MatchTimelineEvent(
+            minute: event.minute.isEmpty ? previous.minute : event.minute,
+            type: event.type.isEmpty ? previous.type : event.type,
+            player: event.player.isEmpty ? previous.player : event.player,
+            assist: event.assist.isEmpty ? previous.assist : event.assist,
+            detail: event.detail.isEmpty ? previous.detail : event.detail,
+            team: event.team.isEmpty ? previous.team : event.team,
+            isHome: event.isHome,
+          );
+  }
+
+  final lineup = <String, MatchLineupPlayer>{};
+  for (final player in current.lineup) {
+    final key = [
+      player.team,
+      player.player,
+      player.isHome,
+    ].map((value) => _matchDetailIdentityPart(value.toString())).join('|');
+    lineup[key] = player;
+  }
+  for (final player in incoming.lineup) {
+    final key = [
+      player.team,
+      player.player,
+      player.isHome,
+    ].map((value) => _matchDetailIdentityPart(value.toString())).join('|');
+    final previous = lineup[key];
+    lineup[key] = previous == null
+        ? player
+        : MatchLineupPlayer(
+            player: player.player.isEmpty ? previous.player : player.player,
+            team: player.team.isEmpty ? previous.team : player.team,
+            position: player.position.isEmpty
+                ? previous.position
+                : player.position,
+            isHome: player.isHome,
+            isSubstitute: player.isSubstitute,
+            squadNumber: player.squadNumber.isEmpty
+                ? previous.squadNumber
+                : player.squadNumber,
+            playerImageUrl: player.playerImageUrl.isEmpty
+                ? previous.playerImageUrl
+                : player.playerImageUrl,
+          );
+  }
+
+  final statistics = <String, MatchStatistic>{};
+  for (final statistic in current.statistics) {
+    statistics[_matchDetailIdentityPart(statistic.label)] = statistic;
+  }
+  for (final statistic in incoming.statistics) {
+    final key = _matchDetailIdentityPart(statistic.label);
+    final previous = statistics[key];
+    statistics[key] = previous == null
+        ? statistic
+        : MatchStatistic(
+            label: statistic.label.isEmpty ? previous.label : statistic.label,
+            homeValue: statistic.homeValue.isEmpty
+                ? previous.homeValue
+                : statistic.homeValue,
+            awayValue: statistic.awayValue.isEmpty
+                ? previous.awayValue
+                : statistic.awayValue,
+          );
+  }
+
+  final standings = <String, MatchStanding>{};
+  String standingKey(MatchStanding standing) => _matchDetailIdentityPart(
+    standing.teamId.isEmpty ? standing.team : standing.teamId,
+  );
+  for (final standing in current.standings) {
+    standings[standingKey(standing)] = standing;
+  }
+  for (final standing in incoming.standings) {
+    final key = standingKey(standing);
+    final previous = standings[key];
+    standings[key] = previous == null
+        ? standing
+        : MatchStanding(
+            rank: standing.rank,
+            team: standing.team.isEmpty ? previous.team : standing.team,
+            played: standing.played,
+            won: standing.won,
+            drawn: standing.drawn,
+            lost: standing.lost,
+            goalDifference: standing.goalDifference,
+            points: standing.points,
+            goalsFor: standing.goalsFor ?? previous.goalsFor,
+            goalsAgainst: standing.goalsAgainst ?? previous.goalsAgainst,
+            teamId: standing.teamId.isEmpty ? previous.teamId : standing.teamId,
+            badgeUrl: standing.badgeUrl.isEmpty
+                ? previous.badgeUrl
+                : standing.badgeUrl,
+            form: standing.form.isEmpty ? previous.form : standing.form,
+          );
+  }
+
+  return incoming.copyWith(
+    timeline: timeline.values.toList(growable: false),
+    lineup: lineup.values.toList(growable: false),
+    statistics: statistics.values.toList(growable: false),
+    standings: standings.values.toList(growable: false),
+    venue: incoming.venue.isEmpty ? current.venue : incoming.venue,
+    season: incoming.season.isEmpty ? current.season : incoming.season,
+    provider: incoming.provider.isEmpty ? current.provider : incoming.provider,
+    status: incoming.status.isEmpty ? current.status : incoming.status,
+    homeScore: incoming.homeScore ?? current.homeScore,
+    awayScore: incoming.awayScore ?? current.awayScore,
+  );
+}
 
 /// Provider-backed match centre. Empty provider sections remain honest empty
 /// states; the UI never invents scorers, cards, players, or statistics.
@@ -26,6 +174,7 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   MatchDetails _details = const MatchDetails();
+  Timer? _refreshTimer;
   bool _loading = true;
   String? _error;
 
@@ -45,6 +194,11 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
       _light ? const Color(0xFF285FD8) : const Color(0xFFC8FF38);
 
   String _t(String english, String arabic) => _arabic ? arabic : english;
+  int? get _homeScore => _details.homeScore ?? widget.event.homeScore;
+  int? get _awayScore => _details.awayScore ?? widget.event.awayScore;
+  String get _matchStatus => _details.status.isNotEmpty
+      ? _details.status.toLowerCase()
+      : widget.event.status.toLowerCase();
 
   @override
   void initState() {
@@ -54,26 +208,61 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
       vsync: this,
     );
     _details = MatchDetails(timeline: widget.event.timeline);
-    _loadDetails();
+    unawaited(_loadDetails());
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      // Re-evaluate the kickoff window on every tick. A screen opened more
+      // than an hour before kickoff must begin polling when that window starts.
+      if (_shouldPollDetails) {
+        unawaited(_loadDetails(showLoading: false, forceRefresh: true));
+      }
+    });
+  }
+
+  bool get _shouldPollDetails {
+    final status = widget.event.status.toLowerCase();
+    if (status == 'live') return true;
+    if (const {
+      'completed',
+      'finished',
+      'cancelled',
+      'postponed',
+    }.contains(status)) {
+      return false;
+    }
+    final now = DateTime.now();
+    return now.isAfter(
+          widget.event.kickoffAt.subtract(const Duration(hours: 1)),
+        ) &&
+        now.isBefore(widget.event.kickoffAt.add(const Duration(hours: 4)));
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     _tabController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadDetails() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _loadDetails({
+    bool showLoading = true,
+    bool forceRefresh = false,
+  }) async {
+    if (showLoading) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
-      final details = await widget.repository.fetchMatchDetails(widget.event);
+      final details = await widget.repository.fetchMatchDetails(
+        widget.event,
+        forceRefresh: forceRefresh,
+      );
       if (!mounted) return;
       setState(() {
-        _details = details;
+        _details = retainPublishedMatchDetailSections(_details, details);
         _loading = false;
+        _error = null;
       });
     } catch (_) {
       if (!mounted) return;
@@ -107,9 +296,9 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
             _teamBadge(event.homeTeam, event.homeLogoUrl, size: 34),
             const SizedBox(width: 10),
             Text(
-              event.homeScore == null || event.awayScore == null
+              _homeScore == null || _awayScore == null
                   ? 'VS'
-                  : '${event.homeScore}  –  ${event.awayScore}',
+                  : '$_homeScore  –  $_awayScore',
               style: TextStyle(
                 color: _text,
                 fontWeight: FontWeight.w900,
@@ -125,7 +314,7 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
         actions: [
           IconButton(
             tooltip: _t('Refresh', 'تحديث'),
-            onPressed: _loading ? null : _loadDetails,
+            onPressed: _loading ? null : () => _loadDetails(forceRefresh: true),
             icon: const Icon(Icons.refresh_rounded),
           ),
         ],
@@ -236,8 +425,75 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
         )
       else
         ..._details.timeline.map(_timelineCard),
+      if (_details.statistics.isNotEmpty) ...[
+        const SizedBox(height: 24),
+        _sectionTitle(_t('Match statistics', 'إحصائيات المباراة')),
+        const SizedBox(height: 10),
+        _statisticsCard(),
+      ],
     ]);
   }
+
+  Widget _statisticsCard() => _card(
+    child: Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                widget.event.homeTeam,
+                textAlign: TextAlign.start,
+                style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                widget.event.awayTeam,
+                textAlign: TextAlign.end,
+                style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        ..._details.statistics.map(
+          (statistic) => Container(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+              border: Border(top: BorderSide(color: _line)),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 52,
+                  child: Text(
+                    statistic.homeValue.isEmpty ? '—' : statistic.homeValue,
+                    style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    statistic.label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: _muted, fontSize: 12),
+                  ),
+                ),
+                SizedBox(
+                  width: 52,
+                  child: Text(
+                    statistic.awayValue.isEmpty ? '—' : statistic.awayValue,
+                    textAlign: TextAlign.end,
+                    style: TextStyle(color: _text, fontWeight: FontWeight.w900),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _scoreSummary() {
     final event = widget.event;
@@ -263,9 +519,9 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
                 child: Column(
                   children: [
                     Text(
-                      event.homeScore == null || event.awayScore == null
+                      _homeScore == null || _awayScore == null
                           ? 'VS'
-                          : '${event.homeScore} – ${event.awayScore}',
+                          : '$_homeScore – $_awayScore',
                       style: TextStyle(
                         color: _text,
                         fontSize: 34,
@@ -309,7 +565,7 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
   );
 
   Widget _statusPill() {
-    final status = widget.event.status.toLowerCase();
+    final status = _matchStatus;
     final label = switch (status) {
       'live' => _t('LIVE', 'مباشر'),
       'completed' || 'finished' => _t('FULL TIME', 'انتهت'),
@@ -761,7 +1017,10 @@ class _MatchFactsScreenState extends State<MatchFactsScreen>
         Expanded(
           child: Text(_error!, style: TextStyle(color: _text)),
         ),
-        TextButton(onPressed: _loadDetails, child: Text(_t('RETRY', 'إعادة'))),
+        TextButton(
+          onPressed: () => _loadDetails(forceRefresh: true),
+          child: Text(_t('RETRY', 'إعادة')),
+        ),
       ],
     ),
   );

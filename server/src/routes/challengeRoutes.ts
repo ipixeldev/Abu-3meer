@@ -1,35 +1,110 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authenticateUser } from '../middleware/auth.js';
-import { submitChallengeAnswer } from '../services/challengeService.js';
+import {
+  ChallengeSubmissionError,
+  submitChallengeAnswer,
+} from '../services/challengeService.js';
 import { query } from '../db/pool.js';
 import { getCachedJson, setCachedJson } from '../redis/client.js';
+import { listPlayerCardsForUser } from '../services/playerCardService.js';
+import {
+  resolveChallengeMembership,
+} from '../services/challengeMembershipService.js';
 
 const submitSchema = z.object({
   answer: z.string().trim().min(1).max(200),
 });
 
+type ChallengeFeedRow = Record<string, unknown>;
+
+export function mergeChallengeActivity(
+  challenges: ChallengeFeedRow[],
+  activityRows: ChallengeFeedRow[],
+): ChallengeFeedRow[] {
+  const activityByChallenge = new Map(
+    activityRows.map((row) => [String(row.challenge_id), row]),
+  );
+  return challenges.map((challenge) => {
+    const activity = activityByChallenge.get(String(challenge.id));
+    return {
+      ...challenge,
+      attempts_used: Number(activity?.attempts_used ?? 0),
+      solved: activity?.solved === true,
+    };
+  });
+}
+
 export async function challengeRoutes(fastify: FastifyInstance) {
   // GET /api/v1/challenges/active - Returns active challenges without answer keys
-  fastify.get('/challenges/active', async (request, reply) => {
-    reply.header(
-      'Cache-Control',
-      'public, max-age=30, s-maxage=60, stale-while-revalidate=300',
-    );
-    const cacheKey = 'cache:challenges:active';
-    const cached = await getCachedJson(cacheKey);
-    if (cached) return cached;
+  fastify.get(
+    '/challenges/active',
+    { preHandler: [authenticateUser] },
+    async (request, reply) => {
+      let canAccessMemberContent = false;
+      try {
+        canAccessMemberContent = await resolveChallengeMembership(request.user!.id);
+      } catch (error) {
+        request.log.warn({ err: error }, 'Member challenge visibility unavailable');
+      }
+      reply.header(
+        'Cache-Control',
+        'private, max-age=30, stale-while-revalidate=120',
+      );
+      const cacheKey = `cache:challenges:active:${canAccessMemberContent ? 'member' : 'public'}`;
+      let challenges = await getCachedJson<ChallengeFeedRow[]>(cacheKey);
+      if (!challenges) {
+        const res = await query(
+          `SELECT c.id, c.video_id, c.title, c.description, c.kind, c.status,
+                COALESCE(point_rule.base_points, c.reward_points) AS reward_points,
+                COALESCE(point_rule.base_points, c.reward_points) AS member_points,
+                c.video_url, c.image_url, c.maximum_attempts, c.member_only,
+                c.notify_on_live, c.starts_at, c.ends_at,
+                COALESCE(
+                  jsonb_agg(
+                    jsonb_build_object(
+                      'id', q.id,
+                      'prompt', q.prompt,
+                      'type', q.answer_type,
+                      'options', q.options
+                    ) ORDER BY q.position
+                  ) FILTER (WHERE q.id IS NOT NULL),
+                  '[]'::jsonb
+                ) AS questions
+         FROM challenges c
+         LEFT JOIN challenge_questions q ON q.challenge_id = c.id
+         LEFT JOIN point_rules point_rule
+           ON point_rule.key = CASE c.kind
+             WHEN 'playerCard' THEN 'playerCard'
+             ELSE 'videoQuestion'
+           END
+         WHERE c.status IN ('open', 'scheduled')
+           AND c.starts_at <= CURRENT_TIMESTAMP
+           AND c.ends_at >= CURRENT_TIMESTAMP
+           AND (c.member_only = FALSE OR $1 = TRUE)
+         GROUP BY c.id, point_rule.base_points
+         ORDER BY c.starts_at DESC`,
+          [canAccessMemberContent],
+        );
+        challenges = res.rows;
+        await setCachedJson(cacheKey, challenges, 60);
+      }
 
-    const res = await query(
-      `SELECT id, video_id, title, description, kind, status, reward_points, member_points,
-              video_url, image_url, maximum_attempts, member_only, starts_at, ends_at
-       FROM challenges
-       WHERE status = 'open' AND starts_at <= CURRENT_TIMESTAMP AND ends_at >= CURRENT_TIMESTAMP
-       ORDER BY starts_at DESC`
-    );
-    await setCachedJson(cacheKey, res.rows, 60);
-    return res.rows;
-  });
+      const challengeIds = challenges.map((challenge) => String(challenge.id));
+      if (challengeIds.length === 0) return challenges;
+      const activity = await query(
+        `SELECT challenge_id,
+                COUNT(*)::integer AS attempts_used,
+                BOOL_OR(is_correct) AS solved
+         FROM challenge_submissions
+         WHERE user_id = $1
+           AND challenge_id = ANY($2::varchar[])
+         GROUP BY challenge_id`,
+        [request.user!.id, challengeIds],
+      );
+      return mergeChallengeActivity(challenges, activity.rows);
+    },
+  );
 
   // POST /api/v1/challenges/:id/submit - Submit challenge answer with anti-brute force lock
   fastify.post('/challenges/:id/submit', { preHandler: [authenticateUser] }, async (request, reply) => {
@@ -44,6 +119,10 @@ export async function challengeRoutes(fastify: FastifyInstance) {
         issues: parsed.error.issues,
       });
     }
+
+    // Missing, expired, or temporarily unreadable CSV state fails closed to
+    // fan/x1 without preventing an ordinary challenge attempt or base award.
+    await resolveChallengeMembership(user.id);
 
     // Check anti-brute force lock
     const lockRes = await query(
@@ -63,7 +142,11 @@ export async function challengeRoutes(fastify: FastifyInstance) {
     }
 
     try {
-      const result = await submitChallengeAnswer(id, user.id, parsed.data.answer, user.isYouTubeMember);
+      const result = await submitChallengeAnswer(
+        id,
+        user.id,
+        parsed.data.answer,
+      );
 
       if (!result.correct) {
         // Record failed attempt
@@ -88,7 +171,10 @@ export async function challengeRoutes(fastify: FastifyInstance) {
              VALUES ($1, 'challenge_brute_force', $2, 'warning')`,
             [
               user.id,
-              JSON.stringify({ challengeId: id, totalFailures: failedRes.rows[0].failed_attempts, ip: request.ip }),
+              JSON.stringify({
+                challengeId: id,
+                totalFailures: failedRes.rows[0].failed_attempts,
+              }),
             ]
           ).catch(() => {});
         }
@@ -99,19 +185,30 @@ export async function challengeRoutes(fastify: FastifyInstance) {
 
       return result;
     } catch (err: any) {
-      return reply.status(400).send({ error: 'ChallengeSubmissionError', message: err.message });
+      if (err instanceof ChallengeSubmissionError) {
+        return reply.status(err.statusCode).send({
+          error: err.code,
+          message: err.message,
+        });
+      }
+      request.log.error({ err, challengeId: id }, 'Challenge submission failed');
+      return reply.status(500).send({
+        error: 'ChallengeSubmissionError',
+        message: 'The challenge answer could not be saved. Please try again.',
+      });
     }
   });
 
-  // GET /api/v1/player-cards - Public list of available player card clues
-  fastify.get('/player-cards', async (request, reply) => {
-    const res = await query(
-      `SELECT pc.id, pc.challenge_id, pc.player_name, pc.team, pc.position, pc.card_tier,
-              pc.card_image_url, pc.secret_hint, c.reward_points
-       FROM player_cards pc
-       JOIN challenges c ON c.id = pc.challenge_id
-       WHERE c.status = 'open'`
+  // GET /api/v1/player-cards - Per-user collection. Locked cards deliberately
+  // omit answer-bearing player/team/image/stat fields.
+  fastify.get('/player-cards', { preHandler: [authenticateUser] }, async (request, reply) => {
+    reply.header(
+      'Cache-Control',
+      'private, no-store',
     );
-    return res.rows;
+    return listPlayerCardsForUser(
+      (text, params) => query(text, params),
+      request.user!.id,
+    );
   });
 }

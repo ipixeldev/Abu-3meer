@@ -15,3 +15,10 @@ The photographs are used for a prototype UI and do not imply endorsement.
 The Barcelona and Real Madrid crest files were supplied by the project owner
 for this client prototype. Their inclusion does not imply club endorsement;
 production trademark and brand-use permission must still be confirmed.
+
+## Font attribution
+
+The app bundles Inter, Barlow Condensed, Montserrat, Nunito Sans, Cairo,
+Tajawal, and Noto Sans Arabic from the Google Fonts project. Each family is
+licensed under the SIL Open Font License 1.1; the corresponding license texts
+are included in `assets/fonts/licenses/`.

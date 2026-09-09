@@ -1,5 +1,23 @@
-import { query } from '../db/pool.js';
-import { awardPoints } from './pointsService.js';
+import { getClient } from '../db/pool.js';
+import { config } from '../config.js';
+import { activeMemberAccessSql } from './subscriptionAccess.js';
+import {
+  awardPointsInTransaction,
+  invalidatePointCaches,
+  memberMultiplierForSource,
+  PointSourceType,
+} from './pointsService.js';
+
+export class ChallengeSubmissionError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly statusCode = 400,
+  ) {
+    super(message);
+    this.name = 'ChallengeSubmissionError';
+  }
+}
 
 export function normalizeChallengeAnswer(text: string): string {
   return text
@@ -12,88 +30,292 @@ export function normalizeChallengeAnswer(text: string): string {
     .toLowerCase();
 }
 
+/** Exact normalized matching prevents short/partial guesses from passing. */
+export function isChallengeAnswerAccepted(
+  rawAnswer: string,
+  acceptedAnswers: unknown,
+  legacyAnswer = '',
+): boolean {
+  const normalizedInput = normalizeChallengeAnswer(rawAnswer);
+  if (!normalizedInput) return false;
+
+  const candidates = Array.isArray(acceptedAnswers)
+    ? acceptedAnswers
+        .filter((answer): answer is string => typeof answer === 'string')
+        .map(normalizeChallengeAnswer)
+        .filter(Boolean)
+    : [];
+  if (candidates.length === 0 && legacyAnswer) {
+    candidates.push(normalizeChallengeAnswer(legacyAnswer));
+  }
+  return new Set(candidates).has(normalizedInput);
+}
+
 export async function submitChallengeAnswer(
   challengeId: string,
   userId: string,
   rawAnswer: string,
-  isYouTubeMember: boolean
-): Promise<{ correct: boolean; pointsAwarded: number; message?: string }> {
-  // Check if challenge is active
-  const challengeRes = await query(
-    `SELECT id, title, kind, status, reward_points, member_points, correct_answer,
-            normalized_correct_answer, starts_at, ends_at, maximum_attempts
-     FROM challenges
-     WHERE id = $1`,
-    [challengeId]
-  );
+): Promise<{
+  correct: boolean;
+  pointsAwarded: number;
+  attemptsUsed: number;
+  remainingAttempts: number;
+  solved: boolean;
+  alreadyAwarded?: boolean;
+  message?: string;
+}> {
+  const client = await getClient();
+  let shouldInvalidatePointCaches = false;
 
-  if (challengeRes.rows.length === 0) {
-    throw new Error('Challenge not found');
-  }
+  try {
+    await client.query('BEGIN');
 
-  const challenge = challengeRes.rows[0];
-  const now = new Date();
-  if (challenge.status !== 'open' || now < new Date(challenge.starts_at) || now > new Date(challenge.ends_at)) {
-    throw new Error('Challenge is currently closed');
-  }
+    // Serialize attempts for one user/challenge without requiring a separate
+    // lock row to exist first. This closes concurrent double-claim and attempt
+    // number races while allowing unrelated users to submit in parallel.
+    await client.query(
+      `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+      [`challenge:${challengeId}:user:${userId}`],
+    );
+    // Snapshot imports and claim approval/revocation take the exclusive form
+    // of this lock. A shared lock lets unrelated submissions stay concurrent
+    // while making the membership decision stable through the points write.
+    await client.query(
+      `SELECT pg_advisory_xact_lock_shared(
+         hashtextextended('youtube-membership-snapshot-import', 0)
+       )`,
+    );
 
-  // Check past attempts
-  const submissionsRes = await query(
-    `SELECT id, is_correct, attempt_number FROM challenge_submissions WHERE challenge_id = $1 AND user_id = $2`,
-    [challengeId, userId]
-  );
+    const challengeRes = await client.query(
+      `SELECT c.id, c.title, c.kind, c.status,
+              COALESCE(
+                point_rule.base_points,
+                CASE c.kind
+                  WHEN 'playerCard' THEN $2::integer
+                  ELSE $3::integer
+                END
+              ) AS reward_points,
+              c.correct_answer, c.normalized_correct_answer, c.starts_at,
+              c.ends_at, c.maximum_attempts, c.member_only,
+              COALESCE(question.normalized_accepted_answers, '[]'::jsonb)
+                AS accepted_answers
+       FROM challenges c
+       LEFT JOIN LATERAL (
+         SELECT q.normalized_accepted_answers
+         FROM challenge_questions q
+         WHERE q.challenge_id = c.id
+         ORDER BY q.position, q.id
+         LIMIT 1
+       ) question ON TRUE
+       LEFT JOIN point_rules point_rule
+         ON point_rule.key = CASE c.kind
+           WHEN 'playerCard' THEN 'playerCard'
+           ELSE 'videoQuestion'
+         END
+       WHERE c.id = $1
+       FOR UPDATE OF c`,
+      [
+        challengeId,
+        config.pointDefaults.playerCard,
+        config.pointDefaults.videoPhrase,
+      ],
+    );
 
-  if (submissionsRes.rows.some((s: any) => s.is_correct)) {
-    return { correct: true, pointsAwarded: 0, message: 'Already solved and claimed!' };
-  }
+    if (challengeRes.rows.length === 0) {
+      throw new ChallengeSubmissionError('ChallengeNotFound', 'Challenge not found', 404);
+    }
 
-  if (submissionsRes.rows.length >= challenge.maximum_attempts) {
-    throw new Error(`Maximum attempts reached (${challenge.maximum_attempts})`);
-  }
+    const challenge = challengeRes.rows[0];
+    const membershipRes = await client.query(
+      `SELECT ${activeMemberAccessSql('user_account.id')} AS has_member_access
+       FROM users user_account
+       LEFT JOIN youtube_account_links member_link
+         ON member_link.user_id = user_account.id
+       LEFT JOIN youtube_membership_snapshot_state snapshot_state
+         ON snapshot_state.singleton = TRUE
+       LEFT JOIN youtube_membership_snapshot_imports snapshot_import
+         ON snapshot_import.id = snapshot_state.active_import_id
+        AND snapshot_import.expires_at > clock_timestamp()
+       LEFT JOIN youtube_channel_claims approved_claim
+         ON approved_claim.user_id = user_account.id
+        AND approved_claim.youtube_channel_id = member_link.youtube_channel_id
+        AND approved_claim.status = 'approved'
+       WHERE user_account.id = $1`,
+      [userId],
+    );
+    const hasMemberAccess = membershipRes.rows[0]?.has_member_access === true;
+    const now = new Date();
+    if (
+      !['open', 'scheduled'].includes(challenge.status) ||
+      now < new Date(challenge.starts_at) ||
+      now > new Date(challenge.ends_at)
+    ) {
+      throw new ChallengeSubmissionError(
+        'ChallengeClosed',
+        'Challenge is currently closed',
+      );
+    }
+    if (challenge.member_only && !hasMemberAccess) {
+      throw new ChallengeSubmissionError(
+        'MembershipRequired',
+        'This challenge is available to active members only.',
+        403,
+      );
+    }
 
-  const normalizedInput = normalizeChallengeAnswer(rawAnswer);
-  const normalizedTarget = challenge.normalized_correct_answer || normalizeChallengeAnswer(challenge.correct_answer);
-
-  const isCorrect = normalizedInput === normalizedTarget ||
-                    (normalizedInput.length > 2 && (normalizedTarget.includes(normalizedInput) || normalizedInput.includes(normalizedTarget)));
-
-  const attemptNumber = submissionsRes.rows.length + 1;
-  let pointsEarned = 0;
-
-  if (isCorrect) {
-    const basePoints = challenge.reward_points || 10;
-    const multiplier = isYouTubeMember ? 2.0 : 1.0;
-    const idempotencyKey = `challenge:${challengeId}:user:${userId}`;
-
-    const awardRes = await awardPoints({
+    const sourceType: PointSourceType =
+      challenge.kind === 'playerCard' ? 'player_card' : 'video_phrase';
+    const basePoints = Number(challenge.reward_points);
+    const awardParams = {
       userId,
-      sourceType: challenge.kind === 'playerCard' ? 'player_card' : 'video_phrase',
+      sourceType,
       sourceId: challengeId,
       basePoints,
-      multiplier,
+      multiplier: memberMultiplierForSource(sourceType, hasMemberAccess),
       description: `Solved Challenge: ${challenge.title}`,
-      idempotencyKey,
-    });
+      idempotencyKey: `challenge:${challengeId}:user:${userId}`,
+    };
 
-    pointsEarned = awardRes.pointsAwarded;
-
-    // Increment user challenge count
-    await query(
-      `UPDATE user_profiles SET challenges_completed_count = challenges_completed_count + 1 WHERE user_id = $1`,
-      [userId]
+    const submissionsRes = await client.query(
+      `SELECT id, is_correct, attempt_number, points_awarded
+       FROM challenge_submissions
+       WHERE challenge_id = $1 AND user_id = $2
+       ORDER BY attempt_number DESC`,
+      [challengeId, userId],
     );
+
+    const existingCorrect = submissionsRes.rows.find(
+      (submission: any) => submission.is_correct,
+    );
+    if (existingCorrect) {
+      // Replaying a successful request must report the canonical award, not
+      // "0 points". Calling the idempotent award operation also repairs the
+      // rare legacy state where a correct submission was saved without its
+      // ledger transaction.
+      const award = await awardPointsInTransaction(client, awardParams);
+      const canonicalPoints = award.pointsAwarded;
+      if (Number(existingCorrect.points_awarded) !== canonicalPoints) {
+        await client.query(
+          `UPDATE challenge_submissions
+           SET points_awarded = $1
+           WHERE id = $2`,
+          [canonicalPoints, existingCorrect.id],
+        );
+      }
+      await client.query('COMMIT');
+      if (!award.alreadyAwarded) await invalidatePointCaches();
+      return {
+        correct: true,
+        pointsAwarded: canonicalPoints,
+        attemptsUsed: submissionsRes.rows.length,
+        remainingAttempts: 0,
+        solved: true,
+        alreadyAwarded: award.alreadyAwarded === true,
+        message: award.alreadyAwarded
+          ? 'Already solved; your points were awarded earlier.'
+          : 'Your missing challenge points were restored.',
+      };
+    }
+
+    if (submissionsRes.rows.length >= challenge.maximum_attempts) {
+      throw new ChallengeSubmissionError(
+        'MaximumAttemptsReached',
+        `Maximum attempts reached (${challenge.maximum_attempts})`,
+      );
+    }
+
+    const normalizedInput = normalizeChallengeAnswer(rawAnswer);
+    const legacyAnswer =
+      challenge.normalized_correct_answer || challenge.correct_answer || '';
+    const isCorrect = isChallengeAnswerAccepted(
+      rawAnswer,
+      challenge.accepted_answers,
+      legacyAnswer,
+    );
+    const attemptNumber = submissionsRes.rows.reduce(
+      (maximum: number, row: any) =>
+        Math.max(maximum, Number(row.attempt_number) || 0),
+      0,
+    ) + 1;
+
+    let pointsEarned = 0;
+    let newlyCompleted = 0;
+    let newlyClaimedCards = 0;
+    let alreadyAwarded = false;
+    if (isCorrect) {
+      const award = await awardPointsInTransaction(client, awardParams);
+
+      // A legacy partial write may already own the award key. Do not present
+      // old points as newly earned or increment the completion counter twice,
+      // but still return/store the canonical amount instead of a misleading 0.
+      pointsEarned = award.pointsAwarded;
+      alreadyAwarded = award.alreadyAwarded === true;
+      newlyCompleted = award.alreadyAwarded ? 0 : 1;
+      shouldInvalidatePointCaches = !award.alreadyAwarded;
+
+      const claims = await client.query(
+        `INSERT INTO player_card_claims
+           (player_card_id, user_id, points_awarded)
+         SELECT pc.id, $2, $3
+         FROM player_cards pc
+         WHERE pc.enabled = TRUE
+           AND (
+             pc.challenge_id = $1 OR
+             NULLIF(pc.source_challenge_id, '') = $1
+           )
+         ON CONFLICT (user_id, player_card_id) DO NOTHING
+         RETURNING player_card_id`,
+        [challengeId, userId, pointsEarned],
+      );
+      newlyClaimedCards = claims.rowCount ?? 0;
+    }
+
+    await client.query(
+      `INSERT INTO challenge_submissions
+         (challenge_id, user_id, raw_answer, normalized_answer, is_correct,
+          attempt_number, points_awarded)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        challengeId,
+        userId,
+        rawAnswer,
+        normalizedInput,
+        isCorrect,
+        attemptNumber,
+        pointsEarned,
+      ],
+    );
+
+    if (newlyCompleted > 0 || newlyClaimedCards > 0) {
+      const profileUpdate = await client.query(
+        `UPDATE user_profiles
+         SET challenges_completed_count = challenges_completed_count + $1,
+             player_cards_collected_count = player_cards_collected_count + $2,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = $3`,
+        [newlyCompleted, newlyClaimedCards, userId],
+      );
+      if (profileUpdate.rowCount !== 1) {
+        throw new Error(`Challenge profile not found for user ${userId}`);
+      }
+    }
+
+    await client.query('COMMIT');
+    if (shouldInvalidatePointCaches) await invalidatePointCaches();
+    return {
+      correct: isCorrect,
+      pointsAwarded: pointsEarned,
+      attemptsUsed: attemptNumber,
+      remainingAttempts: isCorrect
+        ? 0
+        : Math.max(0, Number(challenge.maximum_attempts) - attemptNumber),
+      solved: isCorrect,
+      ...(isCorrect ? { alreadyAwarded } : {}),
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
   }
-
-  await query(
-    `INSERT INTO challenge_submissions (challenge_id, user_id, raw_answer, normalized_answer, is_correct, attempt_number, points_awarded)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (user_id, challenge_id) DO UPDATE SET
-       raw_answer = EXCLUDED.raw_answer,
-       normalized_answer = EXCLUDED.normalized_answer,
-       is_correct = EXCLUDED.is_correct,
-       points_awarded = EXCLUDED.points_awarded`,
-    [challengeId, userId, rawAnswer, normalizedInput, isCorrect, attemptNumber, pointsEarned]
-  );
-
-  return { correct: isCorrect, pointsAwarded: pointsEarned };
 }

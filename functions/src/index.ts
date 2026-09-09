@@ -24,6 +24,7 @@ import {
   challengeIsOpen,
   didBothTeamsScore,
   evaluateChallengeAnswers,
+  memberMultiplierForSource,
   parseFootballSeasonId,
   playerCardOwnershipId,
   predictionIsOpen,
@@ -160,8 +161,11 @@ function storedTimestamp(value: unknown, field: string): Timestamp {
 }
 
 function hasVerifiedMembership(user: Record<string, unknown>): boolean {
-  const multiplier = Number(user.membershipMultiplier ?? 1);
-  return Number.isFinite(multiplier) && multiplier > 1;
+  // Membership authority moved to the PostgreSQL API's Google-owned-channel
+  // check against the latest staff CSV. Legacy Firestore fields must never
+  // grant member-only access or points.
+  void user;
+  return false;
 }
 
 function millis(value: unknown, field: string): Timestamp {
@@ -261,7 +265,7 @@ function archivePreviousSeason(
     monthlyPoints: params.user.monthlyPoints ?? leaderboard.monthlyPoints ?? 0,
     seasonPoints: params.user.seasonPoints ?? leaderboard.seasonPoints ?? 0,
     totalPoints: params.user.totalPoints ?? leaderboard.totalPoints ?? 0,
-    isMember: Number(params.user.membershipMultiplier ?? 1) > 1,
+    isMember: false,
     monthlyPeriod: params.user.monthlyPeriod ?? leaderboard.monthlyPeriod ?? "",
     seasonId: previousSeasonId,
     archivedAt,
@@ -306,8 +310,14 @@ async function awardPoints(params: {
     if (user.suspended === true) {
       throw new HttpsError("permission-denied", "This account is suspended.");
     }
-    const membershipMultiplier = Number(user.membershipMultiplier ?? 1);
-    const multiplier = params.applyMembershipMultiplier === false ? 1 : membershipMultiplier;
+    // The active PostgreSQL API owns membership and XP. This legacy callable
+    // must stay fail-closed instead of trusting an old Firestore multiplier.
+    const membershipMultiplier = 1;
+    const multiplier = memberMultiplierForSource(
+      params.sourceType,
+      membershipMultiplier,
+      params.applyMembershipMultiplier !== false,
+    );
     const finalPoints = calculatePoints(params.basePoints, multiplier);
     const sameMonth = user.monthlyPeriod === currentPeriod;
     // Empty season IDs are legacy/current-season records. Preserve their
@@ -438,7 +448,7 @@ export const completeOnboarding = onCall(phase3CallableOptions(region), async (r
       supportedTeam,
       avatarUrl,
       role: existing.data()?.role ?? "user",
-      membershipMultiplier: existing.data()?.membershipMultiplier ?? 1,
+      membershipMultiplier: 1,
       suspended: existing.data()?.suspended ?? false,
       totalPoints,
       monthlyPoints: existing.data()?.monthlyPoints ?? 0,
@@ -460,17 +470,40 @@ export const completeOnboarding = onCall(phase3CallableOptions(region), async (r
       monthlyPoints: existing.data()?.monthlyPoints ?? 0,
       seasonPoints,
       totalPoints,
-      isMember: Number(existing.data()?.membershipMultiplier ?? 1) > 1,
+      isMember: false,
       monthlyPeriod: existing.data()?.monthlyPeriod ?? periodId(),
       seasonId: currentSeason,
       updatedAt: now,
     }, {merge: true});
   });
-  return {ok: true};
+  const rules = await pointSettings();
+  const signupAward = await awardPoints({
+    userId: auth.uid,
+    sourceType: "signUpBonus",
+    sourceId: "signup",
+    basePoints: configuredInteger(
+      rules.signUpBonus,
+      "Signup bonus",
+      DEFAULT_POINTS.signUpBonus,
+      0,
+      500,
+    ),
+    reason: "One-time signup XP",
+    applyMembershipMultiplier: false,
+  });
+  return {
+    ok: true,
+    pointsAwarded: signupAward.awarded ? signupAward.finalPoints : 0,
+    alreadyAwarded: !signupAward.awarded,
+  };
 });
 
 export const submitPrediction = onCall(phase3CallableOptions(region), async (request) => {
   const auth = requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "This legacy prediction endpoint is disabled. Use the Abu 3meer API.",
+  );
   const matchId = text(request.data?.matchId, "Match", 128);
   const homeScore = integer(request.data?.homeScore, "Home score");
   const awayScore = integer(request.data?.awayScore, "Away score");
@@ -1143,6 +1176,32 @@ export const submitChallenge = onCall(phase3CallableOptions(region), async (requ
   });
 });
 
+// Backward-compatible name used by released Flutter builds for the advanced
+// challenge UI. Keep the payload translation server-side so those builds do
+// not fail with functions/not-found while newer clients use submitChallenge.
+export const submitChallengeAnswers = onCall(phase3CallableOptions(region), async (request) => {
+  const auth = requireAuth(request.auth);
+  const challengeKind = String(request.data?.kind ?? "");
+  if (![
+    "videoPhrase",
+    "videoQuestion",
+    "secretPhrase",
+    "multipleChoice",
+    "trueFalse",
+    "multiQuestion",
+    "quiz",
+    "playerCard",
+  ].includes(challengeKind)) {
+    throw new HttpsError("invalid-argument", "Challenge type is invalid.");
+  }
+  return submitChallengeAttempt({
+    uid: auth.uid,
+    collection: challengeKind === "playerCard" ? "playerCards" : "videoQuestions",
+    id: identifier(request.data?.challengeId, "Challenge", 128),
+    answers: request.data?.answers,
+  });
+});
+
 export const submitVideoAnswer = onCall(phase3CallableOptions(region), async (request) => {
   const auth = requireAuth(request.auth);
   return submitChallengeAttempt({
@@ -1165,6 +1224,10 @@ export const claimPlayerCard = onCall(phase3CallableOptions(region), async (requ
 
 export const claimAchievement = onCall(phase3CallableOptions(region), async (request) => {
   const auth = requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "Achievements and achievement XP are not part of Abu 3meer.",
+  );
   const achievementId = documentId(
     request.data?.achievementId,
     "Achievement",
@@ -1410,6 +1473,10 @@ export const claimAchievement = onCall(phase3CallableOptions(region), async (req
 
 export const redeemLoyaltyReward = onCall(phase3CallableOptions(region), async (request) => {
   const auth = requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "Rewards and redemptions are not part of Abu 3meer.",
+  );
   const rewardId = identifier(request.data?.rewardId, "Reward", 128);
   const idempotencyKey = identifier(request.data?.idempotencyKey, "Idempotency key", 128);
   const redemptionId = redemptionLedgerId(auth.uid, rewardId, idempotencyKey);
@@ -1575,6 +1642,10 @@ export const redeemLoyaltyReward = onCall(phase3CallableOptions(region), async (
 
 export const updateRedemptionStatus = onCall(phase3CallableOptions(region), async (request) => {
   const auth = requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "Rewards and redemptions are not part of Abu 3meer.",
+  );
   await requireContentManager(auth.uid);
   const redemptionId = documentId(request.data?.redemptionId, "Redemption");
   const requestedStatus = text(request.data?.status, "Status", 20);
@@ -1854,31 +1925,28 @@ export const cacheLatestYouTubeVideo = onSchedule("0 * * * *", async (event) => 
 });
 
 export const deleteAccountData = onCall(phase3CallableOptions(region), async (request) => {
-  const auth = requireAuth(request.auth);
-  // Optional: check if auth.uid is deleted in Firebase Auth already, or delete user data.
-  // Actually, usually it's cleaner to use auth trigger (functions.auth.user().onDelete), but since we are doing a callable:
-  const uid = auth.uid;
-  await db.runTransaction(async (t) => {
-     t.update(db.collection("users").doc(uid), {
-         suspended: true,
-         deleted: true,
-         updatedAt: FieldValue.serverTimestamp(),
-         username: `deleted_${uid.slice(0,8)}`,
-         displayName: "Deleted User"
-     });
-     t.delete(db.collection("leaderboardEntries").doc(uid));
-  });
-  return {ok: true};
+  requireAuth(request.auth);
+  // Account data is authoritative in PostgreSQL. This legacy Firebase-only
+  // callable cannot prove that the self-hosted deletion succeeded, so it must
+  // never remove Firestore, Storage, or Firebase Auth on its own.
+  throw new HttpsError(
+    "failed-precondition",
+    "Account deletion has moved to the current app. Update ABU 3MEER and delete your account from Settings.",
+  );
 });
 
 export const verifyYouTubeMembership = onCall(phase3CallableOptions(region), async (request) => {
-  const auth = requireAuth(request.auth);
-  const uid = auth.uid;
-  // This is scaffolding. In a real scenario, we'd verify an OAuth token with the YouTube Data API.
-  // We'll set the multiplier assuming it's valid for testing purposes, or check a custom token.
-  await db.collection("users").doc(uid).update({
-    membershipMultiplier: 2,
-    youtubeVerifiedAt: FieldValue.serverTimestamp(),
-  });
-  return {ok: true, multiplier: 2};
+  requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "YouTube membership verification has moved to the current app. Update ABU 3MEER and use Check membership in your profile.",
+  );
+});
+
+export const adminSetYouTubeMembership = onCall(phase3CallableOptions(region), async (request) => {
+  requireAuth(request.auth);
+  throw new HttpsError(
+    "failed-precondition",
+    "Manual YouTube membership assignment is disabled. Membership is verified by the current app against the latest staff CSV.",
+  );
 });

@@ -1,54 +1,63 @@
 part of 'fan_league_app.dart';
 
 class _ProductionChallenges extends StatelessWidget {
-  const _ProductionChallenges({required this.repository});
+  const _ProductionChallenges({
+    required this.repository,
+    required this.profile,
+  });
   final ProductionRepository repository;
+  final AbuUserProfile profile;
 
   @override
   Widget build(BuildContext context) => _PageFrame(
     kicker: abuText(
       context,
-      'Watch · answer · collect points',
-      'شاهد · أجب · اجمع النقاط',
+      'Watch · answer · collect XP',
+      'شاهد · أجب · اجمع XP',
     ),
     title: abuText(context, 'Challenges', 'التحديات'),
-    child: StreamBuilder<List<AbuChallenge>>(
-      stream: repository.watchChallenges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const _ProductionSkeleton(height: 220);
-        }
-        if (snapshot.hasError) {
-          return _ProductionEmpty(
-            icon: Icons.cloud_off_rounded,
-            title: abuText(
-              context,
-              'Challenges unavailable',
-              'التحديات غير متاحة',
-            ),
-            body: productionErrorMessage(snapshot.error!),
-          );
-        }
-        final challenges = snapshot.data ?? const [];
-        if (challenges.isEmpty) {
-          return const _ProductionChallengeEmptyState();
-        }
-        final uid = repository.auth.currentUser?.uid;
-        if (uid == null) {
-          return _ProductionChallengeGrid(
-            challenges: challenges,
-            repository: repository,
-          );
-        }
-        return StreamBuilder<AbuUserProfile?>(
-          stream: repository.watchProfile(uid),
-          builder: (context, profileSnapshot) => _ProductionChallengeGrid(
-            challenges: challenges,
-            repository: repository,
-            isMember: profileSnapshot.data?.isYouTubeMember ?? false,
-          ),
-        );
-      },
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        StreamBuilder<List<AbuChallenge>>(
+          stream: repository.watchChallenges(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const _ProductionSkeleton(height: 220);
+            }
+            if (snapshot.hasError) {
+              return _ProductionEmpty(
+                icon: Icons.cloud_off_rounded,
+                title: abuText(
+                  context,
+                  'Challenges unavailable',
+                  'التحديات غير متاحة',
+                ),
+                body: productionErrorMessage(snapshot.error!),
+              );
+            }
+            final challenges = snapshot.data ?? const [];
+            if (challenges.isEmpty) {
+              return const _ProductionChallengeEmptyState();
+            }
+            final uid = repository.auth.currentUser?.uid;
+            if (uid == null) {
+              return _ProductionChallengeGrid(
+                challenges: challenges,
+                repository: repository,
+              );
+            }
+            return StreamBuilder<AbuUserProfile?>(
+              stream: repository.watchProfile(uid),
+              builder: (context, profileSnapshot) => _ProductionChallengeGrid(
+                challenges: challenges,
+                repository: repository,
+                isMember: profileSnapshot.data?.hasMemberAccess ?? false,
+              ),
+            );
+          },
+        ),
+      ],
     ),
   );
 }
@@ -95,8 +104,8 @@ class _ProductionChallengeEmptyState extends StatelessWidget {
           ),
           body: abuText(
             context,
-            'Secret phrases and hidden Player Cards published by Abu 3meer will appear here.',
-            'ستظهر هنا العبارات السرية وبطاقات اللاعبين التي ينشرها أبو عمير.',
+            'Video questions and player-guess challenges published by Abu 3meer will appear here.',
+            'ستظهر هنا أسئلة الفيديو وتحديات تخمين اللاعبين التي ينشرها أبو عمير.',
           ),
         );
       }
@@ -111,12 +120,12 @@ class _ProductionChallengeEmptyState extends StatelessWidget {
           ),
         ),
         (
-          Icons.style_rounded,
-          abuText(context, 'PLAYER CARD', 'بطاقة اللاعب'),
+          Icons.person_search_rounded,
+          abuText(context, 'GUESS THE PLAYER', 'احزر اللاعب'),
           abuText(
             context,
-            'Find the hidden player and claim it',
-            'اعثر على اللاعب المخفي واحصل على بطاقته',
+            'Watch the clues and answer the player name',
+            'شاهد التلميحات وأجب باسم اللاعب',
           ),
         ),
         (
@@ -274,7 +283,7 @@ class _ProductionChallengeCard extends StatelessWidget {
   );
 
   IconData get _icon => switch (challenge.canonicalKind) {
-    'playerCard' => Icons.style_rounded,
+    'playerCard' => Icons.person_search_rounded,
     'multipleChoice' => Icons.fact_check_rounded,
     'trueFalse' => Icons.rule_rounded,
     'multiQuestion' => Icons.quiz_rounded,
@@ -313,7 +322,7 @@ class _ProductionChallengeCard extends StatelessWidget {
                 child: Icon(_icon, color: _productionPrimary(context)),
               ),
               const Spacer(),
-              _RewardChip(text: '+${challenge.rewardPoints} PTS'),
+              _RewardChip(text: '+${challenge.rewardPoints} XP'),
             ],
           ),
           const SizedBox(height: 18),
@@ -337,12 +346,19 @@ class _ProductionChallengeCard extends StatelessWidget {
                 ),
               ),
               _ChallengeMetaChip(
-                icon: Icons.replay_rounded,
+                icon: challenge.solved
+                    ? Icons.check_circle_rounded
+                    : Icons.replay_rounded,
                 label: abuText(
                   context,
-                  '${math.max(0, challenge.maximumAttempts - challenge.attemptsUsed)} attempts left',
-                  '${math.max(0, challenge.maximumAttempts - challenge.attemptsUsed)} محاولة متبقية',
+                  challenge.solved
+                      ? 'SOLVED'
+                      : '${math.max(0, challenge.maximumAttempts - challenge.attemptsUsed)} attempts left',
+                  challenge.solved
+                      ? 'تم الحل'
+                      : '${math.max(0, challenge.maximumAttempts - challenge.attemptsUsed)} محاولة متبقية',
                 ),
+                color: challenge.solved ? _productionPrimary(context) : _muted,
               ),
               if (challenge.questions.length > 1)
                 _ChallengeMetaChip(
@@ -379,6 +395,7 @@ class _ProductionChallengeCard extends StatelessWidget {
             child: FilledButton(
               onPressed:
                   challenge.isOpen &&
+                      !challenge.solved &&
                       challenge.attemptsUsed < challenge.maximumAttempts &&
                       (!challenge.memberOnly || isMember)
                   ? () => answer(context)
@@ -386,6 +403,8 @@ class _ProductionChallengeCard extends StatelessWidget {
               child: Text(
                 !challenge.isOpen
                     ? abuText(context, 'CLOSED', 'مغلق')
+                    : challenge.solved
+                    ? abuText(context, 'SOLVED', 'تم الحل')
                     : challenge.memberOnly && !isMember
                     ? abuText(context, 'MEMBERS ONLY', 'للأعضاء فقط')
                     : challenge.attemptsUsed >= challenge.maximumAttempts
@@ -510,13 +529,18 @@ class _ChallengePlayDialogState extends State<_ChallengePlayDialog> {
       if (!mounted) return;
       final correct = result['correct'] == true;
       final points = result['points'] ?? 0;
+      final alreadyAwarded = result['alreadyAwarded'] == true;
       final remaining = result['remainingAttempts'];
       final messenger = ScaffoldMessenger.of(context);
       final feedback = correct
           ? abuText(
               context,
-              'Perfect! +$points points added.',
-              'إجابة رائعة! تمت إضافة $points نقطة.',
+              alreadyAwarded
+                  ? 'Already solved. You already received $points XP.'
+                  : 'Perfect! +$points XP added.',
+              alreadyAwarded
+                  ? 'تم حل التحدي سابقاً. حصلت على $points XP من قبل.'
+                  : 'إجابة رائعة! تمت إضافة $points XP.',
             )
           : abuText(
               context,
@@ -623,7 +647,7 @@ class _ChallengePlayDialogState extends State<_ChallengePlayDialog> {
     title: Row(
       children: [
         Expanded(child: Text(widget.challenge.title)),
-        _RewardChip(text: '+${widget.challenge.rewardPoints} PTS'),
+        _RewardChip(text: '+${widget.challenge.rewardPoints} XP'),
       ],
     ),
     content: SizedBox(
@@ -689,72 +713,8 @@ class _ChallengePlayDialogState extends State<_ChallengePlayDialog> {
   );
 }
 
-class _ProductionHomeActivityFeed extends StatelessWidget {
-  const _ProductionHomeActivityFeed({required this.repository});
-  final ProductionRepository repository;
-
-  @override
-  Widget build(BuildContext context) => StreamBuilder<List<AbuChallenge>>(
-    stream: repository.watchChallenges(),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting) {
-        return const _ProductionSkeleton(height: 210);
-      }
-      if (snapshot.hasError) {
-        return _ProductionEmpty(
-          icon: Icons.cloud_off_rounded,
-          title: abuText(context, 'Activity unavailable', 'النشاط غير متاح'),
-          body: productionErrorMessage(snapshot.error!),
-        );
-      }
-      final active = (snapshot.data ?? const <AbuChallenge>[])
-          .where((event) => event.isOpen)
-          .take(3)
-          .toList();
-      if (active.isEmpty) {
-        return const SizedBox.shrink();
-      }
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text(
-                abuText(context, 'YOUR NEXT MOVES', 'خطواتك القادمة'),
-                style: _display(22),
-              ),
-              const Spacer(),
-              Text(
-                abuText(
-                  context,
-                  '${active.length} LIVE',
-                  '${active.length} متاح',
-                ),
-                style: TextStyle(
-                  color: _productionPrimary(context),
-                  fontWeight: FontWeight.w900,
-                  fontSize: 11,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _ResponsiveGrid(
-            children: active
-                .map(
-                  (event) => _ProductionChallengeCard(
-                    challenge: event,
-                    repository: repository,
-                  ),
-                )
-                .toList(),
-          ),
-        ],
-      );
-    },
-  );
-}
-
+// Kept dormant while Community/Posts are outside the current product scope.
+// ignore: unused_element
 class _ProductionCommunity extends StatelessWidget {
   const _ProductionCommunity({required this.repository, required this.profile});
   final ProductionRepository repository;
@@ -1924,9 +1884,9 @@ class _ProductionPlayerCardCollection extends StatelessWidget {
           body: productionErrorMessage(snapshot.error!),
         );
       }
-      final cards = (snapshot.data ?? const <AbuPlayerCard>[])
-          .where((card) => card.enabled)
-          .toList();
+      // The server hides disabled unclaimed cards but deliberately retains a
+      // disabled card for a fan who already collected it.
+      final cards = snapshot.data ?? const <AbuPlayerCard>[];
       if (cards.isEmpty) {
         return const SizedBox.shrink();
       }
@@ -2052,7 +2012,7 @@ class _PlayerCollectionCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(99),
                       ),
                       child: Text(
-                        '${card.rating}',
+                        card.unlocked ? '${card.rating}' : '?',
                         style: _display(18, color: _rarityColor(context)),
                       ),
                     ),
@@ -2077,6 +2037,12 @@ class _PlayerCollectionCard extends StatelessWidget {
                   Text(
                     card.unlocked
                         ? '${card.teamName} · ${card.position}'
+                        : card.sourceChallengeId.trim().isEmpty
+                        ? abuText(
+                            context,
+                            'Awaiting an unlock challenge',
+                            'في انتظار ربط تحدٍ لفتحها',
+                          )
                         : abuText(
                             context,
                             'Complete the linked challenge to unlock',
@@ -2677,14 +2643,16 @@ class _InteractiveFanCard extends StatefulWidget {
     required this.profile,
     this.temporaryImage,
     this.onEdit,
-    this.rank,
+    this.monthlyRank,
+    this.seasonRank,
     this.accuracy,
     this.repository,
   });
   final AbuUserProfile profile;
   final Uint8List? temporaryImage;
   final VoidCallback? onEdit;
-  final int? rank;
+  final int? monthlyRank;
+  final int? seasonRank;
   final double? accuracy;
   final ProductionRepository? repository;
 
@@ -2692,6 +2660,20 @@ class _InteractiveFanCard extends StatefulWidget {
   State<_InteractiveFanCard> createState() => _InteractiveFanCardState();
 }
 
+@visibleForTesting
+Widget productionFanCardForTesting({
+  required AbuUserProfile profile,
+  required VoidCallback onEdit,
+}) => _InteractiveFanCard(
+  profile: profile,
+  onEdit: onEdit,
+  monthlyRank: 1,
+  seasonRank: 1,
+  accuracy: 100,
+);
+
+// Kept dormant for a future Fan War release.
+// ignore: unused_element
 class _ProductionFanWar extends StatelessWidget {
   const _ProductionFanWar({required this.repository});
   final ProductionRepository repository;
@@ -3103,7 +3085,10 @@ class _FanWarContributorCard extends StatelessWidget {
                   if (!desktop) {
                     return ListTile(
                       leading: Text('${row.key + 1}', style: _display(18)),
-                      title: Text('@${entry.username}'),
+                      title: SubscriberName(
+                        '@${entry.username}',
+                        isSubscriber: entry.hasMemberAccess,
+                      ),
                       subtitle: Text(entry.supportedTeam),
                       trailing: Text(
                         '${entry.seasonPoints}',
@@ -3130,8 +3115,9 @@ class _FanWarContributorCard extends StatelessWidget {
                         ),
                         Expanded(
                           flex: 3,
-                          child: Text(
+                          child: SubscriberName(
                             '@${entry.username}',
+                            isSubscriber: entry.hasMemberAccess,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(fontWeight: FontWeight.w800),
@@ -3167,6 +3153,8 @@ class _FanWarContributorCard extends StatelessWidget {
   );
 }
 
+// Kept dormant until the achievements surface returns to navigation.
+// ignore: unused_element
 class _ProductionAchievements extends StatelessWidget {
   const _ProductionAchievements({
     required this.repository,
@@ -3976,7 +3964,7 @@ class _ProductionRewardsState extends State<_ProductionRewards> {
                   (reward) => _LoyaltyRewardCard(
                     reward: reward,
                     balance: widget.profile.loyaltyPoints,
-                    isMember: widget.profile.isYouTubeMember,
+                    isMember: widget.profile.hasMemberAccess,
                     busy: redeeming,
                     onRedeem: () => _redeem(context, reward),
                   ),
@@ -4257,7 +4245,7 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
   static const double _stiffness = 110;
   static const double _damping = 18;
   bool _isHovered = false;
-  int? _loadedRank;
+  UserLeaderboardRanks? _loadedRanks;
   double? _loadedAccuracy;
 
   @override
@@ -4281,11 +4269,13 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
 
   Future<void> _fetchStats() async {
     if (widget.repository == null) return;
-    if (widget.rank == null) {
-      final r = await widget.repository!.fetchUserRank(widget.profile.uid);
-      if (mounted) setState(() => _loadedRank = r);
+    final isOwnProfile =
+        widget.repository!.auth.currentUser?.uid == widget.profile.uid;
+    if (widget.monthlyRank == null || widget.seasonRank == null) {
+      final ranks = await widget.repository!.fetchUserRanks(widget.profile);
+      if (mounted) setState(() => _loadedRanks = ranks);
     }
-    if (widget.accuracy == null) {
+    if (isOwnProfile && widget.accuracy == null) {
       final a = await widget.repository!.fetchUserAccuracy(widget.profile.uid);
       if (mounted) setState(() => _loadedAccuracy = a);
     }
@@ -4373,8 +4363,7 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
           )
         : _CardMonogram(initials: initials);
 
-    final levelNumber = (profile.totalPoints ~/ 100) + 1;
-    final isMember = profile.isYouTubeMember;
+    final isMember = profile.hasMemberAccess;
     final tierTitle = isMember ? 'GOLD' : 'SILVER';
     final tierColor = isMember
         ? const Color(0xFFFFD700)
@@ -4448,7 +4437,8 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    '$levelNumber',
+                                    'XP',
+                                    key: const Key('fan-card-xp-heading'),
                                     style: TextStyle(
                                       color: tierColor,
                                       fontSize: 40,
@@ -4495,13 +4485,13 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                                   _CountryFlagWidget(
                                     country: profile.country,
                                     flagEmoji: profile.countryFlag,
-                                    size: 14,
+                                    size: 22,
                                   ),
                                   const SizedBox(height: 6),
                                   _ProductionTeamBadge(
                                     team: profile.supportedTeam,
                                     source: profile.supportedTeamLogo,
-                                    size: 24,
+                                    size: 34,
                                   ),
                                 ],
                               ),
@@ -4541,8 +4531,9 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                           ),
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Text(
+                            child: SubscriberName(
                               profile.displayName.toUpperCase(),
+                              isSubscriber: profile.hasMemberAccess,
                               textAlign: TextAlign.center,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -4567,65 +4558,86 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                           const SizedBox(height: 10),
                           Builder(
                             builder: (context) {
-                              final effectiveRank =
-                                  widget.rank ?? _loadedRank ?? 1;
+                              final effectiveMonthlyRank =
+                                  widget.monthlyRank ??
+                                  _loadedRanks?.currentMonth ??
+                                  0;
+                              final effectiveSeasonRank =
+                                  widget.seasonRank ??
+                                  _loadedRanks?.season ??
+                                  0;
                               final effectiveAccuracy =
-                                  widget.accuracy ?? _loadedAccuracy ?? 100.0;
-                              final rankText = profile.totalPoints > 0
-                                  ? '#$effectiveRank'
+                                  widget.accuracy ?? _loadedAccuracy;
+                              final monthlyRankText = effectiveMonthlyRank > 0
+                                  ? '#$effectiveMonthlyRank'
                                   : '—';
-                              final accuracyText = profile.totalPoints > 0
+                              final seasonRankText = effectiveSeasonRank > 0
+                                  ? '#$effectiveSeasonRank'
+                                  : '—';
+                              final accuracyText =
+                                  profile.totalPoints > 0 &&
+                                      effectiveAccuracy != null
                                   ? '${effectiveAccuracy.toStringAsFixed(0)}%'
                                   : '—';
                               return Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      _FanCardStat(
-                                        value: '${profile.totalPoints}',
-                                        label: 'TOTAL XP',
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          value: '${profile.totalPoints}',
+                                          label: 'LIFETIME XP',
+                                        ),
                                       ),
-                                      _FanCardStat(
-                                        value: rankText,
-                                        label: 'RANK',
-                                        reverse: true,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          value: monthlyRankText,
+                                          label: 'MONTH RANK',
+                                          reverse: true,
+                                        ),
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 6),
                                   Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      _FanCardStat(
-                                        icon: const _StreakIconWidget(size: 13),
-                                        value: '${profile.currentStreak}',
-                                        label: 'STREAK',
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          icon: const _StreakIconWidget(
+                                            size: 13,
+                                          ),
+                                          value: '${profile.currentStreak}',
+                                          label: 'STREAK',
+                                        ),
                                       ),
-                                      _FanCardStat(
-                                        value: accuracyText,
-                                        label: 'ACCURACY',
-                                        reverse: true,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          value: accuracyText,
+                                          label: 'ACCURACY',
+                                          reverse: true,
+                                        ),
                                       ),
                                     ],
                                   ),
                                   const SizedBox(height: 6),
                                   Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
                                     children: [
-                                      _FanCardStat(
-                                        value: '${profile.seasonPoints}',
-                                        label: 'LOYALTY',
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          value: '${profile.seasonPoints}',
+                                          label: 'SEASON XP',
+                                        ),
                                       ),
-                                      _FanCardStat(
-                                        icon: const _StreakIconWidget(size: 13),
-                                        value: '${profile.longestStreak}',
-                                        label: 'BEST',
-                                        reverse: true,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: _FanCardStat(
+                                          value: seasonRankText,
+                                          label: 'SEASON RANK',
+                                          reverse: true,
+                                        ),
                                       ),
                                     ],
                                   ),
@@ -4658,12 +4670,13 @@ class _InteractiveFanCardState extends State<_InteractiveFanCard>
                     ),
                     CustomPaint(painter: _FanCardBorderPainter()),
                     if (widget.onEdit != null)
-                      Positioned(
+                      PositionedDirectional(
                         top: 14,
-                        right: 14,
+                        end: 14,
                         child: Material(
                           color: Colors.transparent,
                           child: InkWell(
+                            key: const Key('fan-card-edit-button'),
                             onTap: widget.onEdit,
                             borderRadius: BorderRadius.circular(999),
                             child: Container(
@@ -4733,7 +4746,9 @@ class _FanCardStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final valueWidget = Row(
-      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: reverse
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
       children: [
         if (icon != null) ...[icon!, const SizedBox(width: 4)],
         Text(
@@ -4746,13 +4761,17 @@ class _FanCardStat extends StatelessWidget {
         ),
       ],
     );
-    final labelWidget = Text(
-      label,
-      style: TextStyle(
-        color: _muted,
-        fontSize: 9,
-        fontWeight: FontWeight.w800,
-        letterSpacing: .8,
+    final labelWidget = SizedBox(
+      width: double.infinity,
+      child: Text(
+        label,
+        textAlign: reverse ? TextAlign.end : TextAlign.start,
+        style: TextStyle(
+          color: _muted,
+          fontSize: 9,
+          fontWeight: FontWeight.w800,
+          letterSpacing: .8,
+        ),
       ),
     );
 
@@ -4811,6 +4830,8 @@ class _FanCardBorderPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+// Kept dormant while all fixtures live in Predict.
+// ignore: unused_element
 class _ProductionCalendar extends StatelessWidget {
   const _ProductionCalendar({required this.repository, required this.profile});
   final ProductionRepository repository;
@@ -5360,7 +5381,7 @@ Future<void> _showAdminChallengePreview(
                     ),
                   ),
                   const Spacer(),
-                  _RewardChip(text: '+$rewardPoints PTS'),
+                  _RewardChip(text: '+$rewardPoints XP'),
                 ],
               ),
               const SizedBox(height: 18),
@@ -5462,81 +5483,6 @@ Future<void> _showAdminChallengePreview(
   ),
 );
 
-Future<void> _showAdminPostPreview(
-  BuildContext context, {
-  required String title,
-  required String body,
-  required String imageUrl,
-  required String authorName,
-  dynamic imageBytes,
-}) => showDialog<void>(
-  context: context,
-  builder: (context) => AlertDialog(
-    title: Text(abuText(context, 'POST PREVIEW', 'معاينة المنشور')),
-    content: SizedBox(
-      width: 620,
-      child: SingleChildScrollView(
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              if (imageUrl.trim().isNotEmpty || imageBytes != null)
-                _campaignImagePreview(
-                  context: context,
-                  imageUrl: imageUrl,
-                  imageBytes: imageBytes,
-                  height: 240,
-                ),
-              Padding(
-                padding: const EdgeInsets.all(22),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      authorName.toUpperCase(),
-                      style: TextStyle(
-                        color: _productionPrimary(context),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.1,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      title.trim().isEmpty
-                          ? abuText(context, 'Untitled post', 'منشور بلا عنوان')
-                          : title.trim(),
-                      style: _display(27),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      body.trim().isEmpty
-                          ? abuText(
-                              context,
-                              'Add post content before publishing.',
-                              'أضف محتوى المنشور قبل النشر.',
-                            )
-                          : body.trim(),
-                      style: TextStyle(color: _muted, height: 1.6),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: Text(abuText(context, 'CLOSE', 'إغلاق')),
-      ),
-    ],
-  ),
-);
-
 Future<void> _showAdminAnnouncementPreview(
   BuildContext context, {
   required String title,
@@ -5606,6 +5552,7 @@ class _AdminQuestionDraft {
 
   final TextEditingController prompt = TextEditingController();
   final TextEditingController answer = TextEditingController();
+  final TextEditingController acceptedAnswers = TextEditingController();
   final TextEditingController options = TextEditingController();
   String type;
 
@@ -5615,17 +5562,26 @@ class _AdminQuestionDraft {
       .where((value) => value.isNotEmpty)
       .toList(growable: false);
 
-  AbuChallengeQuestion toModel(int index) => AbuChallengeQuestion(
-    id: 'question_${index + 1}',
-    prompt: prompt.text.trim(),
-    type: type,
-    options: type == 'trueFalse'
-        ? const <String>['true', 'false']
-        : parsedOptions,
-    correctAnswer: type == 'trueFalse'
-        ? answer.text.trim().toLowerCase()
-        : answer.text.trim(),
-  );
+  AbuChallengeQuestion toModel(int index, {String fallbackPrompt = ''}) =>
+      AbuChallengeQuestion(
+        id: 'question_${index + 1}',
+        prompt: effectiveChallengePrompt(
+          title: fallbackPrompt,
+          prompt: prompt.text,
+        ),
+        type: type,
+        options: type == 'trueFalse'
+            ? const <String>['true', 'false']
+            : parsedOptions,
+        correctAnswer: type == 'trueFalse'
+            ? answer.text.trim().toLowerCase()
+            : answer.text.trim(),
+        acceptedAnswers: acceptedAnswers.text
+            .split('\n')
+            .map((value) => value.trim())
+            .where((value) => value.isNotEmpty)
+            .toList(growable: false),
+      );
 
   void updateType(String value) {
     type = value;
@@ -5640,12 +5596,13 @@ class _AdminQuestionDraft {
   void dispose() {
     prompt.dispose();
     answer.dispose();
+    acceptedAnswers.dispose();
     options.dispose();
   }
 }
 
 IconData _adminChallengeKindIcon(String kind) => switch (kind) {
-  'playerCard' => Icons.style_rounded,
+  'playerCard' => Icons.person_search_rounded,
   _ => Icons.subtitles_rounded,
 };
 
@@ -5667,42 +5624,20 @@ class _ProductionAdminTools extends StatelessWidget {
           label: abuText(context, 'NEW CHALLENGE', 'تحدٍ جديد'),
           detail: abuText(
             context,
-            'Publish a phrase or Player Card challenge.',
-            'انشر عبارة أو تحدي بطاقة لاعب.',
+            'Publish a video question or Player Guess challenge.',
+            'انشر سؤال فيديو أو تحدي تخمين لاعب.',
           ),
           color: _productionPrimary(context),
           primary: true,
           onTap: () => createChallenge(context),
         ),
         _AdminQuickAction(
-          icon: Icons.post_add_rounded,
-          label: abuText(context, 'NEW POST', 'منشور جديد'),
-          detail: abuText(
-            context,
-            'Add an article, image, reaction or external link.',
-            'أضف مقالاً أو صورة أو تفاعلاً أو رابطاً خارجياً.',
-          ),
-          color: _blue,
-          onTap: () => createPost(context),
-        ),
-        _AdminQuickAction(
-          icon: Icons.sports_esports_rounded,
-          label: abuText(context, 'GAMES ARENA', 'ساحة الألعاب'),
-          detail: abuText(
-            context,
-            'Show or hide the interactive games arena for fans.',
-            'إظهار أو إخفاء ساحة الألعاب التفاعلية للمشجعين.',
-          ),
-          color: _gold,
-          onTap: () => _toggleGamesArena(context),
-        ),
-        _AdminQuickAction(
           icon: Icons.workspace_premium_rounded,
           label: abuText(context, 'YOUTUBE MEMBERS', 'أعضاء يوتيوب'),
           detail: abuText(
             context,
-            'Verify and grant Gold status to channel members.',
-            'التحقق ومنح البطاقة الذهبية لأعضاء القناة.',
+            'Replace the complete membership CSV used by automatic checks.',
+            'استبدل ملف CSV الكامل الذي تستخدمه عمليات التحقق التلقائية.',
           ),
           color: _gold,
           onTap: () => _manageYouTubeMembers(context),
@@ -5719,72 +5654,40 @@ class _ProductionAdminTools extends StatelessWidget {
           onTap: () => editAnnouncement(context),
         ),
         _AdminQuickAction(
-          icon: Icons.emoji_events_rounded,
-          label: abuText(context, 'ACHIEVEMENTS', 'الإنجازات'),
+          icon: Icons.person_search_rounded,
+          label: abuText(context, 'NEW PLAYER GUESS', 'تخمين لاعب جديد'),
           detail: abuText(
             context,
-            'Configure goals, progress rules and point rewards.',
-            'اضبط الأهداف وقواعد التقدم ومكافآت النقاط.',
-          ),
-          color: _gold,
-          onTap: () => manageAchievements(context),
-        ),
-        _AdminQuickAction(
-          icon: Icons.military_tech_rounded,
-          label: abuText(context, 'LEVELS', 'المستويات'),
-          detail: abuText(
-            context,
-            'Build the point ladder and unlockable perks.',
-            'أنشئ سلم النقاط والمزايا القابلة للفتح.',
-          ),
-          color: _productionPrimary(context),
-          onTap: () => manageLevels(context),
-        ),
-        _AdminQuickAction(
-          icon: Icons.redeem_rounded,
-          label: abuText(context, 'LOYALTY REWARDS', 'مكافآت الولاء'),
-          detail: abuText(
-            context,
-            'Manage catalogue stock, costs and availability.',
-            'أدر مخزون الكتالوج والتكلفة والتوفر.',
-          ),
-          color: _red,
-          onTap: () => manageRewards(context),
-        ),
-        _AdminQuickAction(
-          icon: Icons.receipt_long_rounded,
-          label: abuText(context, 'REDEMPTIONS', 'طلبات الاستبدال'),
-          detail: abuText(
-            context,
-            'Review fulfilment and keep fans informed of every request.',
-            'راجع التنفيذ وأبقِ الجماهير على اطلاع بحالة كل طلب.',
-          ),
-          color: _gold,
-          onTap: () => manageRedemptions(context),
-        ),
-        if (profile.isAdmin)
-          _AdminQuickAction(
-            icon: Icons.tune_rounded,
-            label: abuText(context, 'POINT ADJUSTMENTS', 'تعديل النقاط'),
-            detail: abuText(
-              context,
-              'Correct a fan balance with a permanent audit receipt.',
-              'صحح رصيد مشجع مع إيصال تدقيق دائم.',
-            ),
-            color: _productionPrimary(context),
-            onTap: () => showAdminPointAdjustments(context, repository),
-          ),
-        _AdminQuickAction(
-          icon: Icons.style_rounded,
-          label: abuText(context, 'PLAYER CARDS', 'بطاقات اللاعبين'),
-          detail: abuText(
-            context,
-            'Publish collectible cards linked to challenges.',
-            'انشر بطاقات قابلة للجمع ومرتبطة بالتحديات.',
+            'Publish a video clue and let fans answer the player name.',
+            'انشر تلميح فيديو ودع الجمهور يخمن اسم اللاعب.',
           ),
           color: _blue,
           onTap: () => managePlayerCards(context),
         ),
+        if (profile.isAdmin)
+          _AdminQuickAction(
+            icon: Icons.date_range_rounded,
+            label: abuText(context, 'LEADERBOARD SEASONS', 'مواسم الترتيب'),
+            detail: abuText(
+              context,
+              'Set the season name and exact XP leaderboard dates.',
+              'حدد اسم الموسم وتواريخ ترتيب XP بدقة.',
+            ),
+            color: _productionPrimary(context),
+            onTap: () => manageLeaderboardSeasons(context),
+          ),
+        if (profile.canManageSubscriptions)
+          _AdminQuickAction(
+            icon: Icons.verified_user_outlined,
+            label: abuText(context, 'MEMBERSHIP ACCESS', 'صلاحيات العضوية'),
+            detail: abuText(
+              context,
+              'Grant or block app access. Store billing is unchanged.',
+              'منح أو تعطيل صلاحيات التطبيق دون تغيير فوترة المتجر.',
+            ),
+            color: _gold,
+            onTap: () => manageSubscriptionAccess(context),
+          ),
         if (profile.canManageRoles)
           _AdminQuickAction(
             icon: Icons.manage_accounts_rounded,
@@ -5895,65 +5798,50 @@ class _ProductionAdminTools extends StatelessWidget {
                   onTap: () => createChallenge(context),
                 ),
                 _AdminMobileAction(
-                  icon: Icons.post_add_rounded,
-                  label: abuText(context, 'NEW POST', 'منشور جديد'),
-                  color: _blue,
-                  onTap: () => createPost(context),
-                ),
-                _AdminMobileAction(
                   icon: Icons.campaign_rounded,
                   label: abuText(context, 'LAUNCH POPUP', 'نافذة بدء'),
                   color: _gold,
                   onTap: () => editAnnouncement(context),
                 ),
-                _AdminMobileAction(
-                  icon: Icons.emoji_events_rounded,
-                  label: abuText(context, 'ACHIEVEMENTS', 'الإنجازات'),
-                  color: _gold,
-                  onTap: () => manageAchievements(context),
-                ),
-                _AdminMobileAction(
-                  icon: Icons.military_tech_rounded,
-                  label: abuText(context, 'LEVELS', 'المستويات'),
-                  color: _productionPrimary(context),
-                  onTap: () => manageLevels(context),
-                ),
-                _AdminMobileAction(
-                  icon: Icons.redeem_rounded,
-                  label: abuText(context, 'REWARDS', 'المكافآت'),
-                  color: _red,
-                  onTap: () => manageRewards(context),
-                ),
-                _AdminMobileAction(
-                  icon: Icons.receipt_long_rounded,
-                  label: abuText(context, 'REDEMPTIONS', 'طلبات الاستبدال'),
-                  color: _gold,
-                  onTap: () => manageRedemptions(context),
-                ),
-                if (profile.isAdmin)
+                if (profile.canUploadMembershipSnapshot)
                   _AdminMobileAction(
                     icon: Icons.workspace_premium_rounded,
                     label: abuText(context, 'YOUTUBE MEMBERS', 'أعضاء يوتيوب'),
                     color: _gold,
                     onTap: () => _manageYouTubeMembers(context),
                   ),
-                if (profile.isAdmin)
-                  _AdminMobileAction(
-                    icon: Icons.tune_rounded,
-                    label: abuText(
-                      context,
-                      'POINT ADJUSTMENTS',
-                      'تعديل النقاط',
-                    ),
-                    color: _productionPrimary(context),
-                    onTap: () => showAdminPointAdjustments(context, repository),
-                  ),
                 _AdminMobileAction(
-                  icon: Icons.style_rounded,
-                  label: abuText(context, 'PLAYER CARDS', 'بطاقات اللاعبين'),
+                  icon: Icons.person_search_rounded,
+                  label: abuText(
+                    context,
+                    'NEW PLAYER GUESS',
+                    'تخمين لاعب جديد',
+                  ),
                   color: _blue,
                   onTap: () => managePlayerCards(context),
                 ),
+                if (profile.isAdmin)
+                  _AdminMobileAction(
+                    icon: Icons.date_range_rounded,
+                    label: abuText(
+                      context,
+                      'LEADERBOARD SEASONS',
+                      'مواسم الترتيب',
+                    ),
+                    color: _productionPrimary(context),
+                    onTap: () => manageLeaderboardSeasons(context),
+                  ),
+                if (profile.canManageSubscriptions)
+                  _AdminMobileAction(
+                    icon: Icons.verified_user_outlined,
+                    label: abuText(
+                      context,
+                      'MEMBERSHIP ACCESS',
+                      'صلاحيات العضوية',
+                    ),
+                    color: _gold,
+                    onTap: () => manageSubscriptionAccess(context),
+                  ),
                 if (profile.canManageRoles)
                   _AdminMobileAction(
                     icon: Icons.manage_accounts_rounded,
@@ -5987,66 +5875,22 @@ class _ProductionAdminTools extends StatelessWidget {
     ),
   );
 
-  Future<void> _toggleGamesArena(BuildContext context) async {
-    showDialog<void>(
-      context: context,
-      builder: (context) => StreamBuilder<bool>(
-        stream: repository.watchGamesEnabled(),
-        builder: (context, snapshot) {
-          final enabled = snapshot.data ?? false;
-          return AlertDialog(
-            title: Text(
-              abuText(context, 'GAMES ARENA SETTING', 'إعداد ساحة الألعاب'),
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SwitchListTile(
-                  title: Text(
-                    abuText(
-                      context,
-                      'Enable Games for Users',
-                      'تفعيل الألعاب للمستخدمين',
-                    ),
-                  ),
-                  subtitle: Text(
-                    abuText(
-                      context,
-                      'When enabled, fans will see the Games tab in their navigation.',
-                      'عند التفعيل، سيظهر تبويب الألعاب للمشجعين في القائمة.',
-                    ),
-                  ),
-                  value: enabled,
-                  onChanged: (val) async {
-                    await repository.setGamesEnabled(val);
-                  },
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(abuText(context, 'DONE', 'تم')),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   Future<void> _manageYouTubeMembers(BuildContext context) => showDialog<void>(
     context: context,
     builder: (_) => _AdminMembershipDialog(repository: repository),
   );
 
-  Future<void> createChallenge(BuildContext context) async {
+  Future<void> createChallenge(
+    BuildContext context, {
+    String initialKind = 'videoPhrase',
+  }) async {
+    final pointRules = await repository.loadPointRules();
+    if (!context.mounted) return;
     final title = TextEditingController();
     final description = TextEditingController();
     final video = TextEditingController();
-    final points = TextEditingController(text: '10');
     final questions = <_AdminQuestionDraft>[_AdminQuestionDraft()];
-    var kind = 'videoPhrase';
+    var kind = initialKind == 'playerCard' ? 'playerCard' : 'videoPhrase';
     var status = 'open';
     var maximumAttempts = 3;
     var memberOnly = false;
@@ -6056,13 +5900,17 @@ class _ProductionAdminTools extends StatelessWidget {
     XFile? selectedImage;
     dynamic selectedImageBytes;
     String kindLabel(BuildContext context, String value) => switch (value) {
-      'playerCard' => abuText(context, 'Player Card', 'بطاقة لاعب'),
+      'playerCard' => abuText(context, 'Guess the player', 'احزر اللاعب'),
       _ => abuText(context, 'Video phrase', 'عبارة من الفيديو'),
     };
 
     String questionTypeForKind(String value) => switch (value) {
       _ => 'text',
     };
+
+    int pointsForKind(String value) => value == 'playerCard'
+        ? (pointRules['playerCard'] ?? 15).toInt()
+        : (pointRules['videoQuestion'] ?? 15).toInt();
 
     void resetQuestions(String value) {
       for (final draft in questions) {
@@ -6071,6 +5919,17 @@ class _ProductionAdminTools extends StatelessWidget {
       questions
         ..clear()
         ..add(_AdminQuestionDraft(type: questionTypeForKind(value)));
+      if (value == 'playerCard') {
+        questions.first.prompt.text = abuText(
+          context,
+          'Which player is described in the video?',
+          'من هو اللاعب المذكور في الفيديو؟',
+        );
+      }
+    }
+
+    if (kind == 'playerCard') {
+      resetQuestions(kind);
     }
 
     final submit = await showDialog<bool>(
@@ -6114,13 +5973,38 @@ class _ProductionAdminTools extends StatelessWidget {
                       setDialogState(() {
                         kind = value;
                         resetQuestions(value);
-                        points.text = switch (value) {
-                          'playerCard' => '300',
-                          _ => '250',
-                        };
                       });
                     },
                   ),
+                  if (kind == 'playerCard') ...[
+                    const SizedBox(height: 12),
+                    Card(
+                      color: _productionPrimary(context).withValues(alpha: .08),
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(
+                              Icons.smart_display_rounded,
+                              color: _productionPrimary(context),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                abuText(
+                                  context,
+                                  'Add the YouTube video containing the clues, then enter the player name as the private correct answer below. Fans watch, type their guess in the app, and earn the configured points.',
+                                  'أضف فيديو يوتيوب الذي يحتوي على التلميحات، ثم أدخل اسم اللاعب كإجابة صحيحة خاصة أدناه. يشاهد الجمهور الفيديو ويكتبون تخمينهم داخل التطبيق ويحصلون على النقاط المحددة.',
+                                ),
+                                style: TextStyle(color: _muted, height: 1.4),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: status,
@@ -6218,14 +6102,21 @@ class _ProductionAdminTools extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 10),
-                  TextField(
-                    controller: points,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: abuText(
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.stars_rounded),
+                    title: Text(
+                      abuText(
                         context,
-                        'Reward points',
-                        'نقاط المكافأة',
+                        '${pointsForKind(kind)} XP for a correct answer',
+                        '${pointsForKind(kind)} XP للإجابة الصحيحة',
+                      ),
+                    ),
+                    subtitle: Text(
+                      abuText(
+                        context,
+                        'Controlled by Admin Studio → Point rules. Existing and new challenges always use the current global value.',
+                        'تتحكم بها لوحة الإدارة ← قواعد النقاط. تستخدم التحديات الحالية والجديدة دائماً القيمة العامة الحالية.',
                       ),
                     ),
                   ),
@@ -6256,11 +6147,7 @@ class _ProductionAdminTools extends StatelessWidget {
                     onChanged: (value) =>
                         setDialogState(() => memberOnly = value),
                     title: Text(
-                      abuText(
-                        context,
-                        'YouTube members only',
-                        'لأعضاء يوتيوب فقط',
-                      ),
+                      abuText(context, 'Members only', 'للأعضاء فقط'),
                     ),
                   ),
                   SwitchListTile.adaptive(
@@ -6387,8 +6274,13 @@ class _ProductionAdminTools extends StatelessWidget {
                               decoration: InputDecoration(
                                 labelText: abuText(
                                   context,
-                                  'Question prompt',
-                                  'نص السؤال',
+                                  'Question prompt (optional)',
+                                  'نص السؤال (اختياري)',
+                                ),
+                                helperText: abuText(
+                                  context,
+                                  'The challenge title is used when this is empty.',
+                                  'يُستخدم عنوان التحدي عند تركه فارغاً.',
                                 ),
                               ),
                             ),
@@ -6441,15 +6333,52 @@ class _ProductionAdminTools extends StatelessWidget {
                                         value ?? 'true',
                               )
                             else
-                              TextField(
-                                controller: questions[index].answer,
-                                decoration: InputDecoration(
-                                  labelText: abuText(
-                                    context,
-                                    'Private correct answer',
-                                    'الإجابة الصحيحة الخاصة',
+                              Column(
+                                children: [
+                                  TextField(
+                                    controller: questions[index].answer,
+                                    decoration: InputDecoration(
+                                      labelText: kind == 'playerCard'
+                                          ? abuText(
+                                              context,
+                                              'Private player name',
+                                              'اسم اللاعب الخاص',
+                                            )
+                                          : abuText(
+                                              context,
+                                              'Private correct answer',
+                                              'الإجابة الصحيحة الخاصة',
+                                            ),
+                                      helperText: kind == 'playerCard'
+                                          ? abuText(
+                                              context,
+                                              'Fans never see this answer before submitting.',
+                                              'لن يرى الجمهور هذه الإجابة قبل الإرسال.',
+                                            )
+                                          : null,
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(height: 10),
+                                  TextField(
+                                    controller:
+                                        questions[index].acceptedAnswers,
+                                    minLines: 2,
+                                    maxLines: 4,
+                                    decoration: InputDecoration(
+                                      labelText: kind == 'playerCard'
+                                          ? abuText(
+                                              context,
+                                              'Other accepted player spellings · one per line (optional)',
+                                              'تهجئات أخرى مقبولة لاسم اللاعب · واحدة في كل سطر (اختياري)',
+                                            )
+                                          : abuText(
+                                              context,
+                                              'Other accepted answers · one per line (optional)',
+                                              'إجابات أخرى مقبولة · واحدة في كل سطر (اختياري)',
+                                            ),
+                                    ),
+                                  ),
+                                ],
                               ),
                           ],
                         ),
@@ -6473,7 +6402,7 @@ class _ProductionAdminTools extends StatelessWidget {
                 kind: kind,
                 title: title.text,
                 description: description.text,
-                rewardPoints: int.tryParse(points.text) ?? 0,
+                rewardPoints: pointsForKind(kind),
                 status: status,
                 startsAt: startsAt,
                 endsAt: endsAt,
@@ -6482,7 +6411,12 @@ class _ProductionAdminTools extends StatelessWidget {
                 questions: questions
                     .asMap()
                     .entries
-                    .map((entry) => entry.value.toModel(entry.key))
+                    .map(
+                      (entry) => entry.value.toModel(
+                        entry.key,
+                        fallbackPrompt: title.text,
+                      ),
+                    )
                     .toList(),
               ),
               icon: Icon(Icons.visibility_rounded),
@@ -6490,19 +6424,12 @@ class _ProductionAdminTools extends StatelessWidget {
             ),
             FilledButton(
               onPressed: () {
-                final reward = int.tryParse(points.text);
                 String? validationError;
                 if (title.text.trim().isEmpty) {
                   validationError = abuText(
                     context,
                     'Add a challenge title.',
                     'أضف عنواناً للتحدي.',
-                  );
-                } else if (reward == null || reward <= 0) {
-                  validationError = abuText(
-                    context,
-                    'Reward points must be greater than zero.',
-                    'يجب أن تكون نقاط المكافأة أكبر من صفر.',
                   );
                 } else if (!endsAt.isAfter(startsAt)) {
                   validationError = abuText(
@@ -6513,12 +6440,11 @@ class _ProductionAdminTools extends StatelessWidget {
                 }
                 for (final draft in questions) {
                   if (validationError != null) break;
-                  if (draft.prompt.text.trim().isEmpty ||
-                      draft.answer.text.trim().isEmpty) {
+                  if (draft.answer.text.trim().isEmpty) {
                     validationError = abuText(
                       context,
-                      'Every question needs a prompt and private correct answer.',
-                      'يحتاج كل سؤال إلى نص وإجابة صحيحة خاصة.',
+                      'Enter the private correct answer so responses can be scored.',
+                      'أدخل الإجابة الصحيحة الخاصة حتى يمكن تقييم الإجابات.',
                     );
                   } else if (draft.type == 'multipleChoice' &&
                       draft.parsedOptions.length < 2) {
@@ -6556,20 +6482,22 @@ class _ProductionAdminTools extends StatelessWidget {
     final questionModels = questions
         .asMap()
         .entries
-        .map((entry) => entry.value.toModel(entry.key))
+        .map(
+          (entry) => entry.value.toModel(entry.key, fallbackPrompt: title.text),
+        )
         .toList(growable: false);
     if (submit == true && context.mounted) {
       await _adminAction(context, () async {
         final uploadedImageUrl = selectedImage == null
             ? ''
             : await repository.uploadChallengeImage(selectedImage!);
-        return repository.createAdvancedChallenge(
+        await repository.createAdvancedChallenge(
           kind: kind,
           title: title.text,
           description: description.text,
           videoUrl: video.text,
           imageUrl: uploadedImageUrl,
-          rewardPoints: int.tryParse(points.text) ?? 0,
+          rewardPoints: pointsForKind(kind),
           availableFrom: startsAt,
           availableUntil: endsAt,
           status: status,
@@ -6583,153 +6511,9 @@ class _ProductionAdminTools extends StatelessWidget {
     title.dispose();
     description.dispose();
     video.dispose();
-    points.dispose();
     for (final question in questions) {
       question.dispose();
     }
-  }
-
-  Future<void> createPost(BuildContext context) async {
-    final title = TextEditingController();
-    final body = TextEditingController();
-    final link = TextEditingController();
-    XFile? selectedImage;
-    dynamic selectedImageBytes;
-    final submit = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(abuText(context, 'Publish a post', 'نشر منشور')),
-          content: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: title,
-                    decoration: InputDecoration(
-                      labelText: abuText(context, 'Headline', 'العنوان'),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: body,
-                    maxLines: 6,
-                    decoration: InputDecoration(
-                      labelText: abuText(context, 'Post', 'المنشور'),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      final selection = await _selectAdminImage(context);
-                      if (selection == null || !context.mounted) return;
-                      setDialogState(() {
-                        selectedImage = selection.file;
-                        selectedImageBytes = selection.bytes;
-                      });
-                    },
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: Text(
-                      selectedImage == null
-                          ? abuText(
-                              context,
-                              'SELECT POST IMAGE (OPTIONAL)',
-                              'اختر صورة المنشور (اختياري)',
-                            )
-                          : selectedImage!.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  if (selectedImage != null) ...[
-                    const SizedBox(height: 10),
-                    _campaignImagePreview(
-                      context: context,
-                      imageUrl: '',
-                      imageBytes: selectedImageBytes,
-                      height: 180,
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: link,
-                    decoration: InputDecoration(
-                      labelText: abuText(
-                        context,
-                        'Clickable link (optional)',
-                        'الرابط القابل للنقر (اختياري)',
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text(abuText(context, 'CANCEL', 'إلغاء')),
-            ),
-            TextButton.icon(
-              onPressed: () => _showAdminPostPreview(
-                context,
-                title: title.text,
-                body: body.text,
-                imageUrl: '',
-                imageBytes: selectedImageBytes,
-                authorName: profile.displayName,
-              ),
-              icon: Icon(Icons.visibility_rounded),
-              label: Text(abuText(context, 'PREVIEW', 'معاينة')),
-            ),
-            FilledButton(
-              onPressed: () {
-                final linkError =
-                    link.text.trim().isNotEmpty &&
-                    externalHttpUri(link.text) == null;
-                if (title.text.trim().isEmpty ||
-                    body.text.trim().isEmpty ||
-                    linkError) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        abuText(
-                          context,
-                          linkError
-                              ? 'Enter a valid clickable link.'
-                              : 'Add a headline and post content.',
-                          linkError
-                              ? 'أدخل رابطاً صالحاً.'
-                              : 'أضف عنواناً ومحتوى للمنشور.',
-                        ),
-                      ),
-                    ),
-                  );
-                  return;
-                }
-                Navigator.pop(context, true);
-              },
-              child: Text(abuText(context, 'PUBLISH', 'نشر')),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (submit != true || !context.mounted) return;
-    await _adminAction(context, () async {
-      final uploadedImageUrl = selectedImage == null
-          ? ''
-          : await repository.uploadPostImage(selectedImage!);
-      return repository.createPost(
-        title: title.text,
-        body: body.text,
-        imageUrl: uploadedImageUrl,
-        linkUrl: link.text,
-        authorName: profile.displayName,
-      );
-    }, abuText(context, 'Post published.', 'تم نشر المنشور.'));
   }
 
   Future<void> editAnnouncement(BuildContext context) async {
@@ -6757,7 +6541,7 @@ class _ProductionAdminTools extends StatelessWidget {
     String? imageValidationError;
     String? uploadError;
     var uploading = false;
-    final submission = await showDialog<({String imageUrl})?>(
+    final submission = await showDialog<({String imageUrl, bool reset})?>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
@@ -6782,115 +6566,129 @@ class _ProductionAdminTools extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: _surface2,
+                  Material(
+                    color: _surface2,
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: _line),
+                      side: BorderSide(color: _line),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          abuText(
-                            context,
-                            'SCHEDULE & DELIVERY',
-                            'الجدولة والعرض',
-                          ),
-                          style: TextStyle(
-                            color: _productionPrimary(context),
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.1,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        DropdownButtonFormField<String>(
-                          initialValue: frequency,
-                          decoration: InputDecoration(
-                            labelText: abuText(
+                    clipBehavior: Clip.antiAlias,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Text(
+                            abuText(
                               context,
-                              'How often should each user see it?',
-                              'كم مرة يراها كل مستخدم؟',
+                              'SCHEDULE & DELIVERY',
+                              'الجدولة والعرض',
+                            ),
+                            style: TextStyle(
+                              color: _productionPrimary(context),
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.1,
                             ),
                           ),
-                          items: [
-                            DropdownMenuItem(
-                              value: 'once',
-                              child: Text(
-                                abuText(
-                                  context,
-                                  'Once for this campaign',
-                                  'مرة واحدة لهذه الحملة',
-                                ),
-                              ),
-                            ),
-                            DropdownMenuItem(
-                              value: 'daily',
-                              child: Text(
-                                abuText(context, 'Once per day', 'مرة يومياً'),
-                              ),
-                            ),
-                            DropdownMenuItem(
-                              value: 'session',
-                              child: Text(
-                                abuText(
-                                  context,
-                                  'Once per app session',
-                                  'مرة في كل جلسة',
-                                ),
-                              ),
-                            ),
-                            DropdownMenuItem(
-                              value: 'always',
-                              child: Text(
-                                abuText(
-                                  context,
-                                  'Every app launch',
-                                  'عند كل تشغيل',
-                                ),
-                              ),
-                            ),
-                          ],
-                          onChanged: (value) =>
-                              setDialogState(() => frequency = value ?? 'once'),
-                        ),
-                        const SizedBox(height: 8),
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final start = _AdminDateTile(
-                              label: abuText(
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<String>(
+                            initialValue: frequency,
+                            decoration: InputDecoration(
+                              labelText: abuText(
                                 context,
-                                'Starts (date & time)',
-                                'يبدأ (التاريخ والوقت)',
+                                'How often should each user see it?',
+                                'كم مرة يراها كل مستخدم؟',
                               ),
-                              value: startsAt,
-                              onChanged: (value) =>
-                                  setDialogState(() => startsAt = value),
-                            );
-                            final end = _AdminDateTile(
-                              label: abuText(
-                                context,
-                                'Expires (date & time)',
-                                'ينتهي (التاريخ والوقت)',
+                            ),
+                            items: [
+                              DropdownMenuItem(
+                                value: 'once',
+                                child: Text(
+                                  abuText(
+                                    context,
+                                    'Once for this campaign',
+                                    'مرة واحدة لهذه الحملة',
+                                  ),
+                                ),
                               ),
-                              value: endsAt,
-                              onChanged: (value) =>
-                                  setDialogState(() => endsAt = value),
-                            );
-                            if (constraints.maxWidth < 560) {
-                              return Column(children: [start, end]);
-                            }
-                            return Row(
-                              children: [
-                                Expanded(child: start),
-                                const SizedBox(width: 10),
-                                Expanded(child: end),
-                              ],
-                            );
-                          },
-                        ),
-                      ],
+                              DropdownMenuItem(
+                                value: 'daily',
+                                child: Text(
+                                  abuText(
+                                    context,
+                                    'Once per day',
+                                    'مرة يومياً',
+                                  ),
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: 'session',
+                                child: Text(
+                                  abuText(
+                                    context,
+                                    'Once per app session',
+                                    'مرة في كل جلسة',
+                                  ),
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: 'always',
+                                child: Text(
+                                  abuText(
+                                    context,
+                                    'Every app launch',
+                                    'عند كل تشغيل',
+                                  ),
+                                ),
+                              ),
+                            ],
+                            onChanged: (value) => setDialogState(
+                              () => frequency = value ?? 'once',
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Builder(
+                            builder: (context) {
+                              final start = _AdminDateTile(
+                                label: abuText(
+                                  context,
+                                  'Starts (date & time)',
+                                  'يبدأ (التاريخ والوقت)',
+                                ),
+                                value: startsAt,
+                                onChanged: (value) =>
+                                    setDialogState(() => startsAt = value),
+                              );
+                              final end = _AdminDateTile(
+                                label: abuText(
+                                  context,
+                                  'Expires (date & time)',
+                                  'ينتهي (التاريخ والوقت)',
+                                ),
+                                value: endsAt,
+                                onChanged: (value) =>
+                                    setDialogState(() => endsAt = value),
+                              );
+                              // AlertDialog measures its content intrinsically.
+                              // LayoutBuilder cannot answer intrinsic-size
+                              // requests, which left only the modal barrier on
+                              // Android and made the popup editor look blank.
+                              final compact =
+                                  MediaQuery.sizeOf(context).width < 720;
+                              if (compact) {
+                                return Column(children: [start, end]);
+                              }
+                              return Row(
+                                children: [
+                                  Expanded(child: start),
+                                  const SizedBox(width: 10),
+                                  Expanded(child: end),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -7038,6 +6836,65 @@ class _ProductionAdminTools extends StatelessWidget {
             ),
           ),
           actions: [
+            if (existing != null)
+              TextButton.icon(
+                onPressed: uploading
+                    ? null
+                    : () async {
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (confirmationContext) => AlertDialog(
+                            title: Text(
+                              abuText(
+                                confirmationContext,
+                                'Reset launch popup?',
+                                'إعادة ضبط نافذة البدء؟',
+                              ),
+                            ),
+                            content: Text(
+                              abuText(
+                                confirmationContext,
+                                'This removes the popup campaign from every device. You can create a new one later.',
+                                'سيؤدي هذا إلى إزالة حملة النافذة من جميع الأجهزة. يمكنك إنشاء حملة جديدة لاحقاً.',
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(confirmationContext, false),
+                                child: Text(
+                                  abuText(
+                                    confirmationContext,
+                                    'CANCEL',
+                                    'إلغاء',
+                                  ),
+                                ),
+                              ),
+                              FilledButton.icon(
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: _red,
+                                ),
+                                onPressed: () =>
+                                    Navigator.pop(confirmationContext, true),
+                                icon: const Icon(Icons.delete_forever_rounded),
+                                label: Text(
+                                  abuText(
+                                    confirmationContext,
+                                    'RESET',
+                                    'إعادة ضبط',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true && context.mounted) {
+                          Navigator.pop(context, (imageUrl: '', reset: true));
+                        }
+                      },
+                icon: const Icon(Icons.delete_forever_rounded),
+                label: Text(abuText(context, 'RESET', 'إعادة ضبط')),
+              ),
             TextButton(
               onPressed: uploading ? null : () => Navigator.pop(context),
               child: Text(abuText(context, 'CANCEL', 'إلغاء')),
@@ -7098,15 +6955,18 @@ class _ProductionAdminTools extends StatelessWidget {
                             uploading = false;
                             uploadError = abuText(
                               context,
-                              'Image upload is not available. Enable Firebase Storage for this project and try again. ${productionErrorMessage(error)}',
-                              'رفع الصور غير متاح. فعّل Firebase Storage لهذا المشروع ثم حاول مجدداً. ${productionErrorMessage(error)}',
+                              'The media server could not save this image. Check the server upload volume and try again. ${productionErrorMessage(error)}',
+                              'تعذّر على خادم الوسائط حفظ هذه الصورة. تحقق من مساحة رفع الملفات في الخادم ثم حاول مجدداً. ${productionErrorMessage(error)}',
                             );
                           });
                           return;
                         }
                       }
                       if (context.mounted) {
-                        Navigator.pop(context, (imageUrl: finalImageUrl));
+                        Navigator.pop(context, (
+                          imageUrl: finalImageUrl,
+                          reset: false,
+                        ));
                       }
                     },
               child: uploading
@@ -7122,6 +6982,14 @@ class _ProductionAdminTools extends StatelessWidget {
       ),
     );
     if (submission == null || !context.mounted) return;
+    if (submission.reset) {
+      await _adminAction(
+        context,
+        repository.resetAnnouncement,
+        abuText(context, 'Launch popup reset.', 'تمت إعادة ضبط نافذة البدء.'),
+      );
+      return;
+    }
     await _adminAction(
       context,
       () => repository.saveAnnouncement(
@@ -7232,37 +7100,21 @@ class _ProductionAdminTools extends StatelessWidget {
       _showAdminRedemptionManager(context, repository);
 
   Future<void> managePlayerCards(BuildContext context) =>
-      _showAdminDefinitionManager<AbuPlayerCard>(
+      createChallenge(context, initialKind: 'playerCard');
+
+  Future<void> manageLeaderboardSeasons(BuildContext context) =>
+      showDialog<void>(
         context: context,
-        title: abuText(
-          context,
-          'Player Card studio',
-          'استوديو بطاقات اللاعبين',
+        builder: (_) => _AdminLeaderboardSeasonsDialog(repository: repository),
+      );
+
+  Future<void> manageSubscriptionAccess(BuildContext context) =>
+      showDialog<void>(
+        context: context,
+        builder: (_) => AdminSubscriptionDialog(
+          repository: repository,
+          currentProfile: profile,
         ),
-        emptyTitle: abuText(
-          context,
-          'No Player Cards configured',
-          'لم يتم إعداد بطاقات لاعبين',
-        ),
-        emptyBody: abuText(
-          context,
-          'Publish the first collectible card.',
-          'انشر أول بطاقة قابلة للجمع.',
-        ),
-        stream: repository.watchManagedPlayerCards(),
-        enabled: (item) => item.enabled,
-        icon: (_) => Icons.style_rounded,
-        label: (item) => item.playerName,
-        detail: (item) => abuText(
-          context,
-          '${item.rating} ${item.position} · ${item.teamName} · ${item.rarity}',
-          '${item.rating} ${item.position} · ${item.teamName} · ${item.rarity}',
-        ),
-        onToggle: (item, value) =>
-            repository.setPlayerCardEnabled(item.id, value),
-        onEdit: (item) =>
-            _editPlayerCardDefinition(context, repository, existing: item),
-        onCreate: () => _editPlayerCardDefinition(context, repository),
       );
 
   Future<void> manageRoles(BuildContext context) => showDialog<void>(
@@ -7292,6 +7144,479 @@ class _ProductionAdminTools extends StatelessWidget {
   }
 }
 
+class _AdminLeaderboardSeasonsDialog extends StatefulWidget {
+  const _AdminLeaderboardSeasonsDialog({required this.repository});
+
+  final ProductionRepository repository;
+
+  @override
+  State<_AdminLeaderboardSeasonsDialog> createState() =>
+      _AdminLeaderboardSeasonsDialogState();
+}
+
+class _AdminLeaderboardSeasonsDialogState
+    extends State<_AdminLeaderboardSeasonsDialog> {
+  late Future<List<LeaderboardSeason>> _seasons;
+
+  @override
+  void initState() {
+    super.initState();
+    _seasons = widget.repository.fetchAdminLeaderboardSeasons();
+  }
+
+  void _refresh() {
+    if (!mounted) return;
+    setState(() {
+      _seasons = widget.repository.fetchAdminLeaderboardSeasons();
+    });
+  }
+
+  Future<void> _openEditor([LeaderboardSeason? season]) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => _AdminLeaderboardSeasonEditorDialog(
+        repository: widget.repository,
+        season: season,
+      ),
+    );
+    if (saved == true) _refresh();
+  }
+
+  String _date(DateTime? value) {
+    if (value == null) return abuText(context, 'Not set', 'غير محدد');
+    final local = value.toLocal();
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${local.year}-${two(local.month)}-${two(local.day)} '
+        '${two(local.hour)}:${two(local.minute)}';
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
+    title: Text(abuText(context, 'Leaderboard seasons', 'مواسم الترتيب')),
+    content: SizedBox(
+      width: 720,
+      height: math.min(MediaQuery.sizeOf(context).height * .68, 610),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            abuText(
+              context,
+              'Dates are shown in your local time. Automatic football discovery remains the fallback; saving a season here makes its dates a protected manual override.',
+              'تُعرض التواريخ حسب توقيتك المحلي. يبقى الاكتشاف التلقائي لكرة القدم احتياطياً، وحفظ الموسم هنا يجعل تواريخه يدوية ومحمية.',
+            ),
+            style: TextStyle(color: _muted, height: 1.45),
+          ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: FutureBuilder<List<LeaderboardSeason>>(
+              future: _seasons,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return _ProductionEmpty(
+                    icon: Icons.cloud_off_rounded,
+                    title: abuText(
+                      context,
+                      'Seasons could not be loaded',
+                      'تعذر تحميل المواسم',
+                    ),
+                    body: productionErrorMessage(snapshot.error!),
+                  );
+                }
+                final seasons = snapshot.data ?? const <LeaderboardSeason>[];
+                if (seasons.isEmpty) {
+                  return _ProductionEmpty(
+                    icon: Icons.date_range_rounded,
+                    title: abuText(
+                      context,
+                      'No seasons configured',
+                      'لا توجد مواسم معدة',
+                    ),
+                    body: abuText(
+                      context,
+                      'Create the first leaderboard season.',
+                      'أنشئ أول موسم للترتيب.',
+                    ),
+                  );
+                }
+                return RefreshIndicator(
+                  onRefresh: () async => _refresh(),
+                  child: ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: seasons.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final season = seasons[index];
+                      final manual = season.managementMode == 'manual';
+                      return Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: _surface2,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: season.active
+                                ? _productionPrimary(context)
+                                      .withValues(alpha: .65)
+                                : _line,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              manual
+                                  ? Icons.edit_calendar_rounded
+                                  : Icons.auto_awesome_rounded,
+                              color: manual
+                                  ? _productionPrimary(context)
+                                  : _blue,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 6,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    children: [
+                                      Text(
+                                        season.displayName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      _ChallengeMetaChip(
+                                        icon: manual
+                                            ? Icons.lock_outline_rounded
+                                            : Icons.sync_rounded,
+                                        label: manual
+                                            ? abuText(context, 'MANUAL', 'يدوي')
+                                            : abuText(
+                                                context,
+                                                'AUTOMATIC',
+                                                'تلقائي',
+                                              ),
+                                      ),
+                                      if (season.active)
+                                        _LiveDot(
+                                          text: abuText(
+                                            context,
+                                            'CURRENT',
+                                            'الحالي',
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text(
+                                    '${season.id} · ${_date(season.startsAt)} → ${_date(season.endsAt)}',
+                                    style: TextStyle(
+                                      color: _muted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: abuText(
+                                context,
+                                'Edit season',
+                                'تعديل الموسم',
+                              ),
+                              onPressed: () => _openEditor(season),
+                              icon: const Icon(Icons.edit_rounded),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(abuText(context, 'CLOSE', 'إغلاق')),
+      ),
+      FilledButton.icon(
+        onPressed: () => _openEditor(),
+        icon: const Icon(Icons.add_rounded),
+        label: Text(abuText(context, 'NEW SEASON', 'موسم جديد')),
+      ),
+    ],
+  );
+}
+
+class _AdminLeaderboardSeasonEditorDialog extends StatefulWidget {
+  const _AdminLeaderboardSeasonEditorDialog({
+    required this.repository,
+    this.season,
+  });
+
+  final ProductionRepository repository;
+  final LeaderboardSeason? season;
+
+  @override
+  State<_AdminLeaderboardSeasonEditorDialog> createState() =>
+      _AdminLeaderboardSeasonEditorDialogState();
+}
+
+class _AdminLeaderboardSeasonEditorDialogState
+    extends State<_AdminLeaderboardSeasonEditorDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _id;
+  late final TextEditingController _name;
+  late final TextEditingController _reason;
+  late DateTime _startsAt;
+  late DateTime _endsAt;
+  bool _saving = false;
+  String? _error;
+
+  bool get _creating => widget.season == null;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    final season = widget.season;
+    _id = TextEditingController(text: season?.id ?? '');
+    _name = TextEditingController(text: season?.displayName ?? '');
+    _reason = TextEditingController(
+      text: season == null
+          ? 'Created leaderboard season from Admin Studio.'
+          : 'Updated leaderboard season from Admin Studio.',
+    );
+    _startsAt = (season?.startsAt ?? now).toLocal();
+    _endsAt = (season?.endsAt ?? _startsAt.add(const Duration(days: 365)))
+        .toLocal();
+  }
+
+  @override
+  void dispose() {
+    _id.dispose();
+    _name.dispose();
+    _reason.dispose();
+    super.dispose();
+  }
+
+  String _date(DateTime value) {
+    String two(int number) => number.toString().padLeft(2, '0');
+    return '${value.year}-${two(value.month)}-${two(value.day)} '
+        '${two(value.hour)}:${two(value.minute)}';
+  }
+
+  Future<void> _pickDate({required bool start}) async {
+    final current = start ? _startsAt : _endsAt;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+    );
+    if (time == null || !mounted) return;
+    final selected = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    setState(() {
+      if (start) {
+        _startsAt = selected;
+      } else {
+        _endsAt = selected;
+      }
+      _error = null;
+    });
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (!_startsAt.isBefore(_endsAt)) {
+      setState(() {
+        _error = abuText(
+          context,
+          'The season start must be before its end.',
+          'يجب أن تكون بداية الموسم قبل نهايته.',
+        );
+      });
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await widget.repository.saveAdminLeaderboardSeason(
+        id: _id.text,
+        displayName: _name.text,
+        startsAt: _startsAt,
+        endsAt: _endsAt,
+        reason: _reason.text,
+        create: _creating,
+      );
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _saving = false;
+        _error = productionErrorMessage(error);
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+    title: Text(
+      _creating
+          ? abuText(context, 'Create season', 'إنشاء موسم')
+          : abuText(context, 'Edit season', 'تعديل الموسم'),
+    ),
+    content: Form(
+      key: _formKey,
+      child: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextFormField(
+                controller: _id,
+                enabled: _creating && !_saving,
+                decoration: InputDecoration(
+                  labelText: abuText(context, 'Season ID', 'معرف الموسم'),
+                  hintText: '2026-2027',
+                ),
+                validator: (value) {
+                  final id = value?.trim() ?? '';
+                  if (!RegExp(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,49}$')
+                      .hasMatch(id)) {
+                    return abuText(
+                      context,
+                      'Use 1–50 letters, numbers, dots, underscores or hyphens.',
+                      'استخدم 1–50 حرفاً أو رقماً أو نقطة أو شرطة.',
+                    );
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _name,
+                enabled: !_saving,
+                maxLength: 100,
+                decoration: InputDecoration(
+                  labelText: abuText(context, 'Display name', 'اسم العرض'),
+                  hintText: '2026/27 Season',
+                ),
+                validator: (value) => (value?.trim().isEmpty ?? true)
+                    ? abuText(
+                        context,
+                        'Enter a display name.',
+                        'أدخل اسم العرض.',
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _saving ? null : () => _pickDate(start: true),
+                      icon: const Icon(Icons.event_available_rounded),
+                      label: Text(
+                        '${abuText(context, 'START', 'البداية')}\n${_date(_startsAt)}',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _saving ? null : () => _pickDate(start: false),
+                      icon: const Icon(Icons.event_busy_rounded),
+                      label: Text(
+                        '${abuText(context, 'END', 'النهاية')}\n${_date(_endsAt)}',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _reason,
+                enabled: !_saving,
+                maxLength: 255,
+                decoration: InputDecoration(
+                  labelText: abuText(context, 'Audit reason', 'سبب التعديل'),
+                ),
+                validator: (value) => (value?.trim().length ?? 0) < 3
+                    ? abuText(
+                        context,
+                        'Enter a short reason.',
+                        'أدخل سبباً مختصراً.',
+                      )
+                    : null,
+              ),
+              if (!_creating) ...[
+                const SizedBox(height: 4),
+                Text(
+                  abuText(
+                    context,
+                    'Saving explicitly changes this season to manual mode. Automatic discovery will no longer change its name or dates.',
+                    'الحفظ يحول هذا الموسم إلى الوضع اليدوي، ولن يغير الاكتشاف التلقائي اسمه أو تواريخه.',
+                  ),
+                  style: TextStyle(color: _gold, fontSize: 12, height: 1.4),
+                ),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(_error!, style: const TextStyle(color: _red, height: 1.4)),
+              ],
+            ],
+          ),
+        ),
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: _saving ? null : () => Navigator.pop(context, false),
+        child: Text(abuText(context, 'CANCEL', 'إلغاء')),
+      ),
+      FilledButton.icon(
+        onPressed: _saving ? null : _save,
+        icon: _saving
+            ? const SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.save_rounded),
+        label: Text(abuText(context, 'SAVE SEASON', 'حفظ الموسم')),
+      ),
+    ],
+  );
+}
+
 class _AdminMembershipDialog extends StatefulWidget {
   const _AdminMembershipDialog({required this.repository});
 
@@ -7305,8 +7630,6 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
   final _search = TextEditingController();
   Timer? _debounce;
   late Future<List<AbuUserProfile>> _users;
-  AbuUserProfile? _selected;
-  bool _saving = false;
 
   @override
   void initState() {
@@ -7333,160 +7656,190 @@ class _AdminMembershipDialogState extends State<_AdminMembershipDialog> {
     _debounce = Timer(const Duration(milliseconds: 350), _refresh);
   }
 
-  Future<void> _save(bool isMember) async {
-    final selected = _selected;
-    if (selected == null) return;
-    setState(() => _saving = true);
-    try {
-      await widget.repository.setAdminYouTubeMembership(
-        uid: selected.uid,
-        isMember: isMember,
-      );
-      if (!mounted) return;
-      setState(() {
-        _selected = null;
-        _saving = false;
-      });
-      _refresh();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            isMember
-                ? abuText(
-                    context,
-                    'Gold membership granted.',
-                    'تم منح العضوية الذهبية.',
-                  )
-                : abuText(
-                    context,
-                    'Gold membership revoked.',
-                    'تم إلغاء العضوية الذهبية.',
-                  ),
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _saving = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(productionErrorMessage(error))));
+  String _verificationDetails(BuildContext context, AbuUserProfile user) {
+    if (!user.youtubeChannelLinked) {
+      return abuText(context, 'YouTube not linked', 'يوتيوب غير مرتبط');
     }
+    final details = <String>[
+      user.isYouTubeMember
+          ? abuText(context, 'Active paid member', 'عضو مدفوع نشط')
+          : abuText(
+              context,
+              'Linked · not an active member',
+              'مرتبط · ليس عضواً نشطاً',
+            ),
+      if (user.youtubeMembershipLevelId.isNotEmpty)
+        abuText(
+          context,
+          'Level ${user.youtubeMembershipLevelId}',
+          'المستوى ${user.youtubeMembershipLevelId}',
+        ),
+      if (user.youtubeMemberSince != null)
+        abuText(
+          context,
+          'Member since ${_productionDate(user.youtubeMemberSince!)}',
+          'عضو منذ ${_productionDate(user.youtubeMemberSince!)}',
+        ),
+      if (user.youtubeMembershipVerifiedAt != null)
+        abuText(
+          context,
+          'Checked ${_productionDate(user.youtubeMembershipVerifiedAt!)}',
+          'آخر تحقق ${_productionDate(user.youtubeMembershipVerifiedAt!)}',
+        ),
+    ];
+    return details.join(' · ');
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-    title: Text(
-      abuText(context, 'YouTube membership manager', 'إدارة أعضاء يوتيوب'),
-    ),
-    content: SizedBox(
-      width: 600,
-      height: math.min(MediaQuery.sizeOf(context).height * .65, 530),
-      child: Column(
-        children: [
-          TextField(
-            controller: _search,
-            enabled: !_saving,
-            onChanged: _queueSearch,
-            onSubmitted: (_) => _refresh(),
-            decoration: InputDecoration(
-              labelText: abuText(
-                context,
-                'Search name, username or email',
-                'ابحث بالاسم أو اسم المستخدم أو البريد',
-              ),
-              prefixIcon: const Icon(Icons.person_search_rounded),
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final availableContentHeight =
+        media.size.height - media.padding.vertical - 190;
+    final contentHeight = availableContentHeight.clamp(300.0, 720.0);
+    return AlertDialog(
+      key: const Key('admin-membership-snapshot-dialog'),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+      clipBehavior: Clip.antiAlias,
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+      contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      title: Text(
+        abuText(context, 'YouTube membership snapshot', 'لقطة عضويات يوتيوب'),
+      ),
+      content: SizedBox(
+        width: 600,
+        height: contentHeight,
+        child: Column(
+          children: [
+            AdminYouTubeMembershipSnapshotCard(
+              repository: widget.repository,
+              onImported: _refresh,
             ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: FutureBuilder<List<AbuUserProfile>>(
-              future: _users,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(
-                    child: Text(productionErrorMessage(snapshot.error!)),
-                  );
-                }
-                final users = snapshot.data ?? const <AbuUserProfile>[];
-                if (users.isEmpty) {
-                  return _ProductionEmpty(
-                    icon: Icons.people_outline_rounded,
-                    title: abuText(
-                      context,
-                      'No matching users',
-                      'لا يوجد مستخدمون مطابقون',
-                    ),
-                    body: abuText(
-                      context,
-                      'Try another name, username or email.',
-                      'جرّب اسماً أو اسم مستخدم أو بريداً آخر.',
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  itemCount: users.length,
-                  itemBuilder: (context, index) {
-                    final user = users[index];
-                    final selected = _selected?.uid == user.uid;
-                    final label = user.displayName.isNotEmpty
-                        ? user.displayName
-                        : user.username.isNotEmpty
-                        ? user.username
-                        : user.email;
-                    return ListTile(
-                      selected: selected,
-                      onTap: _saving
-                          ? null
-                          : () => setState(() => _selected = user),
-                      leading: Icon(
-                        selected
-                            ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_unchecked_rounded,
-                        color: selected ? _productionPrimary(context) : _muted,
+            const SizedBox(height: 12),
+            Text(
+              abuText(
+                context,
+                'This complete UTF-8 CSV/TSV is the YouTube membership authority. Users paste a channel profile link and the server matches its ID with this unexpired snapshot. Public links do not prove ownership. Always replace with a complete current export, never a partial list. Store subscriptions are managed separately.',
+                'ملف CSV/TSV الكامل بترميز UTF-8 هو مصدر عضوية يوتيوب. يلصق المستخدم رابط قناته ويطابق الخادم معرّفها مع هذه اللقطة غير المنتهية. الروابط العامة لا تثبت الملكية. استبدل الملف دائماً بقائمة حالية كاملة وليس قائمة جزئية. تُدار اشتراكات المتجر بشكل منفصل.',
+              ),
+              style: const TextStyle(color: _muted, fontSize: 12, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _search,
+              onChanged: _queueSearch,
+              onSubmitted: (_) => _refresh(),
+              decoration: InputDecoration(
+                labelText: abuText(
+                  context,
+                  'Search name, username or email',
+                  'ابحث بالاسم أو اسم المستخدم أو البريد',
+                ),
+                prefixIcon: const Icon(Icons.person_search_rounded),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: FutureBuilder<List<AbuUserProfile>>(
+                future: _users,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text(productionErrorMessage(snapshot.error!)),
+                    );
+                  }
+                  final users = snapshot.data ?? const <AbuUserProfile>[];
+                  if (users.isEmpty) {
+                    return _ProductionEmpty(
+                      icon: Icons.people_outline_rounded,
+                      title: abuText(
+                        context,
+                        'No matching users',
+                        'لا يوجد مستخدمون مطابقون',
                       ),
-                      title: Text(label),
-                      subtitle: Text(
-                        <String>[
-                          if (user.username.isNotEmpty) '@${user.username}',
-                          if (user.email.isNotEmpty) user.email,
-                        ].join(' · '),
-                      ),
-                      trailing: Icon(
-                        user.isYouTubeMember
-                            ? Icons.workspace_premium_rounded
-                            : Icons.person_outline_rounded,
-                        color: user.isYouTubeMember
-                            ? _gold
-                            : _productionPrimary(context),
+                      body: abuText(
+                        context,
+                        'Try another name, username or email.',
+                        'جرّب اسماً أو اسم مستخدم أو بريداً آخر.',
                       ),
                     );
-                  },
-                );
-              },
+                  }
+                  return Scrollbar(
+                    child: ListView.builder(
+                      key: const Key('admin-membership-user-list'),
+                      keyboardDismissBehavior:
+                          ScrollViewKeyboardDismissBehavior.onDrag,
+                      padding: const EdgeInsets.only(bottom: 24),
+                      itemCount: users.length,
+                      itemBuilder: (context, index) {
+                        final user = users[index];
+                        final label = user.displayName.isNotEmpty
+                            ? user.displayName
+                            : user.username.isNotEmpty
+                            ? user.username
+                            : user.email;
+                        return ListTile(
+                          leading: Icon(
+                            user.isYouTubeMember
+                                ? Icons.workspace_premium_rounded
+                                : user.youtubeChannelLinked
+                                ? Icons.link_rounded
+                                : Icons.link_off_rounded,
+                            color: user.isYouTubeMember
+                                ? _gold
+                                : user.youtubeChannelLinked
+                                ? _productionPrimary(context)
+                                : _muted,
+                          ),
+                          title: SubscriberName(
+                            label,
+                            isSubscriber: user.hasMemberAccess,
+                          ),
+                          subtitle: Text(
+                            <String>[
+                              if (user.username.isNotEmpty) '@${user.username}',
+                              if (user.email.isNotEmpty) user.email,
+                              _verificationDetails(context, user),
+                            ].join(' · '),
+                          ),
+                          trailing: Text(
+                            user.isYouTubeMember
+                                ? abuText(context, 'VERIFIED', 'موثّق')
+                                : user.youtubeChannelLinked
+                                ? abuText(context, 'LINKED', 'مرتبط')
+                                : abuText(context, 'NOT LINKED', 'غير مرتبط'),
+                            style: TextStyle(
+                              color: user.isYouTubeMember
+                                  ? _gold
+                                  : user.youtubeChannelLinked
+                                  ? _productionPrimary(context)
+                                  : _muted,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: _saving ? null : () => Navigator.pop(context),
-        child: Text(abuText(context, 'DONE', 'تم')),
-      ),
-      OutlinedButton(
-        onPressed: _saving || _selected == null ? null : () => _save(false),
-        child: Text(abuText(context, 'REVOKE', 'إلغاء')),
-      ),
-      FilledButton(
-        onPressed: _saving || _selected == null ? null : () => _save(true),
-        child: Text(abuText(context, 'GRANT GOLD', 'منح الذهبية')),
-      ),
-    ],
-  );
+      actions: [
+        TextButton(
+          style: TextButton.styleFrom(minimumSize: const Size(88, 46)),
+          onPressed: () => Navigator.pop(context),
+          child: Text(abuText(context, 'DONE', 'تم')),
+        ),
+      ],
+    );
+  }
 }
 
 class _AdminRolesDialog extends StatefulWidget {
@@ -7741,8 +8094,9 @@ class _AdminRolesDialogState extends State<_AdminRolesDialog> {
                     Row(
                       children: [
                         Flexible(
-                          child: Text(
+                          child: SubscriberName(
                             name,
+                            isSubscriber: user.hasMemberAccess,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(fontWeight: FontWeight.w800),
@@ -7843,18 +8197,6 @@ class _AdminRolesDialogState extends State<_AdminRolesDialog> {
   }
 }
 
-class _AdminRedemptionRecord {
-  const _AdminRedemptionRecord({
-    required this.redemption,
-    required this.userLabel,
-    required this.note,
-  });
-
-  final AbuRewardRedemption redemption;
-  final String userLabel;
-  final String note;
-}
-
 Future<void> _showAdminRedemptionManager(
   BuildContext context,
   ProductionRepository repository,
@@ -7867,45 +8209,8 @@ Future<void> _showAdminRedemptionManager(
     content: SizedBox(
       width: 860,
       height: 580,
-      child: StreamBuilder<List<_AdminRedemptionRecord>>(
-        stream: repository.firestore
-            .collection('loyaltyRedemptions')
-            .orderBy('createdAt', descending: true)
-            .limit(200)
-            .snapshots()
-            .map(
-              (snapshot) => snapshot.docs
-                  .map((document) {
-                    final data = document.data();
-                    final userLabel =
-                        [
-                              data['userDisplayName'],
-                              data['displayName'],
-                              data['userEmail'],
-                              data['email'],
-                              data['userId'],
-                            ]
-                            .whereType<String>()
-                            .map((value) => value.trim())
-                            .firstWhere(
-                              (value) => value.isNotEmpty,
-                              orElse: () => '',
-                            );
-                    final note =
-                        (data['statusNote'] ??
-                                data['adminNote'] ??
-                                data['note'])
-                            as String? ??
-                        '';
-                    return _AdminRedemptionRecord(
-                      redemption: AbuRewardRedemption.fromDocument(document),
-                      userLabel: userLabel,
-                      note: note.trim(),
-                    );
-                  })
-                  .toList(growable: false),
-            )
-            .handleError((_) => const <_AdminRedemptionRecord>[]),
+      child: StreamBuilder<List<AbuRewardRedemption>>(
+        stream: repository.watchManagedRedemptions(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(child: CircularProgressIndicator());
@@ -7921,8 +8226,8 @@ Future<void> _showAdminRedemptionManager(
               body: productionErrorMessage(snapshot.error!),
             );
           }
-          final records = snapshot.data ?? const <_AdminRedemptionRecord>[];
-          if (records.isEmpty) {
+          final redemptions = snapshot.data ?? const <AbuRewardRedemption>[];
+          if (redemptions.isEmpty) {
             return _ProductionEmpty(
               icon: Icons.receipt_long_rounded,
               title: abuText(
@@ -7939,10 +8244,10 @@ Future<void> _showAdminRedemptionManager(
           }
           return LayoutBuilder(
             builder: (context, constraints) => ListView.separated(
-              itemCount: records.length,
+              itemCount: redemptions.length,
               separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, index) => _AdminRedemptionTile(
-                record: records[index],
+                redemption: redemptions[index],
                 repository: repository,
                 compact: constraints.maxWidth < 700,
               ),
@@ -7962,22 +8267,21 @@ Future<void> _showAdminRedemptionManager(
 
 class _AdminRedemptionTile extends StatelessWidget {
   const _AdminRedemptionTile({
-    required this.record,
+    required this.redemption,
     required this.repository,
     required this.compact,
   });
 
-  final _AdminRedemptionRecord record;
+  final AbuRewardRedemption redemption;
   final ProductionRepository repository;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final redemption = record.redemption;
     final color = _redemptionStatusColor(context, redemption.status);
-    final userLabel = record.userLabel.isEmpty
+    final userLabel = redemption.userDisplayName.isEmpty
         ? abuText(context, 'Unknown user', 'مستخدم غير معروف')
-        : record.userLabel;
+        : redemption.userDisplayName;
     final status = _ChallengeMetaChip(
       icon: redemption.status == 'fulfilled'
           ? Icons.check_circle_rounded
@@ -7989,8 +8293,10 @@ class _AdminRedemptionTile extends StatelessWidget {
       tooltip: abuText(context, 'Update status', 'تحديث الحالة'),
       onPressed: () => showDialog<void>(
         context: context,
-        builder: (_) =>
-            _RedemptionStatusDialog(repository: repository, record: record),
+        builder: (_) => _RedemptionStatusDialog(
+          repository: repository,
+          redemption: redemption,
+        ),
       ),
       icon: Icon(Icons.edit_note_rounded),
     );
@@ -8017,9 +8323,13 @@ class _AdminRedemptionTile extends StatelessWidget {
               '${_productionDate(redemption.createdAt)} · ${redemption.cost} PTS',
               style: TextStyle(color: _muted, fontSize: 12),
             ),
-            if (record.note.isNotEmpty) ...[
+            if (redemption.note.isNotEmpty) ...[
               const SizedBox(height: 7),
-              Text(record.note, maxLines: 2, overflow: TextOverflow.ellipsis),
+              Text(
+                redemption.note,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
             Align(alignment: AlignmentDirectional.centerEnd, child: editButton),
           ],
@@ -8041,9 +8351,9 @@ class _AdminRedemptionTile extends StatelessWidget {
         [
           userLabel,
           '${_productionDate(redemption.createdAt)} · ${redemption.cost} PTS',
-          if (record.note.isNotEmpty) record.note,
+          if (redemption.note.isNotEmpty) redemption.note,
         ].join('\n'),
-        maxLines: record.note.isEmpty ? 2 : 3,
+        maxLines: redemption.note.isEmpty ? 2 : 3,
         overflow: TextOverflow.ellipsis,
       ),
       trailing: Row(
@@ -8057,11 +8367,11 @@ class _AdminRedemptionTile extends StatelessWidget {
 class _RedemptionStatusDialog extends StatefulWidget {
   const _RedemptionStatusDialog({
     required this.repository,
-    required this.record,
+    required this.redemption,
   });
 
   final ProductionRepository repository;
-  final _AdminRedemptionRecord record;
+  final AbuRewardRedemption redemption;
 
   @override
   State<_RedemptionStatusDialog> createState() =>
@@ -8083,10 +8393,10 @@ class _RedemptionStatusDialogState extends State<_RedemptionStatusDialog> {
   @override
   void initState() {
     super.initState();
-    status = statuses.contains(widget.record.redemption.status)
-        ? widget.record.redemption.status
+    status = statuses.contains(widget.redemption.status)
+        ? widget.redemption.status
         : 'pending';
-    note = TextEditingController(text: widget.record.note);
+    note = TextEditingController(text: widget.redemption.note);
   }
 
   @override
@@ -8099,7 +8409,7 @@ class _RedemptionStatusDialogState extends State<_RedemptionStatusDialog> {
     setState(() => saving = true);
     try {
       await widget.repository.updateRedemptionStatus(
-        widget.record.redemption.id,
+        widget.redemption.id,
         status,
         note: note.text.trim(),
       );
@@ -8135,7 +8445,7 @@ class _RedemptionStatusDialogState extends State<_RedemptionStatusDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            widget.record.redemption.rewardTitle,
+            widget.redemption.rewardTitle,
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 14),
@@ -8211,6 +8521,7 @@ Future<void> _showAdminDefinitionManager<T>({
   required Future<void> Function(T item, bool value) onToggle,
   required Future<void> Function(T item) onEdit,
   required Future<void> Function() onCreate,
+  Future<void> Function(T item)? onDelete,
 }) => showDialog<void>(
   context: context,
   builder: (dialogContext) => AlertDialog(
@@ -8248,6 +8559,7 @@ Future<void> _showAdminDefinitionManager<T>({
             separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, index) {
               final item = items[index];
+              final deleteItem = onDelete;
               return ListTile(
                 leading: CircleAvatar(
                   backgroundColor: _productionPrimary(context)
@@ -8283,6 +8595,72 @@ Future<void> _showAdminDefinitionManager<T>({
                       onPressed: () => onEdit(item),
                       icon: Icon(Icons.edit_rounded),
                     ),
+                    if (deleteItem != null)
+                      IconButton(
+                        tooltip: abuText(context, 'Delete', 'حذف'),
+                        color: _red,
+                        onPressed: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: dialogContext,
+                            builder: (confirmationContext) => AlertDialog(
+                              title: Text(
+                                abuText(
+                                  confirmationContext,
+                                  'Delete ${label(item)}?',
+                                  'حذف ${label(item)}؟',
+                                ),
+                              ),
+                              content: Text(
+                                abuText(
+                                  confirmationContext,
+                                  'This permanently removes an unclaimed Player Card. Cards already collected by fans must be disabled instead.',
+                                  'يحذف هذا بطاقة اللاعب غير المُطالَب بها نهائياً. يجب تعطيل البطاقات التي جمعها المشجعون بدلاً من حذفها.',
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.pop(confirmationContext, false),
+                                  child: Text(
+                                    abuText(
+                                      confirmationContext,
+                                      'CANCEL',
+                                      'إلغاء',
+                                    ),
+                                  ),
+                                ),
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: _red,
+                                  ),
+                                  onPressed: () =>
+                                      Navigator.pop(confirmationContext, true),
+                                  icon: const Icon(Icons.delete_rounded),
+                                  label: Text(
+                                    abuText(
+                                      confirmationContext,
+                                      'DELETE',
+                                      'حذف',
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed != true) return;
+                          try {
+                            await deleteItem(item);
+                          } catch (error) {
+                            if (!dialogContext.mounted) return;
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(
+                                content: Text(productionErrorMessage(error)),
+                              ),
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.delete_outline_rounded),
+                      ),
                   ],
                 ),
               );
@@ -9033,13 +9411,7 @@ Future<void> _editRewardDefinition(
                   value: memberOnly,
                   onChanged: (value) =>
                       setDialogState(() => memberOnly = value),
-                  title: Text(
-                    abuText(
-                      context,
-                      'YouTube members only',
-                      'لأعضاء يوتيوب فقط',
-                    ),
-                  ),
+                  title: Text(abuText(context, 'Members only', 'للأعضاء فقط')),
                 ),
                 SwitchListTile.adaptive(
                   contentPadding: EdgeInsets.zero,
@@ -9214,360 +9586,6 @@ Future<void> _showRewardPreview(
   ),
 );
 
-Map<String, int>? _parsePlayerStats(String raw) {
-  final result = <String, int>{};
-  for (final line in raw.split('\n')) {
-    if (line.trim().isEmpty) continue;
-    final separator = line.indexOf(':');
-    if (separator <= 0) return null;
-    final key = line.substring(0, separator).trim();
-    final value = int.tryParse(line.substring(separator + 1).trim());
-    if (key.isEmpty || value == null || value < 0 || value > 100) return null;
-    result[key] = value;
-  }
-  return result;
-}
-
-Future<void> _editPlayerCardDefinition(
-  BuildContext context,
-  ProductionRepository repository, {
-  AbuPlayerCard? existing,
-}) async {
-  final name = TextEditingController(text: existing?.playerName ?? '');
-  final nameAr = TextEditingController(text: existing?.playerNameAr ?? '');
-  final description = TextEditingController(text: existing?.description ?? '');
-  final descriptionAr = TextEditingController(
-    text: existing?.descriptionAr ?? '',
-  );
-  final image = TextEditingController(text: existing?.imageUrl ?? '');
-  final team = TextEditingController(text: existing?.teamName ?? '');
-  final teamLogo = TextEditingController(text: existing?.teamLogoUrl ?? '');
-  final position = TextEditingController(text: existing?.position ?? '');
-  final rating = TextEditingController(text: '${existing?.rating ?? 80}');
-  final sourceChallenge = TextEditingController(
-    text: existing?.sourceChallengeId ?? '',
-  );
-  final stats = TextEditingController(
-    text:
-        existing?.stats.entries
-            .map((entry) => '${entry.key}: ${entry.value}')
-            .join('\n') ??
-        'pace: 80\nshooting: 80\npassing: 80',
-  );
-  var rarity = existing?.rarity ?? 'common';
-  var enabled = existing?.enabled ?? true;
-  XFile? selectedPlayerImage;
-  dynamic selectedPlayerImageBytes;
-  XFile? selectedTeamLogo;
-  dynamic selectedTeamLogoBytes;
-  final submit = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        title: Text(
-          existing == null
-              ? abuText(context, 'Create Player Card', 'إنشاء بطاقة لاعب')
-              : abuText(context, 'Edit Player Card', 'تعديل بطاقة اللاعب'),
-        ),
-        content: SizedBox(
-          width: 720,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _AdminBilingualFields(
-                  english: name,
-                  arabic: nameAr,
-                  englishLabel: abuText(
-                    context,
-                    'Player name · English',
-                    'اسم اللاعب · الإنجليزية',
-                  ),
-                  arabicLabel: abuText(
-                    context,
-                    'Player name · Arabic',
-                    'اسم اللاعب · العربية',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                _AdminBilingualFields(
-                  english: description,
-                  arabic: descriptionAr,
-                  englishLabel: abuText(
-                    context,
-                    'Description · English',
-                    'الوصف · الإنجليزية',
-                  ),
-                  arabicLabel: abuText(
-                    context,
-                    'Description · Arabic',
-                    'الوصف · العربية',
-                  ),
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final selection = await _selectAdminImage(context);
-                          if (selection == null || !context.mounted) return;
-                          setDialogState(() {
-                            selectedPlayerImage = selection.file;
-                            selectedPlayerImageBytes = selection.bytes;
-                          });
-                        },
-                        icon: const Icon(Icons.person_rounded),
-                        label: Text(
-                          selectedPlayerImage == null
-                              ? abuText(context, 'PLAYER IMAGE', 'صورة اللاعب')
-                              : selectedPlayerImage!.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () async {
-                          final selection = await _selectAdminImage(context);
-                          if (selection == null || !context.mounted) return;
-                          setDialogState(() {
-                            selectedTeamLogo = selection.file;
-                            selectedTeamLogoBytes = selection.bytes;
-                          });
-                        },
-                        icon: const Icon(Icons.shield_outlined),
-                        label: Text(
-                          selectedTeamLogo == null
-                              ? abuText(context, 'TEAM LOGO', 'شعار الفريق')
-                              : selectedTeamLogo!.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                if (selectedPlayerImage != null || image.text.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  _campaignImagePreview(
-                    context: context,
-                    imageUrl: image.text,
-                    imageBytes: selectedPlayerImageBytes,
-                    height: 180,
-                  ),
-                ],
-                if (selectedTeamLogo != null) ...[
-                  const SizedBox(height: 10),
-                  _campaignImagePreview(
-                    context: context,
-                    imageUrl: teamLogo.text,
-                    imageBytes: selectedTeamLogoBytes,
-                    height: 120,
-                  ),
-                ],
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: team,
-                        decoration: InputDecoration(
-                          labelText: abuText(context, 'Team', 'الفريق'),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: TextField(
-                        controller: position,
-                        decoration: InputDecoration(
-                          labelText: abuText(context, 'Position', 'المركز'),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: rating,
-                        keyboardType: TextInputType.number,
-                        decoration: InputDecoration(
-                          labelText: abuText(
-                            context,
-                            'Rating · 1–99',
-                            'التقييم · 1–99',
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: rarity,
-                        decoration: InputDecoration(
-                          labelText: abuText(context, 'Rarity', 'الندرة'),
-                        ),
-                        items: const ['common', 'rare', 'epic', 'legendary']
-                            .map(
-                              (value) => DropdownMenuItem(
-                                value: value,
-                                child: Text(value),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) =>
-                            setDialogState(() => rarity = value ?? 'common'),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: stats,
-                  minLines: 3,
-                  maxLines: 6,
-                  decoration: InputDecoration(
-                    labelText: abuText(
-                      context,
-                      'Stats · one “name: value” per line',
-                      'الإحصاءات · «الاسم: القيمة» في كل سطر',
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: sourceChallenge,
-                  decoration: InputDecoration(
-                    labelText: abuText(
-                      context,
-                      'Source challenge ID',
-                      'معرّف التحدي المصدر',
-                    ),
-                  ),
-                ),
-                SwitchListTile.adaptive(
-                  contentPadding: EdgeInsets.zero,
-                  value: enabled,
-                  onChanged: (value) => setDialogState(() => enabled = value),
-                  title: Text(abuText(context, 'Enabled', 'مفعّل')),
-                ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(abuText(context, 'CANCEL', 'إلغاء')),
-          ),
-          TextButton.icon(
-            onPressed: () => _showPlayerCardDetails(
-              context,
-              AbuPlayerCard(
-                id: 'preview',
-                playerName: name.text.isEmpty
-                    ? abuText(context, 'Player name', 'اسم اللاعب')
-                    : name.text,
-                playerNameAr: nameAr.text,
-                imageUrl: image.text,
-                teamName: team.text,
-                teamLogoUrl: teamLogo.text,
-                position: position.text,
-                rating: int.tryParse(rating.text) ?? 0,
-                rarity: rarity,
-                stats: _parsePlayerStats(stats.text) ?? const {},
-                description: description.text,
-                descriptionAr: descriptionAr.text,
-                unlocked: true,
-                enabled: true,
-                sourceChallengeId: sourceChallenge.text,
-              ),
-            ),
-            icon: Icon(Icons.visibility_rounded),
-            label: Text(abuText(context, 'PREVIEW', 'معاينة')),
-          ),
-          FilledButton(
-            onPressed: () {
-              final parsedRating = int.tryParse(rating.text);
-              final parsedStats = _parsePlayerStats(stats.text);
-              if (name.text.trim().isEmpty ||
-                  parsedRating == null ||
-                  parsedRating < 1 ||
-                  parsedRating > 99 ||
-                  parsedStats == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      abuText(
-                        context,
-                        'Add a player name, 1–99 rating, and valid stats.',
-                        'أضف اسم اللاعب وتقييماً من 1–99 وإحصاءات صالحة.',
-                      ),
-                    ),
-                  ),
-                );
-                return;
-              }
-              Navigator.pop(dialogContext, true);
-            },
-            child: Text(abuText(context, 'SAVE', 'حفظ')),
-          ),
-        ],
-      ),
-    ),
-  );
-  if (submit == true && context.mounted) {
-    await _saveAdminDefinition(context, () async {
-      final finalPlayerImage = selectedPlayerImage == null
-          ? image.text
-          : await repository.uploadPlayerCardImage(selectedPlayerImage!);
-      final finalTeamLogo = selectedTeamLogo == null
-          ? teamLogo.text
-          : await repository.uploadPlayerCardImage(selectedTeamLogo!);
-      final model = AbuPlayerCard(
-        id: existing?.id ?? '',
-        playerName: name.text,
-        playerNameAr: nameAr.text,
-        imageUrl: finalPlayerImage,
-        teamName: team.text,
-        teamLogoUrl: finalTeamLogo,
-        position: position.text,
-        rating: int.tryParse(rating.text) ?? 0,
-        rarity: rarity,
-        stats: _parsePlayerStats(stats.text) ?? const {},
-        description: description.text,
-        descriptionAr: descriptionAr.text,
-        unlocked: false,
-        enabled: enabled,
-        sourceChallengeId: sourceChallenge.text,
-      );
-      await repository.savePlayerCard(model);
-    }, abuText(context, 'Player Card saved.', 'تم حفظ بطاقة اللاعب.'));
-  }
-  for (final controller in [
-    name,
-    nameAr,
-    description,
-    descriptionAr,
-    image,
-    team,
-    teamLogo,
-    position,
-    rating,
-    sourceChallenge,
-    stats,
-  ]) {
-    controller.dispose();
-  }
-}
-
 class _AdminMobileAction extends StatelessWidget {
   const _AdminMobileAction({
     required this.icon,
@@ -9715,8 +9733,8 @@ class _AdminEventManager extends StatelessWidget {
           ),
           body: abuText(
             context,
-            'Create a Video Question or Player Card event above.',
-            'أنشئ سؤال فيديو أو فعالية بطاقة لاعب أعلاه.',
+            'Create a Video Question or Player Guess event above.',
+            'أنشئ سؤال فيديو أو فعالية تخمين لاعب أعلاه.',
           ),
         );
       }
@@ -9750,7 +9768,13 @@ class _AdminEventManager extends StatelessWidget {
                       ),
                       Expanded(
                         flex: 2,
-                        child: Text(abuText(context, 'REWARD', 'المكافأة')),
+                        child: Text(
+                          abuText(
+                            context,
+                            'XP FOR CORRECT ANSWER',
+                            'XP للإجابة الصحيحة',
+                          ),
+                        ),
                       ),
                       Expanded(
                         flex: 2,
@@ -9777,7 +9801,7 @@ class _AdminEventManager extends StatelessWidget {
                               width: 52,
                               child: Icon(
                                 event.kind == 'playerCard'
-                                    ? Icons.style_rounded
+                                    ? Icons.person_search_rounded
                                     : Icons.quiz_rounded,
                                 color: _productionPrimary(context),
                               ),
@@ -9796,8 +9820,8 @@ class _AdminEventManager extends StatelessWidget {
                               child: Text(
                                 abuText(
                                   context,
-                                  '${event.rewardPoints} points',
-                                  '${event.rewardPoints} نقطة',
+                                  '${event.rewardPoints} XP',
+                                  '${event.rewardPoints} XP',
                                 ),
                               ),
                             ),
@@ -9809,8 +9833,15 @@ class _AdminEventManager extends StatelessWidget {
                               ),
                             ),
                             SizedBox(
-                              width: 130,
-                              child: _statusPicker(context, event),
+                              width: 180,
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: _statusPicker(context, event),
+                                  ),
+                                  _deleteButton(context, event),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -9819,18 +9850,26 @@ class _AdminEventManager extends StatelessWidget {
                         contentPadding: EdgeInsets.zero,
                         leading: Icon(
                           event.kind == 'playerCard'
-                              ? Icons.style_rounded
+                              ? Icons.person_search_rounded
                               : Icons.quiz_rounded,
                         ),
                         title: Text(event.title),
                         subtitle: Text(
                           abuText(
                             context,
-                            '${event.rewardPoints} points · ${_productionDate(event.availableUntil)}',
-                            '${event.rewardPoints} نقطة · ${_productionDate(event.availableUntil)}',
+                            '${event.rewardPoints} XP · ${_productionDate(event.availableUntil)}',
+                            '${event.rewardPoints} XP · ${_productionDate(event.availableUntil)}',
                           ),
                         ),
-                        trailing: _statusPicker(context, event),
+                        trailing: SizedBox(
+                          width: 180,
+                          child: Row(
+                            children: [
+                              Expanded(child: _statusPicker(context, event)),
+                              _deleteButton(context, event),
+                            ],
+                          ),
+                        ),
                       ),
               ),
             ],
@@ -9847,6 +9886,7 @@ class _AdminEventManager extends StatelessWidget {
       'open',
       'disabled',
       'ended',
+      'closed',
       'archived',
     ];
     return DropdownButton<String>(
@@ -9874,6 +9914,10 @@ class _AdminEventManager extends StatelessWidget {
           child: Text(abuText(context, 'Ended', 'منتهٍ')),
         ),
         DropdownMenuItem(
+          value: 'closed',
+          child: Text(abuText(context, 'Closed', 'مغلق')),
+        ),
+        DropdownMenuItem(
           value: 'archived',
           child: Text(abuText(context, 'Archived', 'مؤرشف')),
         ),
@@ -9892,6 +9936,58 @@ class _AdminEventManager extends StatelessWidget {
       },
     );
   }
+
+  Widget _deleteButton(BuildContext context, AbuChallenge event) => IconButton(
+    tooltip: abuText(context, 'Delete challenge', 'حذف التحدي'),
+    icon: const Icon(Icons.delete_outline_rounded),
+    color: _red,
+    onPressed: () async {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(
+            abuText(dialogContext, 'Delete challenge?', 'حذف التحدي؟'),
+          ),
+          content: Text(
+            abuText(
+              dialogContext,
+              'This permanently removes “${event.title}”, its submitted answers, and its pending notification. Points already earned by fans are kept.',
+              'سيؤدي هذا إلى حذف «${event.title}» نهائياً وإجاباته المُرسلة وإشعاره المعلّق. ستبقى النقاط التي حصل عليها الجمهور.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(abuText(dialogContext, 'CANCEL', 'إلغاء')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(abuText(dialogContext, 'DELETE', 'حذف')),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !context.mounted) return;
+      try {
+        await repository.deleteChallenge(event);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                abuText(context, 'Challenge deleted.', 'تم حذف التحدي.'),
+              ),
+            ),
+          );
+        }
+      } catch (error) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(productionErrorMessage(error))),
+          );
+        }
+      }
+    },
+  );
 }
 
 final Set<int> _shownAnnouncementRevisions = <int>{};
