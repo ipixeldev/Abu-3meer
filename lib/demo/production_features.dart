@@ -5688,6 +5688,18 @@ class _ProductionAdminTools extends StatelessWidget {
             color: _gold,
             onTap: () => manageSubscriptionAccess(context),
           ),
+        if (profile.canModerate)
+          _AdminQuickAction(
+            icon: Icons.report_gmailerrorred_rounded,
+            label: abuText(context, 'USER REPORTS', 'بلاغات المستخدمين'),
+            detail: abuText(
+              context,
+              'Review safety reports and record each moderation decision.',
+              'راجع بلاغات السلامة وسجّل قرار الإشراف لكل بلاغ.',
+            ),
+            color: _red,
+            onTap: () => manageUserReports(context),
+          ),
         if (profile.canManageRoles)
           _AdminQuickAction(
             icon: Icons.manage_accounts_rounded,
@@ -5841,6 +5853,17 @@ class _ProductionAdminTools extends StatelessWidget {
                     ),
                     color: _gold,
                     onTap: () => manageSubscriptionAccess(context),
+                  ),
+                if (profile.canModerate)
+                  _AdminMobileAction(
+                    icon: Icons.report_gmailerrorred_rounded,
+                    label: abuText(
+                      context,
+                      'USER REPORTS',
+                      'بلاغات المستخدمين',
+                    ),
+                    color: _red,
+                    onTap: () => manageUserReports(context),
                   ),
                 if (profile.canManageRoles)
                   _AdminMobileAction(
@@ -7116,6 +7139,11 @@ class _ProductionAdminTools extends StatelessWidget {
           currentProfile: profile,
         ),
       );
+
+  Future<void> manageUserReports(BuildContext context) => showDialog<void>(
+    context: context,
+    builder: (_) => AdminReportInbox(repository: repository),
+  );
 
   Future<void> manageRoles(BuildContext context) => showDialog<void>(
     context: context,

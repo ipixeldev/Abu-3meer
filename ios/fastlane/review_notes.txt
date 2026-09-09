@@ -1,33 +1,28 @@
-Abu 3meer supports Arabic and English. This is the full app, not a standalone paywall demonstration.
+Response to App Review — Guideline 2.1
 
-Subscription review:
-- Sign in, then open Profile or Settings and select View plans. The Members tab also provides access to membership plans.
-- Ostoora3 (product ID: Ostoora3) is an auto-renewable monthly subscription. Ostoora3 Pro Max (product ID: Ostoora3_Pro_Max) is an auto-renewable yearly subscription. Both unlock the same member benefits; only the billing period differs.
-- The paywall shows App Store-localized prices and billing periods before purchase. RevenueCat manages the native purchase flow. The backend verifies the abu_3meer_pro entitlement for member access.
-- Restore purchases and subscription management are available in the subscription panel. Subscribers receive access to Members, eligible member bonuses, and a green subscriber badge beside their names.
-- Subscriptions renew automatically unless cancelled through the App Store. Deleting an app account does not cancel its App Store subscription.
+1. Physical-device video
+[ADD PUBLIC VIDEO URL]
+Recorded on [IPHONE MODEL], iOS [IOS VERSION], build 30. It starts at launch and shows registration, deletion, sign-in, all five tabs, a prediction/challenge, Report/Block/Unblock, both subscription plans with prices/legal links, sandbox purchase or restore, member access/badge, notifications, and subscription management.
 
-Authentication and account controls:
-- Sign in with Apple is available on iOS as an equivalent option alongside Google and email.
-- Account deletion is available in Settings > Account > Delete Account.
-- Email and password changes are available in Settings > Account for accounts using email/password authentication.
-- The separate YouTube membership check accepts a channel profile link entered by the user. The API compares its channel ID with the current complete membership CSV/TSV uploaded by staff. This is a list match, not proof that the user owns the channel. It does not request Google/YouTube OAuth permission.
-- A moderator, admin, or super admin uploads the complete YouTube Studio current-members export through the authenticated app API as UTF-8 CSV/TSV. This file is the membership authority. One channel cannot be attached to multiple app accounts.
-- IDs present in the latest unexpired complete export are active; IDs missing from the next complete export become lapsed. Because YouTube provides no automatic export or cancellation webhook, the staff screen shows when the latest list is stale. No creator-members API or restricted membership scope is used.
-- Pending, rejected, lapsed, and non-member accounts retain all normal fan functionality.
+2. Purpose and audience
+ABU 3MEER is an Arabic/English football fan app for users aged 13+. It combines football information, videos, free predictions/questions, recognition-only XP rankings, notifications, and optional Members content. There is no paid entry, betting, wager, prize, or redeemable reward; XP has no monetary value.
 
-XP and rankings:
-- Predictions and video questions have no entry fee, stake, wager, or cash prize. Subscriptions are optional and do not buy XP.
-- Users receive 50 XP once at signup, 5 XP for the first login each UTC day, and XP for correct football predictions and correct video-question or player-guess answers.
-- Eligible members receive the configured member bonus only on eligible prediction and video-answer actions. Signup and daily-login XP are never doubled.
-- XP has no monetary value and cannot be bought, transferred, or redeemed.
-- Current-month, previous-month, and season leaderboards show fan progress for recognition only. Monthly totals reset while the previous month is preserved, and completed seasons remain available as archived rankings.
-- XP and leaderboard rules are available in Settings > Legal & Privacy and at https://ipixeldev.github.io/Abu-3meer/competition-rules/.
+3. Setup and access
+No file, VPN, invitation, or special setup is required; the production backend is live. Apple, Google, and email sign-in are supported. Demo credentials are in App Review Information > Sign-in Information. [ADD REVIEW ACCOUNT ROLE(S) AND OWNED REPORT/BLOCK TEST USERNAME.] Photo is optional. Tabs are Home, Predict, Challenges, Members, and Profile. Leaderboard and Settings open from the avatar. Delete Account is under Settings > Account.
 
-Data and content behavior:
-- Location permission is optional and is used once to suggest a country; users can select a country manually.
-- Match facts, lineups, tables, and results appear only when the official football data provider publishes them.
-- Notification permission is optional.
-- Public channel uploads are shown on Home, separately from members-only content in Members.
+4. External services
+Apple/Google/Firebase Authentication provide sign-in. Firebase Cloud Messaging/APNs provide optional push. StoreKit/App Store and RevenueCat provide iOS billing, entitlements, restore, and management. api.abu3meer.com, PostgreSQL, Redis, and Cloudflare provide accounts, content, scoring, moderation, and media. API-Football (TheSportsDB fallback) provides football data. YouTube public feeds/profile data support public videos and optional verification of an existing channel membership against a staff-uploaded list. OpenStreetMap Nominatim/ipapi.co may suggest a country; manual selection remains available. No advertising or AI service provides a core function.
 
-Legal and support pages are available in Settings and at https://ipixeldev.github.io/Abu-3meer/.
+5. Regional differences
+Features, rules, benefits, and purchase methods are consistent across regions. Arabic/English is a language choice. Apple supplies localized prices and taxes. Football/video availability follows source publication.
+
+6. Regulation, safety, and rights
+This is not a regulated service and claims no club or league affiliation. [ATTACH OR IDENTIFY APPLICABLE BRAND, CHANNEL, MEDIA, CLUB/LEAGUE MARK, AND DATA-PUBLICATION RIGHTS.] Public user text is filtered; uploaded profile photos are not displayed to other users in this build. Users can Report, Block, Unblock, and contact support@abu3meer.com; authorized staff can review and resolve reports.
+
+7. In-App Purchase
+Navigate: sign in > Members > View plans. The paywall shows title, duration, localized price, renewal terms, benefits, Restore, Terms, and Privacy.
+- Ostoora3 (Ostoora3): one month.
+- Ostoora3 Pro Max (Ostoora3_Pro_Max): one year.
+Both unlock the same Members content and badge; only duration differs. Recognition benefits are 150 XP once on first activation, 50 XP per verified renewal, and 2× XP only for correct match-winner, first-goalscorer, and exact-score predictions. Rankings have no prizes.
+
+Every purchase initiated in the iOS app uses Apple IAP. There is no external purchase link or call to action on iOS. A user who already independently holds an Abu 3meer YouTube channel membership may submit that user’s public channel-profile link to check the latest staff-supplied list for the same access. This check cannot buy, renew, cancel, or manage YouTube membership. Equivalent access is available through Apple IAP. Free features require no purchase.

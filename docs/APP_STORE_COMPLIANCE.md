@@ -1,6 +1,6 @@
 # Abu 3meer App Store Compliance Notes
 
-Updated: 31 August 2026
+Updated: 9 September 2026
 
 ## Required URLs
 
@@ -17,10 +17,11 @@ Updated: 31 August 2026
 - Sign in with Apple is available on iOS alongside Google and email sign-in.
 - Account deletion is available in Settings.
 - Privacy Policy, Terms of Use, XP & Leaderboard Rules, and Support are available in Settings and on the public website.
-- The app is completely free and has no purchases, paid entry, betting, wagering, prizes, rewards, or leaderboard winners.
+- User-selected display names can appear in fan profiles and leaderboards; optional uploaded profile photos are not displayed to other users in this build. Profile updates pass server-side text safety checks; every other-user fan profile exposes Report and Block, Settings exposes blocked-user management and Unblock, the API hides mutually blocked accounts from personalized public reads, and staff can review and resolve the moderation queue. Published support contact information remains available for urgent concerns.
+- Account creation and normal fan features are free. The app offers optional Apple and Google auto-renewable subscriptions for member content, eligible member bonuses, and a subscriber badge. Membership activation and proven renewals may award fixed recognition XP, but there is no paid entry, staking, betting, wagering, cash or physical prize, or redeemable reward.
 - XP is awarded under the current server-configured rules for signup, the first login each UTC day, correct football predictions, correct video-question or player-guess answers, first membership activation, and proven membership renewals.
 - Verified members receive the configured member multiplier only for correct match-winner, first-goalscorer, and exact-score predictions. Correct-word, correct-player, signup, daily-login, membership-activation, and membership-renewal XP remain at their configured base amounts, and passive activity earns nothing.
-- XP has no monetary value, cannot be bought, transferred, or redeemed, and unlocks nothing.
+- XP is not sold as a standalone currency, has no monetary value, cannot be transferred or redeemed, and unlocks nothing. Membership activation and renewal can award the disclosed fixed recognition XP.
 - Current-month, previous-month, and season leaderboards provide recognition only. Monthly XP resets while the completed month remains visible, and completed seasons remain available as archived rankings.
 - The public XP & Leaderboard Rules state that Apple does not sponsor, administer, or participate in XP scoring or rankings.
 - The iOS target contains `Runner/PrivacyInfo.xcprivacy`; it declares no tracking and is packaged at the app-bundle root.
@@ -32,7 +33,7 @@ App Store Connect's privacy declaration must cover both first-party collection a
 - Data collected: yes.
 - Tracking: no.
 - No third-party advertising or developer advertising/marketing use.
-- Contact information, a Google-verified YouTube channel ID and membership status, location used for country suggestion, selected media, gameplay/user/search content, user/device identifiers, product interaction, usage data, diagnostics, and other profile/security data are disclosed for app functionality and the applicable analytics or personalization purposes. The short-lived read-only YouTube token used for the membership check is not retained.
+- Contact information, a submitted public YouTube profile link and matched channel ID/membership status, subscription and entitlement metadata, profile reports and blocks, location used for country suggestion, selected media, gameplay/user/search content, user/device identifiers, product interaction, usage data, diagnostics, and other profile/security data are disclosed for app functionality and the applicable analytics or personalization purposes. The membership check does not request YouTube account authorization.
 
 Do not publish a narrower declaration without re-auditing the app, server logs, Google Sign-In, and Firebase privacy manifests.
 

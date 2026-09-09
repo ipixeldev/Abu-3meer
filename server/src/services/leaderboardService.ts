@@ -4,6 +4,7 @@ import {
   activeYouTubeMembershipSql,
 } from './subscriptionAccess.js';
 import { eligiblePointSourceTypes } from './pointsService.js';
+import { mutualBlockVisibilitySql } from './userModerationService.js';
 
 export const eligibleLeaderboardSourceTypes = eligiblePointSourceTypes;
 
@@ -619,7 +620,9 @@ export function mapPublicLeaderboardEntry(row: RankedRow): LeaderboardEntry {
     points: Number(row.points),
     username: row.username,
     displayName: row.displayName,
-    avatarUrl: row.avatarUrl,
+    // Public rankings intentionally use a neutral initial instead of
+    // redistributing user-uploaded profile photos.
+    avatarUrl: null,
     supportedTeam: row.supportedTeam,
     isYouTubeMember: row.isYouTubeMember,
     isProSubscriber: row.isProSubscriber === true,
@@ -666,7 +669,7 @@ async function rankedRows(
        SELECT u.id::text AS database_user_id,
               u.username,
               u.display_name,
-              u.avatar_url,
+              NULL::text AS avatar_url,
               u.supported_team,
               ${activeYouTubeMembershipSql('u.id')} AS is_youtube_member,
               ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
@@ -685,6 +688,7 @@ async function rankedRows(
         AND approved_claim.youtube_channel_id = yl.youtube_channel_id
         AND approved_claim.status = 'approved'
        WHERE u.account_status = 'active'
+         AND ${mutualBlockVisibilitySql('u.id', '$4')}
          AND pt.source_type IN (${eligibleSourceSql})
          AND pt.created_at >= $1
          AND ($2::timestamptz IS NULL OR pt.created_at < $2)
@@ -717,10 +721,10 @@ async function rankedRows(
             points,
             rank,
             "totalPlayers",
-            ($4::text IS NOT NULL AND database_user_id = $4::text) AS "isCurrentUser"
+            ($4::uuid IS NOT NULL AND database_user_id = $4::uuid::text) AS "isCurrentUser"
      FROM ranked
      WHERE rank <= $3
-        OR ($4::text IS NOT NULL AND database_user_id = $4::text)
+        OR ($4::uuid IS NOT NULL AND database_user_id = $4::uuid::text)
      ORDER BY rank
     `,
     [
@@ -748,6 +752,7 @@ async function rankForUser(
        FROM point_transactions pt
        JOIN users u ON u.id = pt.user_id
        WHERE u.account_status = 'active'
+         AND ${mutualBlockVisibilitySql('u.id', '$3')}
          AND pt.source_type IN (${eligibleSourceSql})
          AND pt.created_at >= $1
          AND ($2::timestamptz IS NULL OR pt.created_at < $2)
@@ -763,7 +768,7 @@ async function rankForUser(
      )
      SELECT rank, points
      FROM ranked
-     WHERE database_user_id = $3`,
+     WHERE database_user_id = $3::uuid::text`,
     [window.startsAt, window.endsAt, databaseUserId],
   );
   if (result.rows.length === 0) return { rank: 0, points: 0 };

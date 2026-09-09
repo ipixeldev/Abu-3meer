@@ -19,10 +19,28 @@ def abu3meer_metadata(locale, filename)
 end
 
 def abu3meer_review_notes
-  File.read(
+  notes = File.read(
     File.expand_path("review_notes.txt", __dir__),
     encoding: "UTF-8"
   ).strip
+  placeholders = notes.scan(/\[[^\]\n]+\]/).uniq
+  unless placeholders.empty?
+    UI.user_error!(
+      "App Review notes still contain placeholders: #{placeholders.join(', ')}"
+    )
+  end
+  if notes.bytesize > 4_000
+    UI.user_error!(
+      "App Review notes are #{notes.bytesize} bytes; App Store Connect allows 4000"
+    )
+  end
+  notes
+end
+
+def abu3meer_require_confirmation!(name, purpose)
+  return if ENV[name] == "true"
+
+  UI.user_error!("Set #{name}=true only after #{purpose}.")
 end
 
 platform :ios do
@@ -68,6 +86,10 @@ platform :ios do
 
   desc "Upload localized App Store screenshots without changing metadata, the binary, or review state"
   lane :upload_screenshots do
+    abu3meer_require_confirmation!(
+      "ABU_SCREENSHOTS_REVIEWED",
+      "replacing every stale screenshot with reviewed build-30 captures"
+    )
     deliver(
       api_key: abu3meer_api_key,
       app_identifier: "omar.abu3meer.app",
@@ -78,7 +100,7 @@ platform :ios do
       skip_metadata: true,
       skip_screenshots: false,
       skip_app_version_update: true,
-      overwrite_screenshots: false,
+      overwrite_screenshots: true,
       submit_for_review: false,
       run_precheck_before_submit: false,
       force: true
@@ -184,7 +206,17 @@ platform :ios do
 
   desc "Submit App Store version 1.1.0 for review and release after approval"
   lane :submit_app_store_review do |options|
-    build_number = (options[:build_number] || ENV.fetch("APP_STORE_BUILD_NUMBER", "12")).to_s
+    abu3meer_require_confirmation!(
+      "ABU_APP_REVIEW_READY",
+      "the physical-device QA, video, review notes, screenshots, privacy answers, IAP attachment, and rights evidence are complete"
+    )
+    abu3meer_require_confirmation!(
+      "ABU_SCREENSHOTS_REVIEWED",
+      "the current App Store screenshots have been replaced and reviewed"
+    )
+    abu3meer_review_notes
+    build_number = (options[:build_number] || ENV["APP_STORE_BUILD_NUMBER"]).to_s
+    UI.user_error!("Pass build_number or set APP_STORE_BUILD_NUMBER") if build_number.empty?
     deliver(
       api_key: abu3meer_api_key,
       app_identifier: "omar.abu3meer.app",
@@ -196,7 +228,7 @@ platform :ios do
       skip_screenshots: true,
       skip_app_version_update: true,
       submit_for_review: true,
-      automatic_release: true,
+      automatic_release: false,
       submission_information: {
         export_compliance_uses_encryption: false,
         content_rights_contains_third_party_content: true

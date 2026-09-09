@@ -87,13 +87,99 @@ LeaderboardEntry parseApiLeaderboardEntry(dynamic value) {
         .toString(),
     username: (item['username'] ?? '').toString(),
     displayName: (item['displayName'] ?? item['username'] ?? '').toString(),
-    avatarUrl: (item['avatarUrl'] ?? '').toString(),
+    // Public identity APIs deliberately suppress user-uploaded avatars.
+    // Ignore unexpected values from an older/cached server response too.
+    avatarUrl: '',
     supportedTeam: (item['supportedTeam'] ?? '').toString(),
     monthlyPoints: points,
     seasonPoints: points,
     totalPoints: points,
     isMember: item['isYouTubeMember'] == true,
     isProSubscriber: item['isProSubscriber'] == true,
+  );
+}
+
+@visibleForTesting
+BlockedUserSummary parseBlockedUserSummary(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid blocked-user response.');
+  }
+  final item = Map<String, dynamic>.from(value);
+  final publicId = (item['publicId'] ?? item['userId'] ?? item['id'] ?? '')
+      .toString()
+      .trim();
+  if (publicId.isEmpty) {
+    throw const FormatException('Blocked user is missing its public ID.');
+  }
+  final username = (item['username'] ?? '').toString().trim();
+  return BlockedUserSummary(
+    publicId: publicId,
+    username: username,
+    displayName: (item['displayName'] ?? username).toString().trim(),
+    avatarUrl: '',
+    blockedAt: DateTime.tryParse((item['blockedAt'] ?? '').toString())
+        ?.toLocal(),
+  );
+}
+
+ModerationUserSummary _parseModerationUserSummary(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid moderation user response.');
+  }
+  final item = Map<String, dynamic>.from(value);
+  final publicId = (item['publicId'] ?? '').toString().trim();
+  if (publicId.isEmpty) {
+    throw const FormatException('Moderation user is missing its public ID.');
+  }
+  final username = (item['username'] ?? '').toString().trim();
+  return ModerationUserSummary(
+    publicId: publicId,
+    username: username,
+    displayName: (item['displayName'] ?? username).toString().trim(),
+    avatarUrl: (item['avatarUrl'] ?? '').toString().trim(),
+  );
+}
+
+@visibleForTesting
+AdminUserReport parseAdminUserReport(dynamic value) {
+  if (value is! Map) {
+    throw const FormatException('Invalid moderation report response.');
+  }
+  final item = Map<String, dynamic>.from(value);
+  final id = (item['id'] ?? '').toString().trim();
+  final reporterUserId = (item['reporterUserId'] ?? '').toString().trim();
+  final reportedUserId = (item['reportedUserId'] ?? '').toString().trim();
+  final status = (item['status'] ?? '').toString().trim();
+  final createdAt = DateTime.tryParse((item['createdAt'] ?? '').toString());
+  final updatedAt = DateTime.tryParse((item['updatedAt'] ?? '').toString());
+  if (id.isEmpty ||
+      reporterUserId.isEmpty ||
+      reportedUserId.isEmpty ||
+      !const {'open', 'resolved', 'dismissed'}.contains(status) ||
+      createdAt == null ||
+      updatedAt == null) {
+    throw const FormatException('Moderation report response is incomplete.');
+  }
+  final rawResolvedBy = item['resolvedBy'];
+  final rawResolvedAt = item['resolvedAt'];
+  return AdminUserReport(
+    id: id,
+    reporterUserId: reporterUserId,
+    reportedUserId: reportedUserId,
+    reporter: _parseModerationUserSummary(item['reporter']),
+    target: _parseModerationUserSummary(item['target']),
+    reason: (item['reason'] ?? '').toString().trim(),
+    details: item['details']?.toString().trim(),
+    status: status,
+    createdAt: createdAt.toLocal(),
+    updatedAt: updatedAt.toLocal(),
+    resolvedAt: rawResolvedAt == null
+        ? null
+        : DateTime.tryParse(rawResolvedAt.toString())?.toLocal(),
+    resolvedBy: rawResolvedBy == null
+        ? null
+        : _parseModerationUserSummary(rawResolvedBy),
+    resolutionNote: item['resolutionNote']?.toString().trim(),
   );
 }
 
@@ -1350,7 +1436,11 @@ class ApiProductionRepository {
 
   Future<AbuUserProfile?> fetchPublicProfile(String id) async {
     try {
-      final res = await api.get('/profile/$id');
+      final res = await api.get(
+        '/profile/$id',
+        requireAuth: true,
+        bypassCache: true,
+      );
       if (res is Map) {
         return AbuUserProfile(
           uid: res['publicId'] ?? res['firebaseUid'] ?? res['id'] ?? id,
@@ -1358,7 +1448,7 @@ class ApiProductionRepository {
           email: '',
           displayName: res['displayName'] ?? 'Fan',
           username: res['username'] ?? '',
-          avatarUrl: res['avatarUrl'] ?? '',
+          avatarUrl: '',
           supportedTeam: res['supportedTeam'] ?? 'Barcelona',
           supportedTeamLogo: res['supportedTeamLogo'] ?? '',
           country: res['country'] ?? '',
@@ -1380,6 +1470,80 @@ class ApiProductionRepository {
       }
     } catch (_) {}
     return null;
+  }
+
+  Future<void> reportUser({
+    required String userId,
+    required String reason,
+    String? details,
+  }) async {
+    final normalizedUserId = userId.trim();
+    final normalizedReason = reason.trim();
+    final normalizedDetails = details?.trim() ?? '';
+    if (normalizedUserId.isEmpty) {
+      throw ArgumentError.value(userId, 'userId', 'User ID is required.');
+    }
+    if (!RegExp(r'^[a-z][a-z0-9_-]{2,49}$').hasMatch(normalizedReason)) {
+      throw ArgumentError.value(
+        reason,
+        'reason',
+        'Report reason must be a valid reason code.',
+      );
+    }
+    if (normalizedDetails.length > 1000) {
+      throw ArgumentError.value(
+        details,
+        'details',
+        'Report details cannot exceed 1000 characters.',
+      );
+    }
+    await api.post(
+      '/users/${Uri.encodeComponent(normalizedUserId)}/report',
+      requireAuth: true,
+      body: <String, dynamic>{
+        'reason': normalizedReason,
+        if (normalizedDetails.isNotEmpty) 'details': normalizedDetails,
+      },
+    );
+  }
+
+  Future<void> blockUser(String userId) async {
+    final normalizedUserId = userId.trim();
+    if (normalizedUserId.isEmpty) {
+      throw ArgumentError.value(userId, 'userId', 'User ID is required.');
+    }
+    await api.post(
+      '/users/${Uri.encodeComponent(normalizedUserId)}/block',
+      requireAuth: true,
+    );
+  }
+
+  Future<void> unblockUser(String userId) async {
+    final normalizedUserId = userId.trim();
+    if (normalizedUserId.isEmpty) {
+      throw ArgumentError.value(userId, 'userId', 'User ID is required.');
+    }
+    await api.delete(
+      '/users/${Uri.encodeComponent(normalizedUserId)}/block',
+      requireAuth: true,
+    );
+  }
+
+  Future<List<BlockedUserSummary>> fetchBlockedUsers() async {
+    final response = await api.get(
+      '/users/blocked',
+      requireAuth: true,
+      bypassCache: true,
+    );
+    final rawUsers = response is Map ? response['data'] : response;
+    if (rawUsers is! List) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid blocked-user list.',
+        details: response,
+      );
+    }
+    return rawUsers.map(parseBlockedUserSummary).toList(growable: false);
   }
 
   Future<void> updateProfile({
@@ -1604,6 +1768,88 @@ class ApiProductionRepository {
       offset: (response['offset'] as num).toInt(),
       hasMore: response['hasMore'] as bool,
     );
+  }
+
+  Future<AdminUserReportPage> fetchAdminUserReports({
+    String status = 'open',
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    if (!const {'open', 'resolved', 'dismissed', 'all'}.contains(status)) {
+      throw ArgumentError.value(status, 'status', 'Unsupported report status.');
+    }
+    final normalizedLimit = limit.clamp(1, 100);
+    final normalizedOffset = offset < 0 ? 0 : offset;
+    final response = await api.get(
+      '/admin/reports',
+      queryParams: <String, String>{
+        'status': status,
+        'limit': normalizedLimit.toString(),
+        'offset': normalizedOffset.toString(),
+      },
+      requireAuth: true,
+      bypassCache: true,
+    );
+    if (response is! Map ||
+        response['reports'] is! List ||
+        response['total'] is! num ||
+        response['limit'] is! num ||
+        response['offset'] is! num ||
+        response['hasMore'] is! bool) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server returned an invalid moderation report queue.',
+        details: response,
+      );
+    }
+    return AdminUserReportPage(
+      reports: (response['reports'] as List)
+          .map(parseAdminUserReport)
+          .toList(growable: false),
+      total: (response['total'] as num).toInt(),
+      limit: (response['limit'] as num).toInt(),
+      offset: (response['offset'] as num).toInt(),
+      hasMore: response['hasMore'] as bool,
+    );
+  }
+
+  Future<AdminUserReport> resolveAdminUserReport({
+    required String reportId,
+    required String status,
+    required String resolutionNote,
+  }) async {
+    final normalizedId = reportId.trim();
+    final normalizedNote = resolutionNote.trim();
+    if (normalizedId.isEmpty) {
+      throw ArgumentError.value(reportId, 'reportId', 'Report ID is required.');
+    }
+    if (!const {'resolved', 'dismissed'}.contains(status)) {
+      throw ArgumentError.value(status, 'status', 'Unsupported resolution.');
+    }
+    if (normalizedNote.isEmpty || normalizedNote.length > 1000) {
+      throw ArgumentError.value(
+        resolutionNote,
+        'resolutionNote',
+        'A resolution note of 1–1000 characters is required.',
+      );
+    }
+    final response = await api.post(
+      '/admin/reports/${Uri.encodeComponent(normalizedId)}/resolve',
+      body: <String, dynamic>{
+        'status': status,
+        'resolutionNote': normalizedNote,
+      },
+      requireAuth: true,
+    );
+    final report = response is Map ? response['report'] : null;
+    if (response is! Map || response['success'] != true || report is! Map) {
+      throw AbuApiException(
+        statusCode: 502,
+        message: 'The server did not confirm the moderation decision.',
+        details: response,
+      );
+    }
+    return parseAdminUserReport(report);
   }
 
   Future<List<LeaderboardSeason>> fetchAdminLeaderboardSeasons() async {

@@ -1,5 +1,9 @@
 # RC-23: confirmed findings and next actions
 
+> Historical incident record. RC-23 was resolved after the Apple agreement and
+> catalog propagated. Do not use the old build-24 instructions for the current
+> release; use `APP_REVIEW_PHYSICAL_DEVICE_VIDEO.md` and build 30 instead.
+
 Updated 6 September 2026 after the physical-device report, the App Store
 Connect/API audit, the RevenueCat credential screenshots, and inspection of the
 supplied SampleCat ZIP.

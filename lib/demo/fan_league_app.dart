@@ -43,6 +43,7 @@ part 'production_features.dart';
 part 'phase3_admin_points.dart';
 part 'youtube_membership_snapshot_admin.dart';
 part 'admin_dashboard_stats.dart';
+part 'admin_report_inbox.dart';
 
 const _ink = Color(0xFF080B10);
 const _surface = Color(0xFF11161E);

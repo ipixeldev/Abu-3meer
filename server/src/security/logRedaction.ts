@@ -15,6 +15,20 @@ export function redactRequestUrl(rawUrl: string): string {
   );
   if (claimTemplate !== path) return claimTemplate;
 
+  // User moderation accepts a public username, Firebase UID, or database ID.
+  // None belongs in routine access logs. Report IDs are moderation metadata
+  // and receive the same treatment on staff resolution requests.
+  const reportResolutionTemplate = path.replace(
+    /^\/api\/v1\/admin\/reports\/[^/]+\/resolve$/i,
+    '/api/v1/admin/reports/:reportId/resolve',
+  );
+  if (reportResolutionTemplate !== path) return reportResolutionTemplate;
+  const userModerationTemplate = path.replace(
+    /^\/api\/v1\/users\/[^/]+\/(report|block)$/i,
+    '/api/v1/users/:userId/$1',
+  );
+  if (userModerationTemplate !== path) return userModerationTemplate;
+
   // Public profile lookup accepts a PostgreSQL UUID, Firebase UID, username,
   // or (for older clients) another account identifier in the path. Keep the
   // route shape useful for metrics while preventing that identifier from

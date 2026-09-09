@@ -5,14 +5,14 @@ Abu 3meer brings football predictions, video questions, and the fan community to
 • Video questions: Answer questions from Abu 3meer videos and guess featured players.
 • Members: Discover members-only videos and content.
 • XP and rankings: Receive 50 XP once at signup, 5 XP for the first login each UTC day, and XP for correct football predictions and correct video-question or player-guess answers. Compare fan progress on current-month, previous-month, and season leaderboards.
-• Membership options: Subscribe to Ostoora3 monthly or Ostoora3 Pro Max yearly for access to Members, member bonuses, and a subscriber badge beside your name. Both plans provide the same member benefits with different billing periods.
+• Membership options: Subscribe to Ostoora3 monthly or Ostoora3 Pro Max yearly for Members access, a subscriber badge, 150 XP once on first activation, 50 XP on each verified renewal, and 2× XP only on correct match-winner, first-goalscorer, and exact-score predictions. Both plans provide the same benefits with different billing periods.
 • YouTube members: Enter your channel profile link to check it against the latest member list uploaded by the channel's staff. Membership reflects the latest available list, not real-time YouTube changes.
 
 Choose Arabic or English, select a font for your language, and control notifications for match reminders, new questions, members-only videos, prediction results, and important announcements.
 
 The app is free to download, with optional auto-renewable subscriptions. Localized prices and billing periods are shown before purchase. Subscriptions renew automatically unless cancelled in your App Store account settings. Restore purchases or manage your subscription from the app.
 
-There is no paid entry, betting, wagering, or cash prize for predictions and quizzes. XP is for fan rankings only; it has no monetary value and cannot be bought, transferred, or redeemed.
+There is no paid entry, betting, wagering, or cash prize for predictions and quizzes. XP is not sold as a standalone currency. It is for fan rankings only, has no monetary value, cannot be transferred or redeemed, and unlocks nothing.
 
 Privacy Policy: https://ipixeldev.github.io/Abu-3meer/privacy/
 Terms of Use: https://ipixeldev.github.io/Abu-3meer/terms/

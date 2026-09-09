@@ -75,6 +75,56 @@ int leaderboardRankForProfile(
   return 0;
 }
 
+String _userSafetyIdentity(String value) => value.trim().toLowerCase();
+
+@visibleForTesting
+AbuUserProfile publicProfileWithoutAvatar(AbuUserProfile profile) =>
+    profile.copyWith(avatarUrl: '');
+
+@visibleForTesting
+List<LeaderboardEntry> excludeBlockedLeaderboardEntries(
+  Iterable<LeaderboardEntry> entries,
+  Iterable<String> blockedUserIds,
+) {
+  final blocked = blockedUserIds
+      .map(_userSafetyIdentity)
+      .where((value) => value.isNotEmpty)
+      .toSet();
+  if (blocked.isEmpty) return List<LeaderboardEntry>.from(entries);
+  return entries
+      .where((entry) => !blocked.contains(_userSafetyIdentity(entry.uid)))
+      .toList(growable: false);
+}
+
+@visibleForTesting
+LeaderboardSnapshot excludeBlockedLeaderboardSnapshot(
+  LeaderboardSnapshot snapshot,
+  Iterable<String> blockedUserIds,
+) {
+  final blocked = blockedUserIds
+      .map(_userSafetyIdentity)
+      .where((value) => value.isNotEmpty)
+      .toSet();
+  if (blocked.isEmpty) return snapshot;
+  final entries = snapshot.entries
+      .where(
+        (ranked) => !blocked.contains(_userSafetyIdentity(ranked.entry.uid)),
+      )
+      .toList(growable: false);
+  final currentUser = snapshot.currentUser;
+  return LeaderboardSnapshot(
+    entries: entries,
+    currentUser:
+        currentUser != null &&
+            blocked.contains(_userSafetyIdentity(currentUser.entry.uid))
+        ? null
+        : currentUser,
+    totalPlayers: snapshot.totalPlayers,
+    seasons: snapshot.seasons,
+    activeSeasonId: snapshot.activeSeasonId,
+  );
+}
+
 @visibleForTesting
 bool sameFootballMatchForMatching(MatchEvent left, MatchEvent right) {
   if (left.id == right.id) return true;
@@ -534,6 +584,7 @@ class ProductionRepository {
   _leaderboardResources = {};
   final Map<String, _ReplayResource<LeaderboardSnapshot>>
   _leaderboardViewResources = {};
+  final Set<String> _blockedUserIds = <String>{};
   final Map<String, _ReplayResource<List<PointLedgerEntry>>>
   _pointHistoryResources = {};
   final Map<String, _ReplayResource<List<AbuUserProfile>>> _adminUserResources =
@@ -824,15 +875,14 @@ class ProductionRepository {
 
   Future<AbuUserProfile?> fetchProfileByUid(String uid) async {
     if (uid.isEmpty || uid == 'guest') return null;
+    if (_blockedUserIds.contains(_userSafetyIdentity(uid))) return null;
     try {
       final fromApi = await apiRepo.fetchPublicProfile(uid);
-      if (fromApi != null) return fromApi;
-
-      final doc = await firestore.collection('users').doc(uid).get();
-      if (doc.exists) {
-        return AbuUserProfile.fromDocument(doc);
-      }
+      if (fromApi != null) return publicProfileWithoutAvatar(fromApi);
     } catch (_) {}
+    // The authenticated API is authoritative for public visibility. In
+    // particular, never consult Firestore after the API hides a profile due
+    // to either side of a block relationship.
     return null;
   }
 
@@ -887,12 +937,90 @@ class ProductionRepository {
             monthly,
             () => _ReplayResource<List<LeaderboardEntry>>(
               maxAge: const Duration(minutes: 2),
-              load: () => apiRepo.fetchTopLeaderboard(
-                period: monthly ? 'monthly' : 'season',
+              load: () async => excludeBlockedLeaderboardEntries(
+                await apiRepo.fetchTopLeaderboard(
+                  period: monthly ? 'monthly' : 'season',
+                ),
+                _blockedUserIds,
               ),
             ),
           )
           .stream;
+
+  Future<void> reportUser({
+    required String userId,
+    required String reason,
+    String? details,
+  }) => apiRepo.reportUser(userId: userId, reason: reason, details: details);
+
+  Future<void> blockUser(String userId) async {
+    final normalizedUserId = _userSafetyIdentity(userId);
+    if (normalizedUserId.isEmpty) {
+      throw ArgumentError.value(userId, 'userId', 'User ID is required.');
+    }
+    await apiRepo.blockUser(userId);
+    _blockedUserIds.add(normalizedUserId);
+    _emitBlockedLeaderboardFilters();
+  }
+
+  Future<void> unblockUser(String userId) async {
+    final normalizedUserId = _userSafetyIdentity(userId);
+    if (normalizedUserId.isEmpty) {
+      throw ArgumentError.value(userId, 'userId', 'User ID is required.');
+    }
+    await apiRepo.unblockUser(userId);
+    _blockedUserIds.remove(normalizedUserId);
+    await Future.wait([
+      for (final resource in _leaderboardResources.values)
+        () async {
+          try {
+            await resource.refresh(force: true);
+          } catch (error) {
+            debugPrint(
+              '[UserSafety] User unblocked; leaderboard refresh deferred: $error',
+            );
+          }
+        }(),
+      for (final resource in _leaderboardViewResources.values)
+        () async {
+          try {
+            await resource.refresh(force: true);
+          } catch (error) {
+            debugPrint(
+              '[UserSafety] User unblocked; leaderboard refresh deferred: $error',
+            );
+          }
+        }(),
+    ]);
+  }
+
+  Future<List<BlockedUserSummary>> fetchBlockedUsers() async {
+    final users = await apiRepo.fetchBlockedUsers();
+    _blockedUserIds
+      ..clear()
+      ..addAll(users.map((user) => _userSafetyIdentity(user.publicId)));
+    _emitBlockedLeaderboardFilters();
+    return users;
+  }
+
+  void _emitBlockedLeaderboardFilters() {
+    for (final resource in _leaderboardResources.values) {
+      final current = resource.value;
+      if (current != null) {
+        resource.emit(
+          excludeBlockedLeaderboardEntries(current, _blockedUserIds),
+        );
+      }
+    }
+    for (final resource in _leaderboardViewResources.values) {
+      final current = resource.value;
+      if (current != null) {
+        resource.emit(
+          excludeBlockedLeaderboardSnapshot(current, _blockedUserIds),
+        );
+      }
+    }
+  }
 
   Stream<List<AbuChallenge>> watchChallenges() {
     final uid = auth.currentUser?.uid ?? '';
@@ -963,6 +1091,26 @@ class ProductionRepository {
     int offset = 0,
   }) =>
       apiRepo.fetchAdminUserPage(search: search, limit: limit, offset: offset);
+
+  Future<AdminUserReportPage> fetchAdminUserReports({
+    String status = 'open',
+    int limit = 50,
+    int offset = 0,
+  }) => apiRepo.fetchAdminUserReports(
+    status: status,
+    limit: limit,
+    offset: offset,
+  );
+
+  Future<AdminUserReport> resolveAdminUserReport({
+    required String reportId,
+    required String status,
+    required String resolutionNote,
+  }) => apiRepo.resolveAdminUserReport(
+    reportId: reportId,
+    status: status,
+    resolutionNote: resolutionNote,
+  );
 
   /// Changes app access only; store billing and the CSV snapshot are untouched.
   Future<SubscriptionAccessResult> setAdminSubscriptionAccess({
@@ -1108,8 +1256,7 @@ class ProductionRepository {
       // token for Firebase. Without it the account picker commonly returns
       // `canceled` even when the user did not cancel.
       await GoogleSignIn.instance.initialize(
-        serverClientId:
-            '701810344443-pbftvefi2r3mho16h6h98ib3e8hjije5.apps.googleusercontent.com',
+        serverClientId: '701810344443-pbftvefi2r3mho16h6h98ib3e8hjije5.apps.googleusercontent.com',
       );
       _googleInitialized = true;
     }
@@ -1152,8 +1299,7 @@ class ProductionRepository {
     } else {
       if (!_googleInitialized) {
         await GoogleSignIn.instance.initialize(
-          serverClientId:
-              '701810344443-pbftvefi2r3mho16h6h98ib3e8hjije5.apps.googleusercontent.com',
+          serverClientId: '701810344443-pbftvefi2r3mho16h6h98ib3e8hjije5.apps.googleusercontent.com',
         );
         _googleInitialized = true;
       }
@@ -1220,12 +1366,21 @@ class ProductionRepository {
       await resource.dispose();
     }
     _adminUserResources.clear();
+    for (final resource in _leaderboardResources.values) {
+      await resource.dispose();
+    }
+    _leaderboardResources.clear();
+    for (final resource in _leaderboardViewResources.values) {
+      await resource.dispose();
+    }
+    _leaderboardViewResources.clear();
     await _adminPointAdjustmentsResource?.dispose();
     _adminPointAdjustmentsResource = null;
     await _exclusiveVideosResource?.dispose();
     _exclusiveVideosResource = null;
     _exclusiveVideosResourceUserId = null;
     _pendingRewardRedemptionKeys.clear();
+    _blockedUserIds.clear();
   }
 
   Future<void> completeOnboarding({
@@ -2309,8 +2464,7 @@ class ProductionRepository {
       } else {
         if (!_googleInitialized) {
           await GoogleSignIn.instance.initialize(
-            serverClientId:
-                '701810344443-pbftvefi2r3mho16h6h98ib3e8hjije5.apps.googleusercontent.com',
+            serverClientId: '701810344443-pbftvefi2r3mho16h6h98ib3e8hjije5.apps.googleusercontent.com',
           );
           _googleInitialized = true;
         }
@@ -2524,13 +2678,16 @@ class ProductionRepository {
   Future<LeaderboardSnapshot> _fetchLeaderboardSnapshot(
     LeaderboardPeriod period, {
     String? seasonId,
-  }) => apiRepo.fetchLeaderboardSnapshot(
-    period: switch (period) {
-      LeaderboardPeriod.currentMonth => 'monthly',
-      LeaderboardPeriod.previousMonth => 'previous-month',
-      LeaderboardPeriod.season => 'season',
-    },
-    seasonId: period == LeaderboardPeriod.season ? seasonId : null,
+  }) async => excludeBlockedLeaderboardSnapshot(
+    await apiRepo.fetchLeaderboardSnapshot(
+      period: switch (period) {
+        LeaderboardPeriod.currentMonth => 'monthly',
+        LeaderboardPeriod.previousMonth => 'previous-month',
+        LeaderboardPeriod.season => 'season',
+      },
+      seasonId: period == LeaderboardPeriod.season ? seasonId : null,
+    ),
+    _blockedUserIds,
   );
 
   Stream<List<AbuAchievementProgress>> watchAchievements(String uid) =>
@@ -3076,8 +3233,7 @@ String productionErrorMessage(Object error) {
       'provider-already-linked' => 'Google is already linked to this account.',
       'youtube-google-account-mismatch' =>
         'Choose the Google account already linked to this Abu 3meer account.',
-      'missing-youtube-access-token' =>
-        'Allow read-only YouTube access so membership can be checked.',
+      'missing-youtube-access-token' => 'Paste a valid public YouTube channel profile link so membership can be checked.',
       'operation-not-allowed' =>
         'This sign-in method is not enabled yet. Contact support.',
       'account-deletion-password-required' =>

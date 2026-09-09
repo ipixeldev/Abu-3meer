@@ -32,6 +32,11 @@ import {
   enforceSubscriptionAccess,
   sandboxAccessAllowedForUser,
 } from '../services/subscriptionService.js';
+import {
+  listUserReports,
+  resolveUserReport,
+  UserModerationError,
+} from '../services/userModerationService.js';
 
 function isoTimestamp(value: unknown): string | null {
   if (value == null) return null;
@@ -52,6 +57,15 @@ const leaderboardSeasonIdSchema = z.string()
   .min(1)
   .max(50)
   .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+const adminReportListQuerySchema = z.object({
+  status: z.enum(['open', 'resolved', 'dismissed', 'all']).default('open'),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+const adminReportResolutionSchema = z.object({
+  status: z.enum(['resolved', 'dismissed']),
+  resolutionNote: z.string().trim().max(1000).optional(),
+}).strict();
 
 export const adminPointAdjustmentBodySchema = z.object({
   amount: z.number().int().min(-5000).max(5000).refine(
@@ -682,7 +696,67 @@ export async function adminRoutes(fastify: FastifyInstance) {
     },
   );
 
-  // 3. User Moderation (Ban / Suspend / Activate) (Permission: users.ban / users.suspend)
+  // 3. User-submitted safety reports. User viewers can inspect the queue;
+  // changing its moderation state requires the existing suspension capability.
+  fastify.get(
+    '/admin/reports',
+    { preHandler: [requirePermission('users.view')] },
+    async (request, reply) => {
+      reply.header('Cache-Control', 'private, no-store');
+      const parsed = adminReportListQuerySchema.safeParse(request.query);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: 'ValidationError',
+          issues: parsed.error.issues,
+        });
+      }
+      return listUserReports({
+        status: parsed.data.status === 'all' ? undefined : parsed.data.status,
+        limit: parsed.data.limit,
+        offset: parsed.data.offset,
+      });
+    },
+  );
+
+  fastify.post(
+    '/admin/reports/:reportId/resolve',
+    { preHandler: [requirePermission('users.suspend')] },
+    async (request, reply) => {
+      const reportId = z.string().uuid().safeParse(
+        (request.params as { reportId?: unknown }).reportId,
+      );
+      const body = adminReportResolutionSchema.safeParse(request.body);
+      if (!reportId.success || !body.success) {
+        return reply.status(400).send({
+          error: 'ValidationError',
+          issues: [
+            ...(reportId.success ? [] : reportId.error.issues),
+            ...(body.success ? [] : body.error.issues),
+          ],
+        });
+      }
+      try {
+        return {
+          success: true,
+          report: await resolveUserReport(
+            request.user!.id,
+            reportId.data,
+            body.data,
+          ),
+        };
+      } catch (error) {
+        if (error instanceof UserModerationError) {
+          return reply.status(error.statusCode).send({
+            error: error.code,
+            message: error.message,
+          });
+        }
+        throw error;
+      }
+    },
+  );
+
+  // 4. User Moderation (Ban / Suspend / Activate) (Permission: users.ban / users.suspend)
   fastify.post('/admin/users/:id/status', { preHandler: [requirePermission('users.suspend')] }, async (request, reply) => {
     const { id: identifier } = request.params as { id: string };
     const schema = z.object({
@@ -720,7 +794,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     return { success: true, status };
   });
 
-  // 4. Role Management (SUPER_ADMIN ONLY)
+  // 5. Role Management (SUPER_ADMIN ONLY)
   fastify.post('/admin/users/:id/roles', { preHandler: [requireSuperAdmin] }, async (request, reply) => {
     const { id: identifier } = request.params as { id: string };
     const schema = z.object({
@@ -823,7 +897,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 5. Point Rules Configuration (Permission: settings.manage)
+  // 6. Point Rules Configuration (Permission: settings.manage)
   fastify.put('/admin/point-rules', { preHandler: [requirePermission('settings.manage')] }, async (request, reply) => {
     const parsed = adminPointRuleBodySchema.safeParse(request.body);
     if (!parsed.success) {
@@ -840,7 +914,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     return { success: true, updatedRules };
   });
 
-  // 6. Security & Audit Logs (Permission: audit.view)
+  // 7. Security & Audit Logs (Permission: audit.view)
   fastify.get('/admin/audit-logs', { preHandler: [requirePermission('audit.view')] }, async (request, reply) => {
     const res = await query(
       `SELECT a.*, u.display_name as admin_name, u.email as admin_email
@@ -863,7 +937,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     return res.rows;
   });
 
-  // 7. Notification Broadcast (Permission: notifications.send)
+  // 8. Notification Broadcast (Permission: notifications.send)
   fastify.get('/admin/notifications/:campaignId/status', { preHandler: [requirePermission('notifications.send')] }, async (request, reply) => {
     const parsed = z.object({
       campaignId: z.string().uuid(),

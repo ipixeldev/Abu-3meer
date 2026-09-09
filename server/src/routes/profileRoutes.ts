@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import {
   authenticateUser,
@@ -16,8 +16,21 @@ import {
   activeYouTubeMembershipSql,
 } from '../services/subscriptionAccess.js';
 import { readSubscriptionStatus } from '../services/subscriptionService.js';
+import { mutualBlockVisibilitySql } from '../services/userModerationService.js';
+import {
+  isPublicProfileTextAllowed,
+  unsafePublicProfileTextError,
+} from '../services/publicProfileTextPolicy.js';
 
 const eligibleXpSources = [...eligibleLeaderboardSourceTypes];
+
+async function authenticatePublicProfileViewer(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  if (request.headers.authorization == null) return;
+  return authenticateUser(request, reply);
+}
 
 interface PublicFanProfileRow {
   username: string;
@@ -50,7 +63,9 @@ export function mapPublicFanProfile(row: PublicFanProfileRow) {
     publicId,
     username: row.username,
     displayName: row.display_name,
-    avatarUrl: row.avatar_url,
+    // Profile photos are user-uploaded content. Keep them on authenticated
+    // owner/admin responses, but do not redistribute them on public profiles.
+    avatarUrl: null,
     supportedTeam: row.supported_team,
     supportedTeamLogo: row.supported_team_logo,
     country: row.country,
@@ -204,12 +219,16 @@ export async function profileRoutes(fastify: FastifyInstance) {
     };
   });
 
-  // GET /api/v1/profile/:id - Fetch public fan profile (by user ID or Firebase UID)
-  fastify.get('/profile/:id', async (request, reply) => {
-    const { id } = request.params as { id: string };
-    await listLeaderboardSeasons();
-    const res = await query(
-      `SELECT u.username, u.display_name, u.avatar_url,
+  // GET /api/v1/profile/:id - Fetch a public fan profile by public handle or legacy ID.
+  fastify.get(
+    '/profile/:id',
+    { preHandler: [authenticatePublicProfileViewer] },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      await listLeaderboardSeasons();
+      if (request.user) reply.header('Cache-Control', 'private, no-store');
+      const res = await query(
+        `SELECT u.username, u.display_name, NULL::text AS avatar_url,
               u.supported_team, u.supported_team_logo, u.country, u.country_code,
               ${activeYouTubeMembershipSql('u.id')} AS is_youtube_member,
               ${activeSubscriptionSql('u.id')} AS is_pro_subscriber,
@@ -257,17 +276,23 @@ export async function profileRoutes(fastify: FastifyInstance) {
          WHERE pt.user_id = p.user_id
            AND pt.source_type = ANY($2::varchar[])
        ) xp ON TRUE
-       WHERE u.id::text = $1 OR u.firebase_uid = $1 OR LOWER(u.username) = LOWER($1)
+       WHERE (
+         u.id::text = $1::text
+         OR u.firebase_uid = $1::text
+         OR LOWER(u.username) = LOWER($1::text)
+       )
+         AND ${mutualBlockVisibilitySql('u.id', '$3')}
        LIMIT 1`,
-      [id, eligibleXpSources]
-    );
+        [id, eligibleXpSources, request.user?.id ?? null]
+      );
 
-    if (res.rows.length === 0) {
-      return reply.status(404).send({ error: 'NotFound', message: 'Fan profile not found' });
-    }
+      if (res.rows.length === 0) {
+        return reply.status(404).send({ error: 'NotFound', message: 'Fan profile not found' });
+      }
 
-    return mapPublicFanProfile(res.rows[0] as PublicFanProfileRow);
-  });
+      return mapPublicFanProfile(res.rows[0] as PublicFanProfileRow);
+    },
+  );
 
   // GET /api/v1/profile/point-history - Fetch user's verified point ledger history
   fastify.get('/profile/point-history', { preHandler: [authenticateUser] }, async (request, reply) => {
@@ -310,6 +335,14 @@ export async function profileRoutes(fastify: FastifyInstance) {
       supportedTeamLogo,
       onboardingCompleted,
     } = parseResult.data;
+
+    if (
+      (displayName !== undefined && !isPublicProfileTextAllowed(displayName))
+      || (username !== undefined && !isPublicProfileTextAllowed(username))
+    ) {
+      // Never echo the rejected value or attach it to operational logs.
+      return reply.status(400).send(unsafePublicProfileTextError);
+    }
 
     const updates: string[] = [];
     const values: any[] = [];

@@ -1496,13 +1496,12 @@ class _ProductionOnboardingState extends State<_ProductionOnboarding> {
     if (normalizedUsername.length < 3 ||
         normalizedDisplayName.length < 2 ||
         team.trim().isEmpty ||
-        selectedCountry.trim().isEmpty ||
-        avatarUrl.trim().isEmpty) {
+        selectedCountry.trim().isEmpty) {
       setState(() {
         error = abuText(
           context,
-          'Complete your name, username, club, country and profile photo before continuing.',
-          'أكمل الاسم واسم المستخدم والنادي والدولة وصورة الملف الشخصي قبل المتابعة.',
+          'Complete your name, username, club and country before continuing.',
+          'أكمل الاسم واسم المستخدم والنادي والدولة قبل المتابعة.',
         );
       });
       return;
@@ -1621,10 +1620,10 @@ class _ProductionOnboardingState extends State<_ProductionOnboarding> {
           abuText(
             context,
             avatarUrl.isEmpty
-                ? 'Add a profile photo'
+                ? 'Add a profile photo (optional)'
                 : 'Tap to change profile photo',
             avatarUrl.isEmpty
-                ? 'أضف صورة للملف الشخصي'
+                ? 'أضف صورة للملف الشخصي (اختياري)'
                 : 'اضغط لتغيير صورة الملف الشخصي',
           ),
           textAlign: TextAlign.center,
@@ -7770,6 +7769,11 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
               context,
               ranked.entry.uid,
               widget.repository,
+              allowSafetyActions: !_leaderboardEntryBelongsToProfile(
+                ranked.entry,
+                uid: widget.profile.uid,
+                username: widget.profile.username,
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -7816,6 +7820,7 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                   context,
                   entry.uid,
                   widget.repository,
+                  allowSafetyActions: !mine,
                 ),
               );
             },
@@ -7916,6 +7921,12 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                           context,
                           ranked.entry.uid,
                           widget.repository,
+                          allowSafetyActions:
+                              !_leaderboardEntryBelongsToProfile(
+                                ranked.entry,
+                                uid: widget.profile.uid,
+                                username: widget.profile.username,
+                              ),
                         ),
                       ),
                       if (remaining.isNotEmpty) const SizedBox(height: 14),
@@ -8014,8 +8025,8 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
                             Text(
                               abuText(
                                 context,
-                                'XP shows fan activity only. It cannot be bought, transferred, redeemed, or used to unlock anything. There are no prizes or rewards.',
-                                'تعرض نقاط XP نشاط المشجع فقط. لا يمكن شراؤها أو نقلها أو استبدالها ولا تفتح أي مزايا. لا توجد جوائز أو مكافآت.',
+                                'XP shows fan activity only. It is not sold as a standalone currency, cannot be transferred or redeemed, and does not unlock anything. Membership can award disclosed recognition XP. There are no prizes or rewards.',
+                                'تعرض XP نشاط المشجع فقط. لا تباع كعملة مستقلة ولا يمكن نقلها أو استبدالها ولا تفتح أي مزايا. قد تمنح العضوية نقاطاً تقديرية معلنة. لا توجد جوائز أو مكافآت.',
                               ),
                               style: TextStyle(color: _muted, height: 1.5),
                             ),
@@ -8669,8 +8680,9 @@ class _StickyUserLeaderboardPill extends StatelessWidget {
 void _showOtherUserProfileDialog(
   BuildContext context,
   String uid,
-  ProductionRepository repository,
-) {
+  ProductionRepository repository, {
+  bool allowSafetyActions = true,
+}) {
   showDialog(
     context: context,
     builder: (dialogContext) => Dialog(
@@ -8817,6 +8829,29 @@ void _showOtherUserProfileDialog(
                           ),
                         ],
                       ),
+                      if (allowSafetyActions &&
+                          repository.auth.currentUser != null) ...[
+                        const SizedBox(height: 18),
+                        _FanProfileSafetyActions(
+                          repository: repository,
+                          targetUserId: uid,
+                          targetDisplayName: userProfile.displayName,
+                          onBlocked: () {
+                            Navigator.of(dialogContext).pop();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  abuText(
+                                    context,
+                                    '${userProfile.displayName} was blocked and removed from your view.',
+                                    'تم حظر ${userProfile.displayName} وإزالته من العرض.',
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -8825,6 +8860,285 @@ void _showOtherUserProfileDialog(
           );
         },
       ),
+    ),
+  );
+}
+
+class _FanProfileSafetyActions extends StatefulWidget {
+  const _FanProfileSafetyActions({
+    required this.repository,
+    required this.targetUserId,
+    required this.targetDisplayName,
+    required this.onBlocked,
+  });
+
+  final ProductionRepository repository;
+  final String targetUserId;
+  final String targetDisplayName;
+  final VoidCallback onBlocked;
+
+  @override
+  State<_FanProfileSafetyActions> createState() =>
+      _FanProfileSafetyActionsState();
+}
+
+class _FanProfileSafetyActionsState extends State<_FanProfileSafetyActions> {
+  bool blocking = false;
+
+  Future<void> _report() async {
+    final submitted = await showDialog<bool>(
+      context: context,
+      builder: (_) => _ReportUserDialog(
+        repository: widget.repository,
+        targetUserId: widget.targetUserId,
+        targetDisplayName: widget.targetDisplayName,
+      ),
+    );
+    if (submitted == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            abuText(
+              context,
+              'Report submitted. Our moderation team will review it.',
+              'تم إرسال البلاغ. سيراجعه فريق الإشراف.',
+            ),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _block() async {
+    if (blocking) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.block_rounded, color: _red),
+        title: Text(abuText(context, 'Block this user?', 'حظر هذا المستخدم؟')),
+        content: Text(
+          abuText(
+            context,
+            '${widget.targetDisplayName} will be removed from your leaderboard and public profile views. You can unblock them later in Settings.',
+            'ستتم إزالة ${widget.targetDisplayName} من لوحة الصدارة وملفات المشجعين التي تراها. يمكنك إلغاء الحظر لاحقاً من الإعدادات.',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(abuText(context, 'CANCEL', 'إلغاء')),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: _red,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.block_rounded),
+            label: Text(abuText(context, 'BLOCK USER', 'حظر المستخدم')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => blocking = true);
+    try {
+      await widget.repository.blockUser(widget.targetUserId);
+      if (mounted) widget.onBlocked();
+    } catch (error) {
+      if (mounted) {
+        setState(() => blocking = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(productionErrorMessage(error))));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      OutlinedButton.icon(
+        onPressed: blocking ? null : _report,
+        icon: const Icon(Icons.flag_outlined),
+        label: Text(abuText(context, 'REPORT PROFILE', 'الإبلاغ عن الملف')),
+      ),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+        onPressed: blocking ? null : _block,
+        style: OutlinedButton.styleFrom(foregroundColor: _red),
+        icon: blocking
+            ? const SizedBox.square(
+                dimension: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.block_rounded),
+        label: Text(
+          blocking
+              ? abuText(context, 'BLOCKING…', 'جارٍ الحظر…')
+              : abuText(context, 'BLOCK USER', 'حظر المستخدم'),
+        ),
+      ),
+    ],
+  );
+}
+
+class _ReportUserDialog extends StatefulWidget {
+  const _ReportUserDialog({
+    required this.repository,
+    required this.targetUserId,
+    required this.targetDisplayName,
+  });
+
+  final ProductionRepository repository;
+  final String targetUserId;
+  final String targetDisplayName;
+
+  @override
+  State<_ReportUserDialog> createState() => _ReportUserDialogState();
+}
+
+class _ReportUserDialogState extends State<_ReportUserDialog> {
+  final details = TextEditingController();
+  String reason = 'inappropriate_content';
+  bool busy = false;
+  String? error;
+
+  @override
+  void dispose() {
+    details.dispose();
+    super.dispose();
+  }
+
+  String _reasonLabel(BuildContext context, String value) => switch (value) {
+    'harassment' => abuText(
+      context,
+      'Harassment or bullying',
+      'مضايقة أو تنمر',
+    ),
+    'hate_speech' => abuText(context, 'Hate speech', 'خطاب كراهية'),
+    'impersonation' => abuText(context, 'Impersonation', 'انتحال شخصية'),
+    'spam' => abuText(context, 'Spam', 'محتوى مزعج'),
+    'other' => abuText(context, 'Other', 'سبب آخر'),
+    _ => abuText(context, 'Inappropriate profile', 'ملف شخصي غير لائق'),
+  };
+
+  Future<void> _submit() async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.repository.reportUser(
+        userId: widget.targetUserId,
+        reason: reason,
+        details: details.text,
+      );
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (exception) {
+      if (mounted) {
+        setState(() {
+          busy = false;
+          error = productionErrorMessage(exception);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: !busy,
+    child: AlertDialog(
+      icon: const Icon(Icons.flag_outlined, color: _gold),
+      title: Text(abuText(context, 'Report profile', 'الإبلاغ عن الملف')),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                abuText(
+                  context,
+                  'Tell us what is wrong with ${widget.targetDisplayName}. Reports are sent to the moderation team.',
+                  'أخبرنا بالمشكلة في ملف ${widget.targetDisplayName}. تُرسل البلاغات إلى فريق الإشراف.',
+                ),
+              ),
+              const SizedBox(height: 14),
+              DropdownButtonFormField<String>(
+                initialValue: reason,
+                decoration: InputDecoration(
+                  labelText: abuText(context, 'Reason', 'السبب'),
+                ),
+                items: [
+                  for (final value in const <String>[
+                    'inappropriate_content',
+                    'harassment',
+                    'hate_speech',
+                    'impersonation',
+                    'spam',
+                    'other',
+                  ])
+                    DropdownMenuItem(
+                      value: value,
+                      child: Text(_reasonLabel(context, value)),
+                    ),
+                ],
+                onChanged: busy
+                    ? null
+                    : (value) => setState(() => reason = value ?? reason),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: details,
+                enabled: !busy,
+                maxLength: 1000,
+                minLines: 2,
+                maxLines: 5,
+                decoration: InputDecoration(
+                  labelText: abuText(
+                    context,
+                    'Additional details (optional)',
+                    'تفاصيل إضافية (اختياري)',
+                  ),
+                  alignLabelWithHint: true,
+                ),
+              ),
+              if (error != null)
+                Text(
+                  error!,
+                  style: const TextStyle(
+                    color: _red,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: busy ? null : () => Navigator.of(context).pop(false),
+          child: Text(abuText(context, 'CANCEL', 'إلغاء')),
+        ),
+        FilledButton.icon(
+          onPressed: busy ? null : _submit,
+          icon: busy
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.send_rounded),
+          label: Text(
+            busy
+                ? abuText(context, 'SENDING…', 'جارٍ الإرسال…')
+                : abuText(context, 'SUBMIT REPORT', 'إرسال البلاغ'),
+          ),
+        ),
+      ],
     ),
   );
 }
@@ -8923,6 +9237,11 @@ class _ProductionLeaderboardTable extends StatelessWidget {
                     context,
                     entries[index].entry.uid,
                     repository!,
+                    allowSafetyActions: !_leaderboardEntryBelongsToProfile(
+                      entries[index].entry,
+                      uid: profileUid,
+                      username: profileUsername,
+                    ),
                   )
                 : null,
           ),
@@ -10997,8 +11316,8 @@ String _youtubeMembershipResultMessage(
     ),
     YouTubeMembershipCheckStatus.noYouTubeChannel => abuText(
       context,
-      'No YouTube channel was found for the selected Google account.',
-      'لم يتم العثور على قناة يوتيوب للحساب المحدد.',
+      'No public YouTube channel was found at that profile link.',
+      'لم يتم العثور على قناة يوتيوب عامة في رابط الملف هذا.',
     ),
   };
 }
@@ -11041,8 +11360,8 @@ class _YouTubeMembershipCheckDialog extends StatelessWidget {
       ),
       YouTubeMembershipCheckStatus.noYouTubeChannel => abuText(
         context,
-        'The chosen Google account owns no YouTube channel. Try again and choose the account that owns your channel.',
-        'حساب Google المختار لا يملك قناة يوتيوب. حاول مجدداً واختر الحساب الذي يملك قناتك.',
+        'No public YouTube channel was found at that profile link. Check the link and try again.',
+        'لم يتم العثور على قناة يوتيوب عامة في هذا الرابط. تحقق من الرابط وحاول مجدداً.',
       ),
     };
 
@@ -11409,6 +11728,27 @@ class _ProductionSettings extends StatelessWidget {
                   ],
                   const Divider(height: 1),
                   ListTile(
+                    leading: Icon(Icons.block_rounded, color: primary),
+                    title: Text(
+                      abuText(context, 'Blocked users', 'المستخدمون المحظورون'),
+                      style: const TextStyle(fontWeight: FontWeight.w900),
+                    ),
+                    subtitle: Text(
+                      abuText(
+                        context,
+                        'Review people you blocked and unblock them at any time.',
+                        'راجع الأشخاص الذين حظرتهم وألغِ حظرهم في أي وقت.',
+                      ),
+                    ),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => showDialog<void>(
+                      context: context,
+                      builder: (_) =>
+                          _BlockedUsersDialog(repository: repository),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
                     leading: const Icon(
                       Icons.delete_forever_rounded,
                       color: _red,
@@ -11434,8 +11774,10 @@ class _ProductionSettings extends StatelessWidget {
                     onTap: () => showDialog<bool>(
                       context: context,
                       barrierDismissible: false,
-                      builder: (_) =>
-                          _AccountDeletionDialog(repository: repository),
+                      builder: (_) => _AccountDeletionDialog(
+                        repository: repository,
+                        profile: profile,
+                      ),
                     ),
                   ),
                 ],
@@ -11684,23 +12026,26 @@ class _ProductionSettings extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      OutlinedButton.icon(
-                        onPressed: () => launchUrl(
-                          Uri.parse(
-                            'https://www.youtube.com/channel/${AbuExternalContentService.youtubeChannelId}/join',
+                      if (kIsWeb ||
+                          defaultTargetPlatform != TargetPlatform.iOS) ...[
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          onPressed: () => launchUrl(
+                            Uri.parse(
+                              'https://www.youtube.com/channel/${AbuExternalContentService.youtubeChannelId}/join',
+                            ),
+                            mode: LaunchMode.externalApplication,
                           ),
-                          mode: LaunchMode.externalApplication,
-                        ),
-                        icon: Icon(Icons.open_in_new_rounded),
-                        label: Text(
-                          abuText(
-                            context,
-                            'OPEN CHANNEL MEMBERSHIP',
-                            'فتح عضوية القناة',
+                          icon: Icon(Icons.open_in_new_rounded),
+                          label: Text(
+                            abuText(
+                              context,
+                              'OPEN CHANNEL MEMBERSHIP',
+                              'فتح عضوية القناة',
+                            ),
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -11843,10 +12188,193 @@ class _ProductionSettings extends StatelessWidget {
   }
 }
 
-class _AccountDeletionDialog extends StatefulWidget {
-  const _AccountDeletionDialog({required this.repository});
+class _BlockedUsersDialog extends StatefulWidget {
+  const _BlockedUsersDialog({required this.repository});
 
   final ProductionRepository repository;
+
+  @override
+  State<_BlockedUsersDialog> createState() => _BlockedUsersDialogState();
+}
+
+class _BlockedUsersDialogState extends State<_BlockedUsersDialog> {
+  List<BlockedUserSummary>? users;
+  final Set<String> unblocking = <String>{};
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      users = null;
+      error = null;
+    });
+    try {
+      final loaded = await widget.repository.fetchBlockedUsers();
+      if (mounted) setState(() => users = loaded);
+    } catch (exception) {
+      if (mounted) setState(() => error = productionErrorMessage(exception));
+    }
+  }
+
+  Future<void> _unblock(BlockedUserSummary user) async {
+    if (unblocking.contains(user.publicId)) return;
+    setState(() {
+      unblocking.add(user.publicId);
+      error = null;
+    });
+    try {
+      await widget.repository.unblockUser(user.publicId);
+      if (!mounted) return;
+      setState(() {
+        unblocking.remove(user.publicId);
+        users = users
+            ?.where((item) => item.publicId != user.publicId)
+            .toList(growable: false);
+      });
+    } catch (exception) {
+      if (mounted) {
+        setState(() {
+          unblocking.remove(user.publicId);
+          error = productionErrorMessage(exception);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loadedUsers = users;
+    return AlertDialog(
+      icon: Icon(Icons.block_rounded, color: _productionPrimary(context)),
+      title: Text(abuText(context, 'Blocked users', 'المستخدمون المحظورون')),
+      content: SizedBox(
+        width: 480,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 460),
+          child: loadedUsers == null
+              ? error == null
+                    ? Center(
+                        child: CircularProgressIndicator(
+                          color: _productionPrimary(context),
+                        ),
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            error!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: _red),
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            onPressed: _load,
+                            icon: const Icon(Icons.refresh_rounded),
+                            label: Text(
+                              abuText(context, 'RETRY', 'إعادة المحاولة'),
+                            ),
+                          ),
+                        ],
+                      )
+              : loadedUsers.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.check_circle_outline_rounded,
+                          color: _productionPrimary(context),
+                          size: 42,
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          abuText(
+                            context,
+                            'You have not blocked anyone.',
+                            'لم تحظر أي مستخدم.',
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: loadedUsers.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final user = loadedUsers[index];
+                    final name = user.displayName.isNotEmpty
+                        ? user.displayName
+                        : user.username;
+                    final isBusy = unblocking.contains(user.publicId);
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        backgroundColor: _surface2,
+                        foregroundImage: user.avatarUrl.isEmpty
+                            ? null
+                            : NetworkImage(user.avatarUrl),
+                        child: user.avatarUrl.isEmpty
+                            ? Text(
+                                name.isEmpty ? '?' : name[0].toUpperCase(),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              )
+                            : null,
+                      ),
+                      title: Text(
+                        name.isEmpty
+                            ? abuText(context, 'Blocked user', 'مستخدم محظور')
+                            : name,
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      subtitle: user.username.isEmpty
+                          ? null
+                          : Text('@${user.username}'),
+                      trailing: TextButton(
+                        onPressed: isBusy ? null : () => _unblock(user),
+                        child: isBusy
+                            ? const SizedBox.square(
+                                dimension: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(abuText(context, 'UNBLOCK', 'إلغاء الحظر')),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(abuText(context, 'CLOSE', 'إغلاق')),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccountDeletionDialog extends StatefulWidget {
+  const _AccountDeletionDialog({
+    required this.repository,
+    required this.profile,
+  });
+
+  final ProductionRepository repository;
+  final AbuUserProfile profile;
 
   @override
   State<_AccountDeletionDialog> createState() => _AccountDeletionDialogState();
@@ -11856,6 +12384,7 @@ class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
   final confirmation = TextEditingController();
   final password = TextEditingController();
   bool busy = false;
+  bool managingSubscription = false;
   bool obscurePassword = true;
   String? error;
 
@@ -11872,7 +12401,7 @@ class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
   }
 
   Future<void> deleteAccount() async {
-    if (!confirmed || busy) return;
+    if (!confirmed || busy || managingSubscription) return;
     setState(() {
       busy = true;
       error = null;
@@ -11894,10 +12423,33 @@ class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
     }
   }
 
+  Future<void> manageSubscription() async {
+    if (busy || managingSubscription) return;
+    setState(() {
+      managingSubscription = true;
+      error = null;
+    });
+    try {
+      final revenueCatUserId = widget.profile.backendUserId.trim().isNotEmpty
+          ? widget.profile.backendUserId
+          : widget.profile.uid;
+      await SubscriptionService.instance.showCustomerCenter(
+        revenueCatUserId,
+        locale: Localizations.localeOf(context).toLanguageTag(),
+      );
+    } catch (exception) {
+      if (mounted) {
+        setState(() => error = productionErrorMessage(exception));
+      }
+    } finally {
+      if (mounted) setState(() => managingSubscription = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !busy,
+      canPop: !busy && !managingSubscription,
       child: AlertDialog(
         icon: const Icon(Icons.warning_amber_rounded, color: _red, size: 42),
         title: Text(
@@ -11922,6 +12474,52 @@ class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
                     'لا يمكن التراجع عن هذا الإجراء. سيُحذف ملفك وXP وتوقعاتك وإجابات التحديات وأجهزة الإشعارات وحساب تسجيل الدخول نهائياً.',
                   ),
                   style: const TextStyle(height: 1.45),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: _gold.withValues(alpha: .1),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: _gold.withValues(alpha: .5)),
+                  ),
+                  child: Text(
+                    abuText(
+                      context,
+                      defaultTargetPlatform == TargetPlatform.iOS
+                          ? 'Deleting this account does not cancel an Apple App Store subscription. Apple will continue billing until you cancel it. Manage or cancel your subscription before deleting your account.'
+                          : 'Deleting this account does not cancel a store subscription. Store billing continues until you cancel it. Manage or cancel your subscription before deleting your account.',
+                      defaultTargetPlatform == TargetPlatform.iOS
+                          ? 'حذف هذا الحساب لا يلغي اشتراك Apple App Store. ستستمر Apple في الفوترة حتى تلغي الاشتراك. قم بإدارة الاشتراك أو إلغائه قبل حذف حسابك.'
+                          : 'حذف هذا الحساب لا يلغي اشتراك المتجر. تستمر الفوترة حتى تلغي الاشتراك. قم بإدارة الاشتراك أو إلغائه قبل حذف حسابك.',
+                    ),
+                    style: const TextStyle(
+                      color: _gold,
+                      height: 1.4,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: busy || managingSubscription
+                      ? null
+                      : manageSubscription,
+                  icon: managingSubscription
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.manage_accounts_rounded),
+                  label: Text(
+                    abuText(
+                      context,
+                      defaultTargetPlatform == TargetPlatform.iOS
+                          ? 'MANAGE APPLE SUBSCRIPTION'
+                          : 'MANAGE STORE SUBSCRIPTION',
+                      'إدارة اشتراك المتجر',
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Text(
@@ -11989,11 +12587,15 @@ class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
         ),
         actions: [
           TextButton(
-            onPressed: busy ? null : () => Navigator.of(context).pop(false),
+            onPressed: busy || managingSubscription
+                ? null
+                : () => Navigator.of(context).pop(false),
             child: Text(abuText(context, 'CANCEL', 'إلغاء')),
           ),
           FilledButton.icon(
-            onPressed: confirmed && !busy ? deleteAccount : null,
+            onPressed: confirmed && !busy && !managingSubscription
+                ? deleteAccount
+                : null,
             style: FilledButton.styleFrom(
               backgroundColor: _red,
               foregroundColor: Colors.white,
@@ -12063,8 +12665,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
   title: abuText(context, 'Privacy Policy', 'سياسة الخصوصية'),
   updated: abuText(
     context,
-    'Updated 2 September 2026',
-    'آخر تحديث 2 سبتمبر 2026',
+    'Updated 9 September 2026',
+    'آخر تحديث 9 سبتمبر 2026',
   ),
   webUrl: AbuBrand.privacyUrl,
   sections: [
@@ -12072,8 +12674,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Data We Collect', 'البيانات التي نجمعها'),
       abuText(
         context,
-        'Abu 3meer collects account details such as name, email address, sign-in provider, selected team and country, profile image, prediction entries, challenge answers, points, streaks, notification tokens, and basic device or diagnostics data needed to run the service. If you deliberately connect YouTube, we also store the connected channel ID, derived membership status, membership level identifier, member-since date, and verification timestamps.',
-        'يجمع أبو عمير بيانات الحساب مثل الاسم والبريد الإلكتروني وطريقة تسجيل الدخول والفريق والدولة وصورة الحساب والتوقعات وإجابات التحديات والنقاط والسلاسل ورموز الإشعارات وبيانات الجهاز أو التشخيص اللازمة لتشغيل الخدمة. وإذا ربطت يوتيوب بإرادتك، نخزن أيضاً معرّف القناة المرتبطة وحالة العضوية المستنتجة ومعرّف مستوى العضوية وتاريخ بدء العضوية وتوقيتات التحقق.',
+        'Abu 3meer collects account and profile details, an optional profile image, prediction and challenge activity, XP, notification tokens, and device diagnostics needed to run the service. Membership checking stores the public channel profile link you submit, its resolved channel ID, derived status, and verification times. We also process store entitlement records and profile reports or blocks.',
+        'يجمع أبو عمير بيانات الحساب والملف، وصورة الملف الاختيارية، ونشاط التوقعات والتحديات، ونقاط XP، ورموز الإشعارات، وتشخيص الجهاز اللازم للخدمة. يخزن فحص العضوية رابط القناة العام ومعرفها وحالتها وأوقات التحقق. نعالج أيضاً سجلات استحقاق المتجر وبلاغات الملفات أو حظرها.',
       ),
     ),
     (
@@ -12104,8 +12706,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Your Controls', 'خياراتك'),
       abuText(
         context,
-        'You can change notification preferences, choose whether to check YouTube membership, and delete your account from Settings. Account deletion removes the profile and personal account data handled by Abu 3meer, subject to fraud prevention and legal retention requirements.',
-        'يمكنك تغيير تفضيلات الإشعارات واختيار ما إذا كنت تريد التحقق من عضوية يوتيوب وحذف حسابك من الإعدادات. حذف الحساب يزيل الملف والبيانات الشخصية التي يديرها أبو عمير مع مراعاة متطلبات منع الاحتيال والاحتفاظ القانوني.',
+        'You can change notification preferences, check YouTube membership, report or block another public profile, manage blocked users, and delete your account from Settings. Account deletion does not cancel an Apple or Google subscription.',
+        'يمكنك تغيير تفضيلات الإشعارات، والتحقق من عضوية يوتيوب، والإبلاغ عن ملف عام آخر أو حظره، وإدارة المحظورين، وحذف حسابك من الإعدادات. حذف الحساب لا يلغي اشتراك Apple أو Google.',
       ),
     ),
     (
@@ -12124,13 +12726,13 @@ _LegalDocument _competitionLegalDocument(BuildContext context) =>
       title: abuText(context, 'XP & Ranking Rules', 'قواعد XP والترتيب'),
       updated: abuText(
         context,
-        'Updated 31 August 2026',
-        'آخر تحديث 31 أغسطس 2026',
+        'Updated 9 September 2026',
+        'آخر تحديث 9 سبتمبر 2026',
       ),
       webUrl: AbuBrand.competitionRulesUrl,
       sections: [
         (
-          abuText(context, 'Completely Free', 'مجاني بالكامل'),
+          abuText(context, 'No Paid Entry', 'لا رسوم للمشاركة'),
           abuText(
             context,
             'Abu 3meer has no paid entry, XP purchase, stake, wager, or payment required to make a prediction or answer a video question. A wrong answer never causes a user to lose money or XP.',
@@ -12157,8 +12759,8 @@ _LegalDocument _competitionLegalDocument(BuildContext context) =>
           abuText(context, 'No Value or Rewards', 'لا قيمة ولا مكافآت'),
           abuText(
             context,
-            'XP has no cash or real-world value. It cannot be bought, sold, transferred, exchanged, redeemed for codes or items, or used to unlock app features. Rankings do not name winners and provide no prize, reward, giveaway, payment, or claim.',
-            'لا تملك XP أي قيمة نقدية أو واقعية. لا يمكن شراؤها أو بيعها أو نقلها أو استبدالها بأكواد أو أغراض ولا تُستخدم لفتح ميزات التطبيق. الترتيب لا يحدد فائزين ولا يمنح جائزة أو مكافأة أو هدية أو دفعة أو مطالبة.',
+            'XP is not sold as a standalone currency and has no cash or real-world value. It cannot be sold, transferred, exchanged, redeemed for codes or items, or used to unlock app features. Membership may award disclosed recognition XP. Rankings do not name winners and provide no prize, reward, giveaway, payment, or claim.',
+            'لا تباع XP كعملة مستقلة ولا تملك قيمة نقدية أو واقعية. لا يمكن بيعها أو نقلها أو استبدالها بأكواد أو أغراض ولا تُستخدم لفتح ميزات التطبيق. قد تمنح العضوية نقاطاً تقديرية معلنة. الترتيب لا يحدد فائزين ولا يمنح جائزة أو مكافأة أو هدية أو دفعة أو مطالبة.',
           ),
         ),
         (
@@ -12180,8 +12782,8 @@ _LegalDocument _termsLegalDocument(BuildContext context) => _LegalDocument(
   title: abuText(context, 'Terms of Use', 'شروط الاستخدام'),
   updated: abuText(
     context,
-    'Updated 2 September 2026',
-    'آخر تحديث 2 سبتمبر 2026',
+    'Updated 9 September 2026',
+    'آخر تحديث 9 سبتمبر 2026',
   ),
   webUrl: AbuBrand.termsUrl,
   sections: [
@@ -12197,8 +12799,8 @@ _LegalDocument _termsLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Content and Conduct', 'المحتوى والسلوك'),
       abuText(
         context,
-        'Do not abuse the app, automate entries, exploit bugs, impersonate others, or interfere with fair scoring. Abu 3meer may suspend accounts that break these rules.',
-        'لا تسئ استخدام التطبيق أو تؤتمت المشاركات أو تستغل الأخطاء أو تنتحل شخصية الآخرين أو تتدخل في عدالة احتساب النقاط. قد يوقف أبو عمير الحسابات المخالفة لهذه القواعد.',
+        'Do not upload unlawful, abusive, hateful, sexual, misleading, or rights-infringing profile material; impersonate others; automate entries; exploit bugs; or interfere with fair scoring. You can report or block another fan from that fan profile and manage blocked users in Settings. Abu 3meer may remove content or suspend accounts that break these rules.',
+        'لا ترفع مادة غير قانونية أو مسيئة أو تحض على الكراهية أو جنسية أو مضللة أو تنتهك الحقوق، ولا تنتحل الآخرين أو تؤتمت المشاركات أو تستغل الأخطاء أو تتدخل في عدالة النقاط. يمكنك الإبلاغ عن مشجع أو حظره من ملفه وإدارة المحظورين في الإعدادات. قد يزيل أبو عمير المحتوى أو يوقف الحسابات المخالفة.',
       ),
     ),
     (

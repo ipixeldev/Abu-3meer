@@ -5,10 +5,12 @@ after an error. The procedure preserves users, points, subscription snapshots,
 uploaded CSV files, and media.
 
 This release adds backend behavior through migrations
-`042_admin_subscription_access.sql`, `043_loyalty_points_rules.sql`, and
-`044_revenuecat_store_provenance.sql`. An earlier rebuild that stopped before
-any of these is not sufficient; the API image must be rebuilt and recreated
-after the new revision is pulled.
+`042_admin_subscription_access.sql`, `043_loyalty_points_rules.sql`,
+`044_revenuecat_store_provenance.sql`, and
+`045_user_moderation.sql`. Migration 045 adds user reports, blocking, and the
+staff moderation queue required by build 30. An earlier rebuild that stopped
+before any of these is not sufficient; the API image must be rebuilt and
+recreated after the new revision is pulled.
 
 ## 1. Pull the published revision
 
@@ -32,10 +34,10 @@ git merge --ff-only origin/agent/production-backend
 ```
 
 ```bash
-git ls-files server/migrations/042_admin_subscription_access.sql server/migrations/043_loyalty_points_rules.sql server/migrations/044_revenuecat_store_provenance.sql server/src/routes/adminSubscriptionRoutes.ts server/src/routes/supportRoutes.ts
+git ls-files server/migrations/042_admin_subscription_access.sql server/migrations/043_loyalty_points_rules.sql server/migrations/044_revenuecat_store_provenance.sql server/migrations/045_user_moderation.sql server/src/routes/adminSubscriptionRoutes.ts server/src/routes/userModerationRoutes.ts server/src/routes/supportRoutes.ts
 ```
 
-All three paths must appear. If one is missing, stop because the required
+All seven paths must appear. If one is missing, stop because the required
 revision was not pulled.
 
 ## 2. Back up PostgreSQL
@@ -213,10 +215,11 @@ keys. See [SUBSCRIPTION_PRODUCTION_DIAGNOSTICS.md](SUBSCRIPTION_PRODUCTION_DIAGN
 ## App Store boundary
 
 The first subscriptions must be reviewed with an app version. The review draft
-already contains the subscription group and both subscription versions. Build
-1.1.0 (24) remains the currently processed TestFlight build; this source release
-is 1.1.0 (25) and must be built/uploaded before testing these new access and XP
-changes. Current iPad screenshots are uploaded in English and Arabic.
+already contains the subscription group and both subscription versions. The
+current source and App Review candidate are 1.1.0 (30). Deploy migration 045,
+install build 30 from TestFlight, and complete the physical-device checklist
+before selecting that build for review. Replace the stale English and Arabic
+screenshots with captures from build 30.
 The app version cannot be added to the review draft until the owner completes
 App Privacy, reviewer contact details, copyright, and the content-rights
 declaration. The current Digital Services Act status is also **In Review**.

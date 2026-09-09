@@ -109,20 +109,19 @@ restricted, allow that tester's PostgreSQL app-user UUID there as well.
   storefront, which caused `RC-23`. After the agreement/catalog propagation,
   the full Runner app (with no local StoreKit catalog attached) loaded both
   products and RevenueCat's published paywall on 6 September 2026. Retest build
-  24 on the physical TestFlight device before review, but no client
-  configuration mismatch remains.
+  30 on the physical TestFlight device before review; no client configuration
+  mismatch remains.
 - Paid Applications, banking, and tax were activated on 6 September 2026. Apple
   catalog changes can take time to propagate. Wait up to 24 hours from that
   activation before treating the unchanged zero-product result as final, then
   retry on a current TestFlight build and copy the sanitized store report.
-- Full production build **1.1.0 (24)** is processed, valid, attached to the App
-  Store version, and available to internal TestFlight testers. The current
-  source is bumped to **1.1.0 (25)** for the new membership/XP behavior and must
-  be uploaded before that behavior can be tested. Neither build was submitted
-  to Beta App Review or App Review.
-- Fresh 2064x2752 iPad screenshots from the current build are uploaded and
-  complete for both English and Arabic. TestFlight app descriptions and build
-  24 What to Test notes are also populated in both locales.
+- Full production build **1.1.0 (30)** is the current binary-only upload and
+  App Review candidate. Do not select or submit it until migration 045 is live,
+  the physical-device flow is verified, and the App Review information is
+  complete.
+- Existing App Store screenshots are stale and must be replaced in English and
+  Arabic with reviewed captures from build 30. Follow
+  `APP_STORE_SCREENSHOT_PLAN.md`.
 
 The supplied sample app succeeds locally because its Xcode Run scheme enables a
 local `.storekit` catalog. That confirms its UI path, not TestFlight catalog

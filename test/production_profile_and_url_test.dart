@@ -212,6 +212,20 @@ void main() {
       );
     });
   });
+
+  test('public profile fallback replaces uploaded photos with a monogram', () {
+    final profile = _profile(
+      currentStreak: 2,
+      longestStreak: 4,
+      lastActivityAt: DateTime.utc(2026, 9, 1),
+    ).copyWith(avatarUrl: 'https://uploads.example/user-photo.png');
+
+    final publicProfile = publicProfileWithoutAvatar(profile);
+
+    expect(publicProfile.avatarUrl, isEmpty);
+    expect(publicProfile.uid, profile.uid);
+    expect(publicProfile.displayName, profile.displayName);
+  });
 }
 
 AbuUserProfile _profile({

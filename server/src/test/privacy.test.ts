@@ -13,7 +13,7 @@ describe('Public API privacy boundaries', () => {
       publicId: 'fan_handle',
       username: 'fan_handle',
       displayName: 'Fan',
-      avatarUrl: null,
+      avatarUrl: 'https://uploads.example/unsafe-user-photo.png',
       supportedTeam: 'Real Madrid',
       isYouTubeMember: false,
       isProSubscriber: true,
@@ -25,6 +25,7 @@ describe('Public API privacy boundaries', () => {
     assert.equal(entry.userId, 'fan_handle');
     assert.equal(entry.publicId, 'fan_handle');
     assert.equal(entry.isProSubscriber, true);
+    assert.equal(entry.avatarUrl, null);
     assert.equal('firebaseUid' in entry, false);
     assert.equal('databaseUserId' in entry, false);
   });
@@ -33,7 +34,7 @@ describe('Public API privacy boundaries', () => {
     const profile = mapPublicFanProfile({
       username: 'fan_handle',
       display_name: 'Fan',
-      avatar_url: null,
+      avatar_url: 'https://uploads.example/unsafe-user-photo.png',
       supported_team: 'Real Madrid',
       supported_team_logo: null,
       country: 'Morocco',
@@ -55,6 +56,7 @@ describe('Public API privacy boundaries', () => {
     assert.equal(profile.id, 'fan_handle');
     assert.equal(profile.publicId, 'fan_handle');
     assert.equal(profile.isProSubscriber, true);
+    assert.equal(profile.avatarUrl, null);
     assert.equal('firebaseUid' in profile, false);
     assert.equal('streakLastCheckIn' in profile, false);
     assert.equal('streakExpiresAt' in profile, false);
@@ -115,6 +117,23 @@ describe('Request log privacy', () => {
         url: `/api/v1/admin/youtube/membership/claims/${claimId}/decision`,
       })),
       /4bff16c1|b990|f42eafb/i,
+    );
+  });
+
+  it('redacts user moderation targets and staff report IDs', () => {
+    assert.equal(
+      redactRequestUrl('/api/v1/users/private-firebase-uid/report'),
+      '/api/v1/users/:userId/report',
+    );
+    assert.equal(
+      redactRequestUrl('/api/v1/users/private%40example.com/block'),
+      '/api/v1/users/:userId/block',
+    );
+    assert.equal(
+      redactRequestUrl(
+        '/api/v1/admin/reports/33333333-3333-4333-8333-333333333333/resolve',
+      ),
+      '/api/v1/admin/reports/:reportId/resolve',
     );
   });
 

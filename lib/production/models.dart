@@ -1531,6 +1531,98 @@ class LeaderboardEntry {
   }
 }
 
+/// Minimal public identity returned by the blocked-users endpoint.
+///
+/// The server deliberately does not expose email addresses or private account
+/// identifiers here. [publicId] is the same identifier accepted by the
+/// report/block routes and used by public leaderboard/profile links.
+class BlockedUserSummary {
+  const BlockedUserSummary({
+    required this.publicId,
+    required this.username,
+    required this.displayName,
+    required this.avatarUrl,
+    this.blockedAt,
+  });
+
+  final String publicId;
+  final String username;
+  final String displayName;
+  final String avatarUrl;
+  final DateTime? blockedAt;
+}
+
+/// Public-facing identity included with a staff moderation report.
+class ModerationUserSummary {
+  const ModerationUserSummary({
+    required this.publicId,
+    required this.username,
+    required this.displayName,
+    required this.avatarUrl,
+  });
+
+  final String publicId;
+  final String username;
+  final String displayName;
+  final String avatarUrl;
+
+  String get label => displayName.trim().isNotEmpty
+      ? displayName.trim()
+      : username.trim().isNotEmpty
+      ? username.trim()
+      : publicId;
+}
+
+class AdminUserReport {
+  const AdminUserReport({
+    required this.id,
+    required this.reporterUserId,
+    required this.reportedUserId,
+    required this.reporter,
+    required this.target,
+    required this.reason,
+    required this.details,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.resolvedAt,
+    required this.resolvedBy,
+    required this.resolutionNote,
+  });
+
+  final String id;
+  final String reporterUserId;
+  final String reportedUserId;
+  final ModerationUserSummary reporter;
+  final ModerationUserSummary target;
+  final String reason;
+  final String? details;
+  final String status;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? resolvedAt;
+  final ModerationUserSummary? resolvedBy;
+  final String? resolutionNote;
+
+  bool get isOpen => status == 'open';
+}
+
+class AdminUserReportPage {
+  const AdminUserReportPage({
+    required this.reports,
+    required this.total,
+    required this.limit,
+    required this.offset,
+    required this.hasMore,
+  });
+
+  final List<AdminUserReport> reports;
+  final int total;
+  final int limit;
+  final int offset;
+  final bool hasMore;
+}
+
 enum LeaderboardPeriod { currentMonth, previousMonth, season }
 
 class LeaderboardSeason {

@@ -187,6 +187,7 @@ void main() {
 
       expect(profile.uid, 'firebase-id');
       expect(profile.email, 'admin@example.com');
+      expect(profile.avatarUrl, 'https://example.com/avatar.png');
       expect(profile.role, 'superAdmin');
       expect(profile.isYouTubeMember, isTrue);
       expect(profile.youtubeChannelLinked, isTrue);

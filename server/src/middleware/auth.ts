@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { FastifyRequest, FastifyReply } from 'fastify';
 import { verifyFirebaseToken } from '../firebase/admin.js';
 import { getClient, query } from '../db/pool.js';
@@ -14,6 +15,10 @@ import {
   activeSubscriptionSql,
   activeYouTubeMembershipSql,
 } from '../services/subscriptionAccess.js';
+import {
+  isPublicProfileTextAllowed,
+  safeInitialDisplayName,
+} from '../services/publicProfileTextPolicy.js';
 
 export interface AuthenticatedUser {
   id: string;
@@ -150,11 +155,25 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
       // Provision identity, profile, one-time signup award, and roles
       // atomically. This also repairs accounts left half-created by an
       // interrupted older build.
-      const initialUsername = (email ? email.split('@')[0] : `fan_${firebaseUid.slice(0, 6)}`)
+      const identitySuffix = crypto
+        .createHash('sha256')
+        .update(firebaseUid)
+        .digest('hex')
+        .slice(0, 12);
+      const initialUsername = (email ? email.split('@')[0] : '')
         .toLowerCase()
-        .replace(/[^a-z0-9_]/g, '');
-      const uniqueUsername = `${initialUsername}_${Math.floor(100 + Math.random() * 900)}`;
-      const displayName = decoded.name || initialUsername;
+        .replace(/[^a-z0-9_]/g, '')
+        .slice(0, 26);
+      const usernameCandidate = initialUsername.length >= 3
+        ? `${initialUsername}_${Math.floor(100 + Math.random() * 900)}`
+        : `fan_${identitySuffix}`;
+      const uniqueUsername = isPublicProfileTextAllowed(usernameCandidate)
+        ? usernameCandidate
+        : `fan_${identitySuffix}`;
+      const displayName = safeInitialDisplayName(
+        decoded.name || initialUsername,
+        `Fan ${identitySuffix.slice(0, 6).toUpperCase()}`,
+      );
 
       // Check if bootstrap super-admin or admin email
       const isSuperAdminEmail = !!(email && config.adminEmails[0] && email.toLowerCase() === config.adminEmails[0]);

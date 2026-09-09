@@ -21,7 +21,7 @@ describe('XP-only leaderboard periods', () => {
         publicId: 'broz',
         username: 'broz',
         displayName: 'Omar',
-        avatarUrl: null,
+        avatarUrl: 'https://uploads.example/leader-photo.png',
         supportedTeam: 'Barcelona',
         isYouTubeMember: false,
         isProSubscriber: false,
@@ -34,7 +34,7 @@ describe('XP-only leaderboard periods', () => {
         publicId: 'dev',
         username: 'dev',
         displayName: 'dev',
-        avatarUrl: null,
+        avatarUrl: 'https://uploads.example/current-user-photo.png',
         supportedTeam: 'Real Madrid',
         isYouTubeMember: false,
         isProSubscriber: true,
@@ -47,7 +47,7 @@ describe('XP-only leaderboard periods', () => {
         publicId: 'brozteamedit',
         username: 'brozteamedit',
         displayName: 'Broz Team',
-        avatarUrl: null,
+        avatarUrl: 'https://uploads.example/third-photo.png',
         supportedTeam: 'Barcelona',
         isYouTubeMember: false,
         isProSubscriber: false,
@@ -64,6 +64,8 @@ describe('XP-only leaderboard periods', () => {
     assert.equal(snapshot.entries[1].isProSubscriber, true);
     assert.equal(snapshot.currentUser?.isProSubscriber, true);
     assert.equal(snapshot.entries[0].isProSubscriber, false);
+    assert.equal(snapshot.entries[0].avatarUrl, null);
+    assert.equal(snapshot.currentUser?.avatarUrl, null);
     assert.strictEqual(snapshot.currentUser, snapshot.entries[1]);
   });
 
@@ -117,7 +119,7 @@ describe('XP-only leaderboard periods', () => {
 
     assert.match(
       service,
-      /WHERE rank <= \$3\s+OR \(\$4::text IS NOT NULL AND database_user_id = \$4::text\)/,
+      /WHERE rank <= \$3\s+OR \(\$4::uuid IS NOT NULL AND database_user_id = \$4::uuid::text\)/,
     );
     assert.match(service, /AS "isCurrentUser"/);
     assert.match(routes, /databaseUserId: request\.user\?\.id/);
