@@ -4,7 +4,8 @@ The application code is configured for the real Abu 3meer App Store app: the
 iOS client uses its public RevenueCat `appl_` SDK key, Android release builds
 receive the Play app's public `goog_` key, and the server keeps the private
 `sk_` key. Apple product identifiers are `Ostoora3` and `Ostoora3_Pro_Max`;
-Google Play uses `ostoora3:monthly` and `ostoora3_pro_max:yearly`. A release
+Google Play uses `ostoora3:ostoora3` and
+`ostoora3_pro_max:ostoora3-pro-max`. A release
 build cannot silently fall back to RevenueCat Test
 Store or the repository's local StoreKit preview catalog.
 
@@ -99,6 +100,10 @@ restricted, allow that tester's PostgreSQL app-user UUID there as well.
 
 ## Current store and release state
 
+- The installed iOS and Android display name is exactly **ABU 3MEER**. Apple
+  reports that the exact storefront name is already used by another account,
+  so both App Store localizations use the available uppercase name
+  **ABU 3MEER - League**.
 - Both subscriptions have prices, 175-territory availability, localizations,
   and review images in App Store Connect. Their current state is
   **Ready to Submit**.
@@ -109,19 +114,20 @@ restricted, allow that tester's PostgreSQL app-user UUID there as well.
   storefront, which caused `RC-23`. After the agreement/catalog propagation,
   the full Runner app (with no local StoreKit catalog attached) loaded both
   products and RevenueCat's published paywall on 6 September 2026. Retest build
-  30 on the physical TestFlight device before review; no client configuration
+  31 on the physical TestFlight device before review; no client configuration
   mismatch remains.
 - Paid Applications, banking, and tax were activated on 6 September 2026. Apple
   catalog changes can take time to propagate. Wait up to 24 hours from that
   activation before treating the unchanged zero-product result as final, then
   retry on a current TestFlight build and copy the sanitized store report.
-- Full production build **1.1.0 (30)** is the current binary-only upload and
-  App Review candidate. Do not select or submit it until migration 045 is live,
-  the physical-device flow is verified, and the App Review information is
-  complete.
-- Existing App Store screenshots are stale and must be replaced in English and
-  Arabic with reviewed captures from build 30. Follow
-  `APP_STORE_SCREENSHOT_PLAN.md`.
+- Full production build **1.1.0 (31)** is uploaded to TestFlight and selected
+  for App Store version 1.1.0. Do not submit it until the current server update
+  is live, the physical-device flow is verified, and the App Review information
+  is complete.
+- Reviewed build-31 App Store screenshots are uploaded in English and Arabic
+  for both the 6.7-inch iPhone and 13-inch iPad display classes. Follow
+  `APP_STORE_SCREENSHOT_PLAN.md` for the uploaded set and any future richer
+  replacement.
 
 The supplied sample app succeeds locally because its Xcode Run scheme enables a
 local `.storekit` catalog. That confirms its UI path, not TestFlight catalog
@@ -131,24 +137,24 @@ and [RC23_STORE_ACTIONS.md](RC23_STORE_ACTIONS.md).
 ## App Store Connect actions that still require the account owner
 
 The review draft currently contains the subscription group and both
-subscription versions. Build 24 is selected for the app version, but the app
-version cannot join that draft until the owner completes these items without
-inventing legal or contact information:
+subscription versions. Build 31 is selected for the app version. App Privacy
+is published, the review contact and private demo login are filled, copyright
+is `2026 Omar Jabur`, and the app declares that it uses third-party content.
+Do not resubmit until the remaining owner/reviewer items are complete:
 
-1. Answer and publish **App Privacy** for the current app.
-2. Fill the App Review contact first name, last name, email, phone country code,
-   and phone number. A review demo login is already stored; do not expose it in
-   chat or source control.
-3. Enter the exact copyright holder text.
-4. Set the content-rights declaration accurately. Football logos and videos
-   mean third-party content rights must not be guessed.
-5. Wait for or resolve the **Digital Services Act** status currently shown as
+1. Upload or link the build-31 physical-device recording, fill the remaining
+   review-note placeholders, and reply to the existing Guideline 2.1 message.
+2. Attach or identify the applicable publication/brand/media rights. Football
+   logos, videos, and data rights must not be guessed.
+3. Wait for or resolve the **Digital Services Act** status currently shown as
    **In Review** if Apple requires completion for EU distribution.
-6. Add the app version to the same review submission as the first subscription
-   group/items after those owner fields are complete.
+4. Retest the full build-31 account-deletion, purchase/restore, notification,
+   report/block, and member-access flow on the physical review device.
+5. Resolve the existing review item and keep the app version in the same review
+   submission as the first subscription group/items when resubmitting.
 
 External TestFlight review separately needs the same four contact fields.
-Internal TestFlight already has build 24 and does not require Beta App Review.
+Internal TestFlight already has build 31 and does not require Beta App Review.
 
 Apple currently refuses editing the draft version's **What's New** field in its
 present state; this is not a reason to invent release notes through another

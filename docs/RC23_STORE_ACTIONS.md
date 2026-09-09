@@ -2,7 +2,7 @@
 
 > Historical incident record. RC-23 was resolved after the Apple agreement and
 > catalog propagated. Do not use the old build-24 instructions for the current
-> release; use `APP_REVIEW_PHYSICAL_DEVICE_VIDEO.md` and build 30 instead.
+> release; use `APP_REVIEW_PHYSICAL_DEVICE_VIDEO.md` and build 31 instead.
 
 Updated 6 September 2026 after the physical-device report, the App Store
 Connect/API audit, the RevenueCat credential screenshots, and inspection of the
@@ -76,7 +76,7 @@ products and RevenueCat's published paywall on 6 September after the agreement
 change. The remaining check is to confirm the same result on the physical
 TestFlight device:
 
-1. Install/open TestFlight build 24, then use **Members → View plans →
+1. Install/open TestFlight build 31, then use **Members → View plans →
    Check store connection → Copy report**. This is a read-only product lookup;
    it does not charge, restore, or grant access.
 2. If both products are still absent after the 24-hour propagation window,
@@ -125,21 +125,20 @@ is disabled safely until the real international digits-only number is supplied.
 
 ## App Store Connect review blockers
 
-The current review draft contains the subscription group and both subscription
-versions. Apple would not accept the app version into that draft because these
-owner actions remain:
+The current review submission contains the rejected app-version item plus the
+subscription group and both subscription versions. App Privacy is published;
+the reviewer contact, private demo login, copyright, and third-party content
+declaration are filled. Remaining owner actions are to provide the build-31
+physical-device video and complete review response, identify the applicable
+publication/brand/media rights, complete physical-device QA, and wait for or
+resolve the Digital Services Act status shown as **In Review** if Apple requires
+it for EU distribution.
 
-- answer and publish App Privacy;
-- enter reviewer first name, last name, email, phone country code, and phone;
-- enter the exact copyright holder;
-- make the accurate third-party content-rights declaration; and
-- wait for/resolve the Digital Services Act status shown as **In Review** if
-  Apple requires it for EU distribution.
-
-Fresh iPad screenshots are already uploaded in both locales, and build 24 is
-processed and selected. The dedicated review login is already stored and must
-remain private. Once the manual blockers are cleared, the app version must join
-the subscription group/items because these are the first subscriptions.
+Fresh build-31 iPhone and iPad screenshots are uploaded in both locales, and
+build 31 is processed and selected. The dedicated review login is already
+stored and must remain private. Resolve and resubmit the existing app-version
+item with the same first-subscription items; do not create a separate review
+submission that leaves those products behind.
 
 Do not submit Beta App Review, public App Review, or release the app without
 explicit owner authorization. No App Review submission is authorized by this

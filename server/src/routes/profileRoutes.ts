@@ -117,7 +117,15 @@ const updateProfileSchema = z.object({
   }
 });
 
-export async function profileRoutes(fastify: FastifyInstance) {
+export async function profileRoutes(
+  fastify: FastifyInstance,
+  dependencies: {
+    authenticateAccountDeletion?: typeof authenticateUser;
+    requireRecentAccountDeletionAuthentication?: typeof requireRecentFirebaseAuthentication;
+    deleteFirebaseMirror?: typeof deleteFirebaseMirrorData;
+    deletePostgresAccount?: typeof deleteAccountData;
+  } = {},
+) {
   // GET /api/v1/profile/me - Fetch authenticated user's own profile
   fastify.get('/profile/me', { preHandler: [authenticateUser] }, async (request, reply) => {
     const user = request.user!;
@@ -467,15 +475,34 @@ export async function profileRoutes(fastify: FastifyInstance) {
   fastify.delete(
     '/profile/me',
     {
-      preHandler: [authenticateUser, requireRecentFirebaseAuthentication],
+      preHandler: [
+        dependencies.authenticateAccountDeletion ?? authenticateUser,
+        dependencies.requireRecentAccountDeletionAuthentication
+          ?? requireRecentFirebaseAuthentication,
+      ],
       config: { rateLimit: { max: 5, timeWindow: '1 hour' } },
     },
     async (request, reply) => {
       // Remove legacy Firestore/Storage data first. If Firebase is unavailable,
       // PostgreSQL remains intact and the authenticated user can safely retry.
       // Firebase Auth itself is deleted by Flutter after this endpoint returns.
-      await deleteFirebaseMirrorData(request.user!.firebaseUid);
-      const deleted = await deleteAccountData(
+      try {
+        await (dependencies.deleteFirebaseMirror ?? deleteFirebaseMirrorData)(
+          request.user!.firebaseUid,
+        );
+      } catch (error) {
+        request.log.error(
+          { err: error, userId: request.user!.id, requestId: request.id },
+          'Account deletion stopped during legacy Firebase cleanup',
+        );
+        return reply.status(503).send({
+          error: 'AccountDeletionCleanupUnavailable',
+          message:
+            'We could not safely remove all account data. Your sign-in account is still active; please try again shortly.',
+          requestId: request.id,
+        });
+      }
+      const deleted = await (dependencies.deletePostgresAccount ?? deleteAccountData)(
         request.user!.id,
         request.id,
       );

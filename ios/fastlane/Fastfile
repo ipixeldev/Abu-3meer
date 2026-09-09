@@ -88,7 +88,7 @@ platform :ios do
   lane :upload_screenshots do
     abu3meer_require_confirmation!(
       "ABU_SCREENSHOTS_REVIEWED",
-      "replacing every stale screenshot with reviewed build-30 captures"
+      "replacing every stale screenshot with reviewed build-31 captures"
     )
     deliver(
       api_key: abu3meer_api_key,

@@ -107,6 +107,11 @@ class SubscriptionPlanDiagnosticsRunner {
   // returned StoreProduct identifier may append the selected base-plan ID.
   static const googleProductIds = ['ostoora3', 'ostoora3_pro_max'];
   static const googleReturnedProductAliases = {
+    // Current published Google Play base plans.
+    'ostoora3:ostoora3': 'ostoora3',
+    'ostoora3_pro_max:ostoora3-pro-max': 'ostoora3_pro_max',
+    // Preserve diagnostics for installs built against the earlier base-plan
+    // identifiers while Google Play/RevenueCat caches are rolling forward.
     'ostoora3:monthly': 'ostoora3',
     'ostoora3_pro_max:yearly': 'ostoora3_pro_max',
   };

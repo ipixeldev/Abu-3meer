@@ -12467,15 +12467,6 @@ class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(
-                  abuText(
-                    context,
-                    'This cannot be undone. Your profile, XP, predictions, challenge answers, device registrations, and sign-in account will be permanently deleted.',
-                    'لا يمكن التراجع عن هذا الإجراء. سيُحذف ملفك وXP وتوقعاتك وإجابات التحديات وأجهزة الإشعارات وحساب تسجيل الدخول نهائياً.',
-                  ),
-                  style: const TextStyle(height: 1.45),
-                ),
-                const SizedBox(height: 14),
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -12487,11 +12478,15 @@ class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
                     abuText(
                       context,
                       defaultTargetPlatform == TargetPlatform.iOS
-                          ? 'Deleting this account does not cancel an Apple App Store subscription. Apple will continue billing until you cancel it. Manage or cancel your subscription before deleting your account.'
-                          : 'Deleting this account does not cancel a store subscription. Store billing continues until you cancel it. Manage or cancel your subscription before deleting your account.',
+                          ? 'IMPORTANT: Deleting this account does not cancel an Apple App Store subscription. Apple billing continues until you cancel it.'
+                          : defaultTargetPlatform == TargetPlatform.android
+                          ? 'IMPORTANT: Deleting this account does not cancel a Google Play subscription. Google Play billing continues until you cancel it.'
+                          : 'IMPORTANT: Deleting your ABU 3MEER account does not cancel a store subscription. Store billing continues until you cancel it.',
                       defaultTargetPlatform == TargetPlatform.iOS
-                          ? 'حذف هذا الحساب لا يلغي اشتراك Apple App Store. ستستمر Apple في الفوترة حتى تلغي الاشتراك. قم بإدارة الاشتراك أو إلغائه قبل حذف حسابك.'
-                          : 'حذف هذا الحساب لا يلغي اشتراك المتجر. تستمر الفوترة حتى تلغي الاشتراك. قم بإدارة الاشتراك أو إلغائه قبل حذف حسابك.',
+                          ? 'مهم: حذف حساب ABU 3MEER لا يلغي اشتراك Apple App Store. تستمر فوترة Apple حتى تلغي الاشتراك.'
+                          : defaultTargetPlatform == TargetPlatform.android
+                          ? 'مهم: حذف حساب ABU 3MEER لا يلغي اشتراك Google Play. تستمر فوترة Google Play حتى تلغي الاشتراك.'
+                          : 'مهم: حذف حساب ABU 3MEER لا يلغي اشتراك المتجر. تستمر الفوترة حتى تلغي الاشتراك.',
                     ),
                     style: const TextStyle(
                       color: _gold,
@@ -12516,10 +12511,21 @@ class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
                       context,
                       defaultTargetPlatform == TargetPlatform.iOS
                           ? 'MANAGE APPLE SUBSCRIPTION'
+                          : defaultTargetPlatform == TargetPlatform.android
+                          ? 'MANAGE GOOGLE PLAY SUBSCRIPTION'
                           : 'MANAGE STORE SUBSCRIPTION',
                       'إدارة اشتراك المتجر',
                     ),
                   ),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  abuText(
+                    context,
+                    'This cannot be undone. Your profile, XP, predictions, challenge answers, device registrations, and sign-in account will be permanently deleted.',
+                    'لا يمكن التراجع عن هذا الإجراء. سيُحذف ملفك وXP وتوقعاتك وإجابات التحديات وأجهزة الإشعارات وحساب تسجيل الدخول نهائياً.',
+                  ),
+                  style: const TextStyle(height: 1.45),
                 ),
                 const SizedBox(height: 14),
                 Text(

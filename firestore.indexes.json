@@ -114,5 +114,38 @@
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "attempts",
+      "fieldPath": "userId",
+      "indexes": [
+        {"order": "ASCENDING", "queryScope": "COLLECTION_GROUP"},
+        {"order": "DESCENDING", "queryScope": "COLLECTION_GROUP"}
+      ]
+    },
+    {
+      "collectionGroup": "reactions",
+      "fieldPath": "userId",
+      "indexes": [
+        {"order": "ASCENDING", "queryScope": "COLLECTION_GROUP"},
+        {"order": "DESCENDING", "queryScope": "COLLECTION_GROUP"}
+      ]
+    },
+    {
+      "collectionGroup": "comments",
+      "fieldPath": "userId",
+      "indexes": [
+        {"order": "ASCENDING", "queryScope": "COLLECTION_GROUP"},
+        {"order": "DESCENDING", "queryScope": "COLLECTION_GROUP"}
+      ]
+    },
+    {
+      "collectionGroup": "taps",
+      "fieldPath": "userId",
+      "indexes": [
+        {"order": "ASCENDING", "queryScope": "COLLECTION_GROUP"},
+        {"order": "DESCENDING", "queryScope": "COLLECTION_GROUP"}
+      ]
+    }
+  ]
 }

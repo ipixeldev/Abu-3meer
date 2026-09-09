@@ -2494,6 +2494,12 @@ class ProductionRepository {
       );
     }
 
+    // The API verifies Firebase's signed `auth_time` for this destructive
+    // action. Do not let ApiClient reuse an ID token minted before the
+    // reauthentication above, otherwise the server correctly rejects an old
+    // session even though the user just verified their identity.
+    await user.getIdToken(true);
+
     // PostgreSQL is authoritative for profiles, points, predictions, content
     // activity, devices, and notification preferences. Do not delete the
     // Firebase identity when this request fails: the user must be able to

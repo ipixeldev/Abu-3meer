@@ -73,26 +73,52 @@ void main() {
     expect(report.productLookupErrorCode, isNull);
   });
 
-  test('Android uses Play subscription IDs and accepts RevenueCat base-plan identifiers', () async {
-    const playIds = ['ostoora3', 'ostoora3_pro_max'];
-    final report = await SubscriptionPlanDiagnosticsRunner(
-      productIds: playIds,
-      returnedProductAliases:
-          SubscriptionPlanDiagnosticsRunner.googleReturnedProductAliases,
-      isConfigured: () async => true,
-      getProducts: (requested) async {
-        expect(requested, playIds);
-        return ['ostoora3:monthly', 'ostoora3_pro_max:yearly'];
-      },
-      getStorefrontCountry: () async => 'TUR',
-      now: () => checkedAt,
-    ).check();
+  test(
+    'Android accepts the published RevenueCat base-plan identifiers',
+    () async {
+      const playIds = ['ostoora3', 'ostoora3_pro_max'];
+      final report = await SubscriptionPlanDiagnosticsRunner(
+        productIds: playIds,
+        returnedProductAliases:
+            SubscriptionPlanDiagnosticsRunner.googleReturnedProductAliases,
+        isConfigured: () async => true,
+        getProducts: (requested) async {
+          expect(requested, playIds);
+          return ['ostoora3:ostoora3', 'ostoora3_pro_max:ostoora3-pro-max'];
+        },
+        getStorefrontCountry: () async => 'TUR',
+        now: () => checkedAt,
+      ).check();
 
-    expect(report.category, 'products_available');
-    expect(report.requestedProductIds, playIds);
-    expect(report.returnedProductIds, playIds);
-    expect(report.missingProductIds, isEmpty);
-  });
+      expect(report.category, 'products_available');
+      expect(report.requestedProductIds, playIds);
+      expect(report.returnedProductIds, playIds);
+      expect(report.missingProductIds, isEmpty);
+    },
+  );
+
+  test(
+    'Android still accepts the legacy RevenueCat base-plan aliases',
+    () async {
+      const playIds = ['ostoora3', 'ostoora3_pro_max'];
+      final report = await SubscriptionPlanDiagnosticsRunner(
+        productIds: playIds,
+        returnedProductAliases:
+            SubscriptionPlanDiagnosticsRunner.googleReturnedProductAliases,
+        isConfigured: () async => true,
+        getProducts: (_) async => [
+          'ostoora3:monthly',
+          'ostoora3_pro_max:yearly',
+        ],
+        getStorefrontCountry: () async => 'TUR',
+        now: () => checkedAt,
+      ).check();
+
+      expect(report.category, 'products_available');
+      expect(report.returnedProductIds, playIds);
+      expect(report.missingProductIds, isEmpty);
+    },
+  );
 
   test('partial response identifies the exact missing known plan', () async {
     final report = await runner(products: (_) async => ['Ostoora3_Pro_Max'])

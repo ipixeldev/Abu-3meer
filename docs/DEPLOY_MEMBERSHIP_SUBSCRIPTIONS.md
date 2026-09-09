@@ -8,7 +8,7 @@ This release adds backend behavior through migrations
 `042_admin_subscription_access.sql`, `043_loyalty_points_rules.sql`,
 `044_revenuecat_store_provenance.sql`, and
 `045_user_moderation.sql`. Migration 045 adds user reports, blocking, and the
-staff moderation queue required by build 30. An earlier rebuild that stopped
+staff moderation queue required by build 31. An earlier rebuild that stopped
 before any of these is not sufficient; the API image must be rebuilt and
 recreated after the new revision is pulled.
 
@@ -223,13 +223,17 @@ keys. See [SUBSCRIPTION_PRODUCTION_DIAGNOSTICS.md](SUBSCRIPTION_PRODUCTION_DIAGN
 
 The first subscriptions must be reviewed with an app version. The review draft
 already contains the subscription group and both subscription versions. The
-current source and App Review candidate are 1.1.0 (30). Deploy migration 045,
-install build 30 from TestFlight, and complete the physical-device checklist
-before selecting that build for review. Replace the stale English and Arabic
-screenshots with captures from build 30.
-The app version cannot be added to the review draft until the owner completes
-App Privacy, reviewer contact details, copyright, and the content-rights
-declaration. The current Digital Services Act status is also **In Review**.
+current source and App Review candidate are 1.1.0 (31). Deploy the current
+server revision, install build 31 from TestFlight, and complete the
+physical-device checklist before submitting that build for review. The reviewed
+build-31 English and Arabic iPhone/iPad screenshots are already uploaded; check
+them against `APP_STORE_SCREENSHOT_PLAN.md` before submission.
+App Privacy, reviewer contact details, the private demo login, copyright, and
+the third-party content declaration are filled. The existing review submission
+still has one rejected app-version item while the subscription items remain
+ready. Add the build-31 video/review response, identify the applicable content
+rights, complete physical-device QA, and resolve that existing item before
+resubmitting. The current Digital Services Act status is also **In Review**.
 These are App Store Connect owner/legal actions, not server deployment commands.
 
 Do not submit Beta App Review, public App Review, or release the app without the
