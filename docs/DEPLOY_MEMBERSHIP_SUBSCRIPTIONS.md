@@ -111,11 +111,18 @@ a legacy unknown-provider row. If RevenueCat's own sandbox-access setting is
 restricted, its allowlist still controls which SDK App User IDs can receive a
 sandbox entitlement.
 
-Keep the existing webhook secret if it is configured:
+The server compares the complete Authorization header exactly. Keep the
+`Bearer ` prefix inside the environment value and use the identical complete
+value in RevenueCat:
 
 ```dotenv
-REVENUECAT_WEBHOOK_AUTHORIZATION=<existing-random-authorization-value>
+REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer <random-authorization-value>"
 ```
+
+If the previous value was copied into chat, a ticket, or a screenshot, rotate
+it before release. Generate a replacement with `openssl rand -hex 32`, then
+put `Bearer ` followed by that output in both the server value above and the
+RevenueCat webhook's Authorization header value.
 
 RevenueCat's webhook URL is
 `https://api.abu3meer.com/api/v1/subscriptions/webhook`; its Authorization value
