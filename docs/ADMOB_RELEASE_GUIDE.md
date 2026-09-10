@@ -7,9 +7,10 @@ restore, or subscription-management screens. Active members do not see the
 banner.
 
 The SDK requests only non-personalized ads with restricted data processing,
-teen treatment, and a maximum `PG` ad-content rating. Google UMP is queried on
-every launch before any ad request, and Settings shows **Ad privacy choices**
-whenever UMP requires that entry point for the user's region.
+teen treatment, and a maximum `PG` ad-content rating. On iOS it also disables
+Google's default publisher first-party identifier before SDK initialization.
+Google UMP is queried on every launch before any ad request, and Settings shows
+**Ad privacy choices** whenever UMP requires that entry point for the user's region.
 
 ## Release configuration now
 
@@ -145,11 +146,11 @@ Open **App Store Connect → My Apps → ABU 3MEER → App Privacy → Edit**. T
 - Other diagnostic data
 - Add **Third-Party Advertising** and **Analytics** purposes as recorded
 
-This implementation does not request App Tracking Transparency permission and
-does not request personalized ads. Do not answer that the app tracks users
-unless the final AdMob/privacy configuration actually links app data with
-third-party data for targeted advertising or measurement. Recheck this if
-personalized ads, mediation, or another ad network is enabled later.
+This implementation does not request App Tracking Transparency permission,
+does not request personalized ads, and disables AdMob's iOS publisher
+first-party identifier. Answer **Tracking: No** only for build 34 or later with
+that hardening present. Recheck the answer if personalized ads, mediation,
+another ad network, or any cross-company identifier linking is enabled later.
 
 The App Store privacy answers require an Apple web session and Google Play Data
 Safety/Ads declarations are not supported by the configured publishing CLI, so
@@ -163,6 +164,11 @@ these answers must be reviewed and saved in their store web consoles.
 4. In AdMob, verify app ownership and link each app to its store entry.
 5. Use only Google sample ads or registered test devices during QA.
 6. Confirm a visible **Test Ad** label before tapping any ad during testing.
+
+In the owner's AdMob account, also open **Settings → Publisher data** and turn
+off publisher first-party ID use/sharing for both apps. The app disables it in
+the iOS SDK as defense in depth; the account setting keeps the owner's policy
+aligned across future builds and platforms.
 
 The Google Play developer website is `https://abu3meer.com/`. AdMob uses that
 URL's hostname, so publish and keep the file available at

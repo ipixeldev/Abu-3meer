@@ -43,45 +43,56 @@ def abu3meer_require_confirmation!(name, purpose)
   UI.user_error!("Set #{name}=true only after #{purpose}.")
 end
 
+def abu3meer_upload_listing_metadata(api_key)
+  deliver(
+    api_key: api_key,
+    app_identifier: "omar.abu3meer.app",
+    app_version: "1.1.0",
+    metadata_path: File.expand_path("metadata", __dir__),
+    skip_binary_upload: true,
+    skip_screenshots: true,
+    skip_app_version_update: true,
+    submit_for_review: false,
+    run_precheck_before_submit: false,
+    force: true
+  )
+
+  app = Spaceship::ConnectAPI::App.find("omar.abu3meer.app")
+  app_info = app.fetch_edit_app_info
+  app_info.get_app_info_localizations.each do |localization|
+    localization.update(
+      attributes: {
+        privacy_choices_url: "https://abu3meer.com/delete-account/"
+      }
+    )
+  end
+  app_info.fetch_age_rating_declaration
+    .update(
+      attributes: {
+        advertising: true,
+        developer_age_rating_info_url: "https://abu3meer.com/age-suitability/"
+      }
+    )
+end
+
 platform :ios do
+  desc "Upload localized App Store metadata and app-level public links without changing review state"
+  lane :upload_listing_metadata do
+    abu3meer_upload_listing_metadata(abu3meer_api_key)
+  end
+
   desc "Upload localized App Store metadata without changing the binary or submitting for review"
   lane :upload_metadata do
+    review_notes = abu3meer_review_notes
     api_key = abu3meer_api_key
-
-    deliver(
-      api_key: api_key,
-      app_identifier: "omar.abu3meer.app",
-      app_version: "1.1.0",
-      metadata_path: File.expand_path("metadata", __dir__),
-      skip_binary_upload: true,
-      skip_screenshots: true,
-      skip_app_version_update: true,
-      submit_for_review: false,
-      run_precheck_before_submit: false,
-      force: true
-    )
+    abu3meer_upload_listing_metadata(api_key)
 
     app = Spaceship::ConnectAPI::App.find("omar.abu3meer.app")
     version = app.get_app_store_versions.find { |candidate| candidate.version_string == "1.1.0" }
     UI.user_error!("App Store version 1.1.0 was not found") unless version
     version.fetch_app_store_review_detail.update(
-      attributes: { notes: abu3meer_review_notes }
+      attributes: { notes: review_notes }
     )
-
-    app_info = app.fetch_edit_app_info
-    app_info.get_app_info_localizations.each do |localization|
-      localization.update(
-        attributes: {
-          privacy_choices_url: "https://abu3meer.com/delete-account/"
-        }
-      )
-    end
-    app_info.fetch_age_rating_declaration
-      .update(
-        attributes: {
-          developer_age_rating_info_url: "https://abu3meer.com/age-suitability/"
-        }
-      )
   end
 
   desc "Upload localized App Store screenshots without changing metadata, the binary, or review state"

@@ -335,6 +335,12 @@ class AdMobService extends ChangeNotifier {
   Future<void> _configureAndInitializeAdsIfAllowed() async {
     if (!_canShowAds || _sdkInitialized) return;
 
+    // The iOS SDK enables a publisher-scoped first-party identifier by
+    // default. Abu 3meer does not use cross-app tracking or personalized ads,
+    // so disable that identifier before the SDK is initialized. This call is
+    // intentionally a no-op on Android.
+    await MobileAds.instance.setSameAppKeyEnabled(false);
+
     // Abu 3meer is rated 13+. Apply conservative teen treatment to every
     // request and prevent mature ad creatives from being eligible.
     await MobileAds.instance.updateRequestConfiguration(

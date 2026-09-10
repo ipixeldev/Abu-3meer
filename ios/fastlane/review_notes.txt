@@ -2,7 +2,7 @@ Response to App Review — Guideline 2.1
 
 1. Physical-device video
 [ADD PUBLIC VIDEO URL]
-Recorded on [IPHONE MODEL], iOS [IOS VERSION], build 32. It starts at launch and shows registration, deletion, sign-in, all five tabs, a prediction/challenge, Report/Block/Unblock, both subscription plans with prices/legal links, sandbox purchase or restore, member access/badge, notifications, and subscription management.
+Recorded on [IPHONE MODEL], iOS [IOS VERSION], build 34. It starts at launch and shows registration, deletion, sign-in, all five tabs, a prediction/challenge, Report/Block/Unblock, both subscription plans with prices/legal links, sandbox purchase or restore, member access/badge, notifications, and subscription management.
 
 2. Purpose and audience
 ABU 3MEER is an Arabic/English football fan app for users aged 13+. It combines football information, videos, free predictions/questions, recognition-only XP rankings, notifications, and optional Members content. There is no paid entry, betting, wager, prize, or redeemable reward; XP has no monetary value.

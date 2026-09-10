@@ -15,6 +15,14 @@ For _fastlane_ installation instructions, see [Installing _fastlane_](https://do
 
 ## iOS
 
+### ios upload_listing_metadata
+
+```sh
+[bundle exec] fastlane ios upload_listing_metadata
+```
+
+Upload localized App Store metadata and app-level public links without changing review state
+
 ### ios upload_metadata
 
 ```sh

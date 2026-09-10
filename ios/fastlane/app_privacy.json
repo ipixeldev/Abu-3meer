@@ -1,5 +1,7 @@
 {
   "schemaVersion": 1,
+  "tracking": false,
+  "minimumBuild": 34,
   "dataUsages": [
     {
       "category": "NAME",
@@ -12,8 +14,13 @@
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
     {
-      "category": "PRECISE_LOCATION",
+      "category": "PHONE_NUMBER",
       "purposes": ["APP_FUNCTIONALITY"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "PRECISE_LOCATION",
+      "purposes": ["APP_FUNCTIONALITY", "PRODUCT_PERSONALIZATION"],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
     {
@@ -22,6 +29,7 @@
         "APP_FUNCTIONALITY",
         "PRODUCT_PERSONALIZATION",
         "THIRD_PARTY_ADVERTISING",
+        "DEVELOPER_ADVERTISING",
         "ANALYTICS"
       ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
@@ -33,6 +41,11 @@
     },
     {
       "category": "GAMEPLAY_CONTENT",
+      "purposes": ["APP_FUNCTIONALITY"],
+      "dataProtections": ["DATA_LINKED_TO_YOU"]
+    },
+    {
+      "category": "CUSTOMER_SUPPORT",
       "purposes": ["APP_FUNCTIONALITY"],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
@@ -56,13 +69,18 @@
       "purposes": [
         "APP_FUNCTIONALITY",
         "ANALYTICS",
-        "THIRD_PARTY_ADVERTISING"
+        "THIRD_PARTY_ADVERTISING",
+        "DEVELOPER_ADVERTISING"
       ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
     {
       "category": "PURCHASE_HISTORY",
-      "purposes": ["APP_FUNCTIONALITY", "PRODUCT_PERSONALIZATION"],
+      "purposes": [
+        "APP_FUNCTIONALITY",
+        "PRODUCT_PERSONALIZATION",
+        "ANALYTICS"
+      ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
     {
@@ -71,24 +89,34 @@
         "APP_FUNCTIONALITY",
         "PRODUCT_PERSONALIZATION",
         "ANALYTICS",
-        "THIRD_PARTY_ADVERTISING"
+        "THIRD_PARTY_ADVERTISING",
+        "DEVELOPER_ADVERTISING"
       ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
     {
       "category": "ADVERTISING_DATA",
-      "purposes": ["ANALYTICS", "THIRD_PARTY_ADVERTISING"],
+      "purposes": [
+        "ANALYTICS",
+        "THIRD_PARTY_ADVERTISING",
+        "DEVELOPER_ADVERTISING"
+      ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
     {
       "category": "CRASH_DATA",
-      "purposes": ["ANALYTICS", "THIRD_PARTY_ADVERTISING"],
+      "purposes": ["ANALYTICS"],
       "dataProtections": ["DATA_NOT_LINKED_TO_YOU"]
     },
     {
       "category": "PERFORMANCE_DATA",
-      "purposes": ["ANALYTICS", "THIRD_PARTY_ADVERTISING"],
-      "dataProtections": ["DATA_LINKED_TO_YOU"]
+      "purposes": [
+        "APP_FUNCTIONALITY",
+        "ANALYTICS",
+        "THIRD_PARTY_ADVERTISING",
+        "DEVELOPER_ADVERTISING"
+      ],
+      "dataProtections": ["DATA_NOT_LINKED_TO_YOU"]
     },
     {
       "category": "OTHER_USAGE_DATA",
@@ -100,7 +128,8 @@
       "purposes": [
         "APP_FUNCTIONALITY",
         "ANALYTICS",
-        "THIRD_PARTY_ADVERTISING"
+        "THIRD_PARTY_ADVERTISING",
+        "DEVELOPER_ADVERTISING"
       ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },

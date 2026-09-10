@@ -137,24 +137,26 @@ and [RC23_STORE_ACTIONS.md](RC23_STORE_ACTIONS.md).
 ## App Store Connect actions that still require the account owner
 
 The review draft currently contains the subscription group and both
-subscription versions. Build 32 is selected for the app version. App Privacy
-is published, the review contact and private demo login are filled, copyright
-is `2026 Omar Jabur`, and the app declares that it uses third-party content.
+subscription versions. Build 34 must be selected for the app version after it
+finishes processing. App Privacy
+must be republished with the current first-party, RevenueCat, Firebase, and
+AdMob data disclosures; the review contact and private demo login are filled,
+copyright is `2026 Omar Jabur`, and the app declares that it uses third-party content.
 Do not resubmit until the remaining owner/reviewer items are complete:
 
-1. Upload or link the build-32 physical-device recording, fill the remaining
+1. Upload or link the build-34 physical-device recording, fill the remaining
    review-note placeholders, and reply to the existing Guideline 2.1 message.
 2. Attach or identify the applicable publication/brand/media rights. Football
    logos, videos, and data rights must not be guessed.
 3. Wait for or resolve the **Digital Services Act** status currently shown as
    **In Review** if Apple requires completion for EU distribution.
-4. Retest the full build-32 account-deletion, purchase/restore, notification,
+4. Retest the full build-34 account-deletion, purchase/restore, notification,
    report/block, and member-access flow on the physical review device.
 5. Resolve the existing review item and keep the app version in the same review
    submission as the first subscription group/items when resubmitting.
 
 External TestFlight review separately needs the same four contact fields.
-Internal TestFlight already has build 32 and does not require Beta App Review.
+Internal TestFlight receives build 34 automatically and does not require Beta App Review.
 
 Apple currently refuses editing the draft version's **What's New** field in its
 present state; this is not a reason to invent release notes through another
