@@ -278,8 +278,11 @@ class _ProductionChallengeCard extends StatelessWidget {
   Future<void> answer(BuildContext context) => showDialog<void>(
     context: context,
     barrierDismissible: false,
-    builder: (_) =>
-        _ChallengePlayDialog(challenge: challenge, repository: repository),
+    builder: (_) => _ChallengePlayDialog(
+      challenge: challenge,
+      repository: repository,
+      hasMemberAccess: isMember,
+    ),
   );
 
   IconData get _icon => switch (challenge.canonicalKind) {
@@ -460,10 +463,12 @@ class _ChallengePlayDialog extends StatefulWidget {
   const _ChallengePlayDialog({
     required this.challenge,
     required this.repository,
+    required this.hasMemberAccess,
   });
 
   final AbuChallenge challenge;
   final ProductionRepository repository;
+  final bool hasMemberAccess;
 
   @override
   State<_ChallengePlayDialog> createState() => _ChallengePlayDialogState();
@@ -555,6 +560,13 @@ class _ChallengePlayDialogState extends State<_ChallengePlayDialog> {
       if (!mounted) return;
       Navigator.pop(context);
       messenger.showSnackBar(SnackBar(content: Text(feedback)));
+      if (correct && !alreadyAwarded) {
+        unawaited(
+          AdMobService.instance.noteMeaningfulActivity(
+            hasMemberAccess: widget.hasMemberAccess,
+          ),
+        );
+      }
     } catch (exception) {
       if (mounted) {
         setState(() {

@@ -3074,9 +3074,10 @@ class _ProductionHome extends StatelessWidget {
                   profile: profile,
                 ),
                 const SizedBox(height: 16),
-                InlineBannerAd(hidden: profile.hasMemberAccess),
-                if (!profile.hasMemberAccess && AdMobConfiguration.adsEnabled)
-                  const SizedBox(height: 16),
+                InlineBannerAd(
+                  hidden: profile.hasMemberAccess,
+                  padding: const EdgeInsets.only(bottom: 16),
+                ),
                 _ProductionPointsHero(profile: profile),
                 const SizedBox(height: 16),
                 _ProductionHomeRankingCard(
@@ -3105,9 +3106,10 @@ class _ProductionHome extends StatelessWidget {
                 profile: profile,
               ),
               const SizedBox(height: 18),
-              InlineBannerAd(hidden: profile.hasMemberAccess),
-              if (!profile.hasMemberAccess && AdMobConfiguration.adsEnabled)
-                const SizedBox(height: 18),
+              InlineBannerAd(
+                hidden: profile.hasMemberAccess,
+                padding: const EdgeInsets.only(bottom: 18),
+              ),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -3318,6 +3320,13 @@ class _DirectChallengeInlineCardState
             ),
           ),
         );
+        if (!alreadyAwarded) {
+          unawaited(
+            AdMobService.instance.noteMeaningfulActivity(
+              hasMemberAccess: widget.profile.hasMemberAccess,
+            ),
+          );
+        }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3959,6 +3968,7 @@ class _ProductionLatestVideoCardState
     builder: (_) => _ChallengePlayDialog(
       challenge: challenge,
       repository: widget.repository,
+      hasMemberAccess: widget.profile.hasMemberAccess,
     ),
   );
 
@@ -5201,6 +5211,10 @@ class _ProductionMatchesState extends State<_ProductionMatches> {
                         )
                         .toList(),
                   ),
+                InlineBannerAd(
+                  hidden: widget.profile.hasMemberAccess,
+                  padding: const EdgeInsets.only(top: 24),
+                ),
                 const SizedBox(height: 30),
                 LayoutBuilder(
                   builder: (context, constraints) {
@@ -6313,6 +6327,11 @@ class _ProductionMatchCard extends StatelessWidget {
           ),
         );
         await _showPredictionFireworks(context);
+        unawaited(
+          AdMobService.instance.noteMeaningfulActivity(
+            hasMemberAccess: profile?.hasMemberAccess ?? false,
+          ),
+        );
       }
     } catch (error) {
       if (context.mounted) {
@@ -8126,14 +8145,19 @@ class _ProductionLeaderboardState extends State<_ProductionLeaderboard> {
         );
         _synchronizePreviousMonthAvailability(previousMonthAvailable);
         final desktop = MediaQuery.sizeOf(context).width >= 1100;
-        if (desktop) {
-          return _desktopLeaderboard(
-            context,
-            leaderboard,
-            previousMonthAvailable,
-          );
-        }
-        return _mobileLeaderboard(context, leaderboard, previousMonthAvailable);
+        final content = desktop
+            ? _desktopLeaderboard(context, leaderboard, previousMonthAvailable)
+            : _mobileLeaderboard(context, leaderboard, previousMonthAvailable);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            InlineBannerAd(
+              hidden: widget.profile.hasMemberAccess,
+              padding: const EdgeInsets.only(bottom: 16),
+            ),
+            content,
+          ],
+        );
       },
     ),
   );

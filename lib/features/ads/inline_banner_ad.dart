@@ -7,9 +7,14 @@ import '../../production/ad_service.dart';
 /// A single unobtrusive banner that collapses completely when ads are off,
 /// consent is unavailable, or Google cannot fill the request.
 class InlineBannerAd extends StatefulWidget {
-  const InlineBannerAd({super.key, this.hidden = false});
+  const InlineBannerAd({
+    super.key,
+    this.hidden = false,
+    this.padding = EdgeInsets.zero,
+  });
 
   final bool hidden;
+  final EdgeInsetsGeometry padding;
 
   @override
   State<InlineBannerAd> createState() => _InlineBannerAdState();
@@ -103,11 +108,14 @@ class _InlineBannerAdState extends State<InlineBannerAd> {
     return Semantics(
       container: true,
       label: 'Advertisement',
-      child: Center(
-        child: SizedBox(
-          width: banner.size.width.toDouble(),
-          height: banner.size.height.toDouble(),
-          child: AdWidget(ad: banner),
+      child: Padding(
+        padding: widget.padding,
+        child: Center(
+          child: SizedBox(
+            width: banner.size.width.toDouble(),
+            height: banner.size.height.toDouble(),
+            child: AdWidget(ad: banner),
+          ),
         ),
       ),
     );

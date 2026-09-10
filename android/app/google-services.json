@@ -22,6 +22,38 @@
           }
         },
         {
+          "client_id": "701810344443-81dc0e07hvhsltrjqj5vctu38itpe0ep.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.abu3meer.app",
+            "certificate_hash": "ed4ae1db43d5c300a0b89897fc095669ff0fae61"
+          }
+        },
+        {
+          "client_id": "701810344443-ele8519m4rfuqbopv28vpspmcsl48hp2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.abu3meer.app",
+            "certificate_hash": "cfc48eb22c9aeb7d7128b4ff0b052215c4c03cba"
+          }
+        },
+        {
+          "client_id": "701810344443-fd6ifo38l644khc5rlcvkvoe4h1sqqdg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.abu3meer.app",
+            "certificate_hash": "3fb8ae08b6bb6698d341fc3df6287e3c8580f740"
+          }
+        },
+        {
+          "client_id": "701810344443-hpv7j9p61e2oju5ac1kdnvgb1d8qhfkq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.abu3meer.app",
+            "certificate_hash": "19ffcc00ab2bd22aa2ba8a613e3e6695c9b95e95"
+          }
+        },
+        {
           "client_id": "701810344443-pbftvefi2r3mho16h6h98ib3e8hjije5.apps.googleusercontent.com",
           "client_type": 3
         }
