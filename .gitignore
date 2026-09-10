@@ -81,6 +81,7 @@ functions/lib/
 # Per-machine API endpoint configuration. Temporary Cloudflare URLs must never
 # be committed because they expire whenever the quick tunnel is restarted.
 /ios/Flutter/ApiEndpoint.local.xcconfig
+/ios/Flutter/AdMob.local.xcconfig
 /tool/api_endpoint.local.json
 
 # One-off local repair/probe output; production sources live elsewhere.

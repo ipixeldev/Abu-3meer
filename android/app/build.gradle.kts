@@ -24,6 +24,29 @@ if (releaseKeyPropertiesFile.exists()) {
     releaseKeyPropertiesFile.inputStream().use(releaseKeyProperties::load)
 }
 
+val admobAndroidProductionAppId =
+    (project.findProperty("ADMOB_ANDROID_APP_ID") as String?)
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() }
+        ?: System.getenv("ADMOB_ANDROID_APP_ID")
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        ?: "ca-app-pub-1153776263866015~1165718873"
+val admobAndroidTestAppId = "ca-app-pub-3940256099942544~3347511713"
+val admobGoogleSamplePublisherPrefix = "ca-app-pub-3940256099942544"
+val admobAndroidAppIdPattern = Regex("^ca-app-pub-\\d+~\\d+$")
+if (
+    releaseBuildRequested &&
+    (admobAndroidProductionAppId == null ||
+        !admobAndroidAppIdPattern.matches(admobAndroidProductionAppId) ||
+        admobAndroidProductionAppId.startsWith(admobGoogleSamplePublisherPrefix))
+) {
+    error(
+        "A production AdMob Android App ID is required for release builds. " +
+            "Set ADMOB_ANDROID_APP_ID to the ca-app-pub-...~... value from AdMob."
+    )
+}
+
 android {
     namespace = "com.abu3meer.app"
     compileSdk = flutter.compileSdkVersion
@@ -37,6 +60,7 @@ android {
 
     defaultConfig {
         applicationId = "com.abu3meer.app"
+        manifestPlaceholders["ADMOB_APP_ID"] = admobAndroidTestAppId
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -80,10 +104,17 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Never let a production shell variable turn a debug build into a
+            // source of live ad traffic.
+            manifestPlaceholders["ADMOB_APP_ID"] = admobAndroidTestAppId
+        }
         release {
             // Debug builds never need the upload key. Release tasks fail above
             // with a clear message rather than silently creating an unsigned AAB.
             signingConfig = signingConfigs.findByName("release")
+            manifestPlaceholders["ADMOB_APP_ID"] =
+                admobAndroidProductionAppId ?: admobAndroidTestAppId
         }
     }
 }

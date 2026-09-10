@@ -124,14 +124,12 @@ void main() {
     expect(calls.any((call) => call.method == 'presentPaywall'), false);
   });
 
-  test('iOS uses its real app key without a Test Store fallback', () {
+  test('each mobile platform uses its real public SDK key', () {
     expect(service.apiKey, startsWith('appl_'));
-    expect(service.usesTestStore, false);
     expect(service.available, true);
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    // No Android store configuration has been supplied for this project yet.
-    expect(service.apiKey, isEmpty);
-    expect(service.available, false);
+    expect(service.apiKey, startsWith('goog_'));
+    expect(service.available, true);
   });
 
   test('native UI error codes cannot throw while handling another error', () {
@@ -276,30 +274,15 @@ void main() {
 
   test('production rejects test/secret/wrong-platform keys', () {
     for (final key in ['', 'sk_never_embed', 'test_testing', 'goog_android']) {
-      expect(
-        SubscriptionService.validPublicKey(
-          key,
-          isIOS: true,
-          allowTestStore: false,
-        ),
-        false,
-      );
+      expect(SubscriptionService.validPublicKey(key, isIOS: true), false);
     }
     expect(
-      SubscriptionService.validPublicKey(
-        'appl_public',
-        isIOS: true,
-        allowTestStore: false,
-      ),
+      SubscriptionService.validPublicKey('appl_public', isIOS: true),
       true,
     );
     expect(
-      SubscriptionService.validPublicKey(
-        'test_testing',
-        isIOS: true,
-        allowTestStore: true,
-      ),
-      true,
+      SubscriptionService.validPublicKey('test_testing', isIOS: true),
+      false,
     );
   });
   test(

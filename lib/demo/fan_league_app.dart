@@ -18,6 +18,7 @@ import '../production/brand.dart';
 import '../core/widgets/subscriber_badge.dart';
 import '../production/api_client.dart';
 import '../production/admin_dashboard_stats.dart';
+import '../production/ad_service.dart';
 import '../production/app_preferences.dart';
 import '../production/external_content_service.dart';
 import '../production/ehzerha_embed.dart';
@@ -33,6 +34,7 @@ import '../features/videos/exclusive_videos_view.dart';
 import '../features/membership/manual_membership_dialog.dart';
 import '../features/subscriptions/subscription_panel.dart';
 import '../features/admin/admin_subscription_dialog.dart';
+import '../features/ads/inline_banner_ad.dart';
 import '../features/support/whatsapp_support_button.dart';
 import '../production/subscription_service.dart';
 

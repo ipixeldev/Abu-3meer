@@ -23,13 +23,13 @@ Do not change those mappings. Two dashboard jobs remain:
 1. RevenueCat → **Integrations → Webhooks** → open the Abu 3meer webhook. Select **Both Production and Sandbox**, enable transfer/lifecycle events, save, then use **Send test** and require HTTP 200. This is needed to exercise the full internal-test lifecycle before launch.
 2. RevenueCat → **Apps & providers → ABU 3MEER (Play Store)** → **Google developer notifications**. Finish the Pub/Sub setup and connect the topic. Then add the same topic in Play Console → **Monetize with Play → Monetization setup → Real-time developer notifications** and send Google's test notification.
 
-The RevenueCat Android public SDK key is not installed automatically by importing products or uploading the Google JSON. It must be supplied when the Android app is built. Keep the server's synthetic Test Store switch off: genuine Play test-track purchases are store-signed sandbox purchases and are accepted while remaining visibly labelled as sandbox.
+The RevenueCat Android public SDK key is not installed automatically by importing products or uploading the Google JSON. The real `goog_` public key is now committed in the Android client configuration. Keep the server's synthetic Test Store switch off: genuine Play test-track purchases are store-signed sandbox purchases and are accepted while remaining visibly labelled as sandbox.
 
 ## The four credentials and exactly where each goes
 
 | Credential | Get it from | Put it here | Never put it here |
 | --- | --- | --- | --- |
-| RevenueCat Android public SDK key, `goog_...` | RevenueCat → Project settings → API keys → **Public SDK keys** → Play app | Flutter release build as `--dart-define=REVENUECAT_ANDROID_API_KEY=goog_...` | Server `.env` as the REST secret |
+| RevenueCat Android public SDK key, `goog_...` | RevenueCat → Project settings → API keys → **Public SDK keys** → Play app | `SubscriptionService` in the Flutter client; an optional `--dart-define` may override it for another environment | Server `.env` as the REST secret |
 | RevenueCat secret REST API v1 key, `sk_...` | RevenueCat → Project settings → API keys → secret key | `/opt/abu3meer/server/.env` as `REVENUECAT_SECRET_API_KEY=sk_...`; then recreate the API container | Flutter, Gradle, AAB/APK, Git, screenshots, or chat |
 | RevenueCat webhook Authorization header | Generate a long random value yourself; RevenueCat does not provide it | Put the exact full value, for example `Bearer <random>`, in both the RevenueCat webhook **Authorization header value** and server `.env` as `REVENUECAT_WEBHOOK_AUTHORIZATION="Bearer <random>"` | Flutter, Git, screenshots, or chat |
 | Google service-account JSON | Google Cloud Console → IAM & Admin → Service Accounts → Keys → Add key → JSON | Upload to the RevenueCat Play app. It can also authenticate `gpc` locally after the service account has the Play permissions below. | Flutter, the Abu 3meer server, Git, screenshots, or chat |
@@ -110,17 +110,16 @@ gpc subscriptions base-plans list \
 
 ## Current Android release readiness
 
-The source currently has package `com.abu3meer.app`, app name `ABU 3MEER`, and version `1.1.0+31`. Google Play's internal track currently contains version code 24. The saved `android/app/release/app-release.aab` is that stale build from 7 September 2026; do not upload it again.
+The source currently has package `com.abu3meer.app`, app name `ABU 3MEER`, and version `1.1.0+32`. Google Play's internal track currently contains version code 24. The saved `android/app/release/app-release.aab` is that stale build from 7 September 2026; do not upload it again.
 
 The likely original upload keystore is present privately at `/Users/ipixeldev/Documents/Abu3meer.jks`, but `android/key.properties` and its alias/password values are not available. Do **not** generate a new keystore for this existing Play app unless Google has approved an upload-key reset. After the owner supplies the existing alias, store password, and key password, point an ignored `android/key.properties` at that file. In Play Console → **Setup → App integrity**, compare the **Upload key certificate** SHA-1 with the restored keystore. The version-24 bundle's signer SHA-1 is `3F:B8:AE:08:B6:BB:66:98:D3:41:FC:3D:F6:28:7E:3C:85:80:F7:40`; Play Console remains the authority.
 
-Before building, use `gpc tracks list` and ensure the next source version code is greater than every version code already in Play. Version 31 is currently valid because the highest uploaded release is 24. Then build with the Android public SDK key:
+Before building, use `gpc tracks list` and ensure the next source version code is greater than every version code already in Play. Version 32 is currently valid because the highest previously observed uploaded release was 24. Then build normally; the platform's public SDK key is already configured:
 
 ```sh
 flutter clean
 flutter pub get
-flutter build appbundle --release \
-  --dart-define=REVENUECAT_ANDROID_API_KEY=goog_your_public_key
+flutter build appbundle --release
 
 jarsigner -verify -verbose -certs \
   build/app/outputs/bundle/release/app-release.aab

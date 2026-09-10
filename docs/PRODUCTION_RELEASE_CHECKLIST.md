@@ -124,7 +124,7 @@ restricted, allow that tester's PostgreSQL app-user UUID there as well.
   for App Store version 1.1.0. Do not submit it until the current server update
   is live, the physical-device flow is verified, and the App Review information
   is complete.
-- Reviewed build-31 App Store screenshots are uploaded in English and Arabic
+- Reviewed build-32 App Store screenshots are uploaded in English and Arabic
   for both the 6.7-inch iPhone and 13-inch iPad display classes. Follow
   `APP_STORE_SCREENSHOT_PLAN.md` for the uploaded set and any future richer
   replacement.
@@ -137,24 +137,24 @@ and [RC23_STORE_ACTIONS.md](RC23_STORE_ACTIONS.md).
 ## App Store Connect actions that still require the account owner
 
 The review draft currently contains the subscription group and both
-subscription versions. Build 31 is selected for the app version. App Privacy
+subscription versions. Build 32 is selected for the app version. App Privacy
 is published, the review contact and private demo login are filled, copyright
 is `2026 Omar Jabur`, and the app declares that it uses third-party content.
 Do not resubmit until the remaining owner/reviewer items are complete:
 
-1. Upload or link the build-31 physical-device recording, fill the remaining
+1. Upload or link the build-32 physical-device recording, fill the remaining
    review-note placeholders, and reply to the existing Guideline 2.1 message.
 2. Attach or identify the applicable publication/brand/media rights. Football
    logos, videos, and data rights must not be guessed.
 3. Wait for or resolve the **Digital Services Act** status currently shown as
    **In Review** if Apple requires completion for EU distribution.
-4. Retest the full build-31 account-deletion, purchase/restore, notification,
+4. Retest the full build-32 account-deletion, purchase/restore, notification,
    report/block, and member-access flow on the physical review device.
 5. Resolve the existing review item and keep the app version in the same review
    submission as the first subscription group/items when resubmitting.
 
 External TestFlight review separately needs the same four contact fields.
-Internal TestFlight already has build 31 and does not require Beta App Review.
+Internal TestFlight already has build 32 and does not require Beta App Review.
 
 Apple currently refuses editing the draft version's **What's New** field in its
 present state; this is not a reason to invent release notes through another

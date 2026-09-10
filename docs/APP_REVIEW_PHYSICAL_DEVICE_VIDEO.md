@@ -1,10 +1,10 @@
 # App Review physical-device video
 
-Record the corrected build **1.1.0 (31)** on a physical iPhone running the latest available iOS. Do not reuse the build-30 recording because build 31 changes and hardens account deletion. Use one continuous recording when practical, starting from the iPhone Home Screen and showing the app being launched.
+Record the corrected build **1.1.0 (32)** on a physical iPhone running the latest available iOS. Do not reuse an older recording because build 32 adds the production RevenueCat and AdMob configuration and includes the hardened account-deletion flow. Use one continuous recording when practical, starting from the iPhone Home Screen and showing the app being launched.
 
 ## Before recording
 
-- Install build 31 from TestFlight after the matching server update has been deployed.
+- Install build 32 from TestFlight after the matching server update has been deployed.
 - Confirm notifications are allowed in iOS Settings.
 - Prepare one disposable account for demonstrating account deletion.
 - Keep the permanent App Review demo account available for the rest of the flow.

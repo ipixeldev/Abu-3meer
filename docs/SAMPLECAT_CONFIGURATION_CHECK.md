@@ -27,11 +27,10 @@ which changed as access handling was added):
 - `ios/Runner.xcodeproj/xcshareddata/xcschemes/Runner.xcscheme`: the release app
   does not enable a local StoreKit configuration.
 
-The client rejects `sk_` values and cannot use RevenueCat Test Store in release.
-`REVENUECAT_USE_TEST_STORE` is an explicit non-release-only option. The existing
-[build 23 payload audit](../artifacts/app-store/release-1.1.0-23.md) also found
-the expected App Store key and no Test Store key or StoreKit configuration in
-that exported IPA.
+The client rejects `sk_` and `test_` values and now contains only the real
+platform-specific public SDK keys. The existing [build 23 payload audit](../artifacts/app-store/release-1.1.0-23.md)
+also found the expected App Store key and no StoreKit configuration in that
+exported IPA.
 
 ## Exact functional comparison
 

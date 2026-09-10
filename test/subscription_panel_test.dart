@@ -53,8 +53,6 @@ class _Store extends SubscriptionService {
   @override
   bool get available => true;
   @override
-  bool get usesTestStore => false;
-  @override
   String get userId => identity;
   @override
   CustomerInfo get customerInfo {

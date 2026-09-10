@@ -24,6 +24,7 @@ Updated: 9 September 2026
 - XP is not sold as a standalone currency, has no monetary value, cannot be transferred or redeemed, and unlocks nothing. Membership activation and renewal can award the disclosed fixed recognition XP.
 - Current-month, previous-month, and season leaderboards provide recognition only. Monthly XP resets while the completed month remains visible, and completed seasons remain available as archived rankings.
 - The public XP & Leaderboard Rules state that Apple does not sponsor, administer, or participate in XP scoring or rankings.
+- When configured with production AdMob IDs, non-members may see one non-personalized banner in the Home feed. Ads are not shown on sign-in, account deletion, predictions, challenges, Members, purchase, restore, or subscription-management screens, and active members do not see the banner.
 - The iOS target contains `Runner/PrivacyInfo.xcprivacy`; it declares no tracking and is packaged at the app-bundle root.
 
 ## App Privacy Declaration
@@ -32,8 +33,8 @@ App Store Connect's privacy declaration must cover both first-party collection a
 
 - Data collected: yes.
 - Tracking: no.
-- No third-party advertising or developer advertising/marketing use.
-- Contact information, a submitted public YouTube profile link and matched channel ID/membership status, subscription and entitlement metadata, profile reports and blocks, location used for country suggestion, selected media, gameplay/user/search content, user/device identifiers, product interaction, usage data, diagnostics, and other profile/security data are disclosed for app functionality and the applicable analytics or personalization purposes. The membership check does not request YouTube account authorization.
+- Third-party advertising use: yes for a build configured to request AdMob banners. Developer advertising/marketing use: no.
+- Contact information, a submitted public YouTube profile link and matched channel ID/membership status, subscription and entitlement metadata, profile reports and blocks, location used for country suggestion, selected media, gameplay/user/search content, user/device identifiers, product interaction, usage data, diagnostics, advertising data, and other profile/security data are disclosed for app functionality and the applicable analytics, personalization, or third-party-advertising purposes. The membership check does not request YouTube account authorization.
 
 Do not publish a narrower declaration without re-auditing the app, server logs, Google Sign-In, and Firebase privacy manifests.
 

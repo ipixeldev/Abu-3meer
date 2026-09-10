@@ -24,6 +24,7 @@ class _ProductionGateState extends State<_ProductionGate> {
   void initState() {
     super.initState();
     repository = ProductionRepository();
+    unawaited(AdMobService.instance.initialize());
     unawaited(
       NotificationService.instance.initialize(apiRepo: repository.apiRepo),
     );
@@ -2155,6 +2156,32 @@ class _ProductionShellState extends State<_ProductionShell>
     }
   }
 
+  Future<void> _refreshAfterResume({required bool includeAllResources}) async {
+    final profile = widget.profile;
+    if (!profile.isGuest) {
+      // Email verification finishes in a browser. Reloading the existing
+      // Firebase user and token lets the API reconcile the new verified email
+      // while this app session remains signed in.
+      await widget.repository.refreshAuthenticatedIdentity();
+      if (!mounted || widget.repository.auth.currentUser?.uid != profile.uid) {
+        return;
+      }
+    }
+    if (!includeAllResources) return;
+
+    if (!profile.isGuest) {
+      await widget.repository.checkInDailyStreak(profile.uid);
+      if (!mounted || widget.repository.auth.currentUser?.uid != profile.uid) {
+        return;
+      }
+      await _refreshSubscriptions();
+    }
+    await widget.repository.refreshActiveResources(
+      uid: profile.isGuest ? null : profile.uid,
+      force: true,
+    );
+  }
+
   @override
   void didUpdateWidget(covariant _ProductionShell oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -2286,30 +2313,15 @@ class _ProductionShellState extends State<_ProductionShell>
         'Notifications',
       );
     }
-    if (_backgroundedAt != null &&
-        DateTime.now().difference(_backgroundedAt!) >=
-            const Duration(seconds: 30)) {
-      unawaited(_refreshSubscriptions());
-    }
     final backgroundedAt = _backgroundedAt;
     _backgroundedAt = null;
-    if (backgroundedAt == null ||
-        DateTime.now().difference(backgroundedAt) <
-            const Duration(seconds: 30)) {
-      return;
-    }
-    if (!widget.profile.isGuest) {
-      _runProductionBackgroundTask(
-        widget.repository.checkInDailyStreak(widget.profile.uid).then((_) {}),
-        'StreakResume',
-      );
-    }
+    final includeAllResources =
+        backgroundedAt != null &&
+        DateTime.now().difference(backgroundedAt) >=
+            const Duration(seconds: 30);
     _runProductionBackgroundTask(
-      widget.repository.refreshActiveResources(
-        uid: widget.profile.isGuest ? null : widget.profile.uid,
-        force: true,
-      ),
-      'AppResume',
+      _refreshAfterResume(includeAllResources: includeAllResources),
+      'IdentityResume',
     );
   }
 
@@ -3062,6 +3074,9 @@ class _ProductionHome extends StatelessWidget {
                   profile: profile,
                 ),
                 const SizedBox(height: 16),
+                InlineBannerAd(hidden: profile.hasMemberAccess),
+                if (!profile.hasMemberAccess && AdMobConfiguration.adsEnabled)
+                  const SizedBox(height: 16),
                 _ProductionPointsHero(profile: profile),
                 const SizedBox(height: 16),
                 _ProductionHomeRankingCard(
@@ -3090,6 +3105,9 @@ class _ProductionHome extends StatelessWidget {
                 profile: profile,
               ),
               const SizedBox(height: 18),
+              InlineBannerAd(hidden: profile.hasMemberAccess),
+              if (!profile.hasMemberAccess && AdMobConfiguration.adsEnabled)
+                const SizedBox(height: 18),
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -11447,8 +11465,8 @@ Future<void> _showChangeAccountEmailDialog(
         content: Text(
           abuText(
             context,
-            'Verification sent to $nextEmail. Open that email to finish the change.',
-            'تم إرسال التحقق إلى $nextEmail. افتح الرسالة لإكمال التغيير.',
+            'Verification sent to $nextEmail. Open it, then return here; your signed-in account will update automatically.',
+            'تم إرسال التحقق إلى $nextEmail. افتح الرسالة ثم عد إلى التطبيق؛ سيتم تحديث حسابك مع بقائك مسجلاً للدخول.',
           ),
         ),
       ),
@@ -11578,7 +11596,10 @@ class _ProductionSettings extends StatelessWidget {
         ) ==
         true;
     return AnimatedBuilder(
-      animation: preferences,
+      animation: Listenable.merge(<Listenable>[
+        preferences,
+        AdMobService.instance,
+      ]),
       builder: (context, _) => _PageFrame(
         kicker: abuText(context, 'Personalize Abu 3meer', 'خصص تطبيق أبو عمير'),
         title: abuText(context, 'Settings', 'الإعدادات'),
@@ -12068,6 +12089,34 @@ class _ProductionSettings extends StatelessWidget {
                     document: _privacyLegalDocument(context),
                   ),
                 ),
+                if (AdMobService.instance.privacyOptionsRequired) ...[
+                  const Divider(height: 1),
+                  _SettingsActionTile(
+                    icon: Icons.ads_click_rounded,
+                    title: abuText(
+                      context,
+                      'Ad privacy choices',
+                      'خيارات خصوصية الإعلانات',
+                    ),
+                    subtitle: abuText(
+                      context,
+                      'Review or change the advertising privacy choices available in your region.',
+                      'راجع أو غيّر خيارات خصوصية الإعلانات المتاحة في منطقتك.',
+                    ),
+                    onTap: () async {
+                      try {
+                        await AdMobService.instance.showPrivacyOptions();
+                      } catch (error) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(productionErrorMessage(error)),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
                 const Divider(height: 1),
                 _SettingsActionTile(
                   icon: Icons.leaderboard_rounded,
@@ -12680,24 +12729,24 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Data We Collect', 'البيانات التي نجمعها'),
       abuText(
         context,
-        'Abu 3meer collects account and profile details, an optional profile image, prediction and challenge activity, XP, notification tokens, and device diagnostics needed to run the service. Membership checking stores the public channel profile link you submit, its resolved channel ID, derived status, and verification times. We also process store entitlement records and profile reports or blocks.',
-        'يجمع أبو عمير بيانات الحساب والملف، وصورة الملف الاختيارية، ونشاط التوقعات والتحديات، ونقاط XP، ورموز الإشعارات، وتشخيص الجهاز اللازم للخدمة. يخزن فحص العضوية رابط القناة العام ومعرفها وحالتها وأوقات التحقق. نعالج أيضاً سجلات استحقاق المتجر وبلاغات الملفات أو حظرها.',
+        'Abu 3meer collects account and profile details, an optional profile image, prediction and challenge activity, XP, notification tokens, and device diagnostics needed to run the service. Membership checking stores the public channel profile link you submit, its resolved channel ID, derived status, and verification times. We also process store entitlement records and profile reports or blocks. When advertising is enabled, Google Mobile Ads may process IP-derived approximate location, device identifiers, ad views and interactions, crash logs, and performance data.',
+        'يجمع أبو عمير بيانات الحساب والملف، وصورة الملف الاختيارية، ونشاط التوقعات والتحديات، ونقاط XP، ورموز الإشعارات، وتشخيص الجهاز اللازم للخدمة. يخزن فحص العضوية رابط القناة العام ومعرفها وحالتها وأوقات التحقق. نعالج أيضاً سجلات استحقاق المتجر وبلاغات الملفات أو حظرها. عند تفعيل الإعلانات، قد تعالج إعلانات Google الموقع التقريبي المستنتج من عنوان IP ومعرفات الجهاز ومشاهدات الإعلانات والتفاعل معها وسجلات الأعطال وبيانات الأداء.',
       ),
     ),
     (
       abuText(context, 'How We Use It', 'كيف نستخدمها'),
       abuText(
         context,
-        'We use this data to sign you in, save predictions, award points, verify YouTube membership benefits, show leaderboards, send requested notifications, protect the app from abuse, and respond to support requests.',
-        'نستخدم هذه البيانات لتسجيل الدخول وحفظ التوقعات ومنح النقاط والتحقق من مزايا عضوية يوتيوب وعرض الترتيب وإرسال الإشعارات المطلوبة وحماية التطبيق من إساءة الاستخدام والرد على طلبات الدعم.',
+        'We use this data to sign you in, save predictions, award points, verify YouTube membership benefits, show leaderboards, send requested notifications, protect the app from abuse, respond to support requests, and—when enabled—display and measure non-personalized advertising.',
+        'نستخدم هذه البيانات لتسجيل الدخول وحفظ التوقعات ومنح النقاط والتحقق من مزايا عضوية يوتيوب وعرض الترتيب وإرسال الإشعارات المطلوبة وحماية التطبيق من إساءة الاستخدام والرد على طلبات الدعم، وعند التفعيل لعرض الإعلانات غير المخصصة وقياسها.',
       ),
     ),
     (
       abuText(context, 'Sharing', 'المشاركة'),
       abuText(
         context,
-        'We use Firebase, Google and Apple sign-in, RevenueCat, app stores, public YouTube feeds, push delivery, hosting, and football data providers. Membership checking compares the channel profile link you supply with the latest complete unexpired CSV/TSV; it does not request Google access. RevenueCat processes purchase records and an opaque account identifier to manage subscriptions. We do not sell personal data.',
-        'نستخدم Firebase وتسجيل الدخول عبر Google وApple وRevenueCat ومتاجر التطبيقات وخلاصات يوتيوب والإشعارات والاستضافة وبيانات كرة القدم. يقارن فحص العضوية رابط القناة الذي تقدمه بأحدث ملف CSV/TSV كامل وغير منتهي دون طلب صلاحية Google. يعالج RevenueCat سجلات الشراء ومعرّف حساب غير مباشر لإدارة الاشتراكات. لا نبيع البيانات الشخصية.',
+        'We use Firebase, Google and Apple sign-in, RevenueCat, app stores, public YouTube feeds, push delivery, hosting, football data providers, and Google Mobile Ads when advertising is enabled. Membership checking compares the channel profile link you supply with the latest complete unexpired CSV/TSV; it does not request Google access. RevenueCat processes purchase records and an opaque account identifier to manage subscriptions. Ad requests are configured as non-personalized with restricted data processing and conservative teen/content-rating controls. We do not sell personal data.',
+        'نستخدم Firebase وتسجيل الدخول عبر Google وApple وRevenueCat ومتاجر التطبيقات وخلاصات يوتيوب والإشعارات والاستضافة وبيانات كرة القدم وإعلانات Google عند تفعيلها. يقارن فحص العضوية رابط القناة الذي تقدمه بأحدث ملف CSV/TSV كامل وغير منتهي دون طلب صلاحية Google. يعالج RevenueCat سجلات الشراء ومعرّف حساب غير مباشر لإدارة الاشتراكات. تُضبط طلبات الإعلانات لتكون غير مخصصة مع معالجة بيانات مقيدة وضوابط محافظة للمراهقين وتصنيف المحتوى. لا نبيع البيانات الشخصية.',
       ),
     ),
     (

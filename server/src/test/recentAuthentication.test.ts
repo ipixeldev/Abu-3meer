@@ -9,6 +9,7 @@ import {
   hasRecentFirebaseAuthentication,
 } from '../middleware/auth.js';
 import { profileRoutes } from '../routes/profileRoutes.js';
+import { FirebaseMirrorDeletionError } from '../services/firebaseMirrorDeletionService.js';
 
 test('recent authentication accepts only a signed auth_time within five minutes', () => {
   const now = 2_000_000_000;
@@ -57,6 +58,21 @@ test('account deletion is wired behind authentication and recent-auth checks', (
   );
 });
 
+test('verified Firebase email changes are synchronized without a new sign-in', () => {
+  const source = readFileSync(
+    resolve(process.cwd(), 'src/middleware/auth.ts'),
+    'utf8',
+  );
+
+  assert.match(
+    source,
+    /res\.rows\.length > 0 && email && decoded\.email_verified === true/,
+  );
+  assert.match(source, /SET email = \$2,/);
+  assert.match(source, /LOWER\(conflicting_user\.email\) = \$2/);
+  assert.match(source, /res = await query\(userLookupSql, \[firebaseUid\]\)/);
+});
+
 test('legacy Firebase cleanup failure keeps PostgreSQL and sign-in account intact', async (t) => {
   const userId = '11111111-1111-4111-8111-111111111111';
   const firebaseUid = 'firebase-user-1';
@@ -75,7 +91,10 @@ test('legacy Firebase cleanup failure keeps PostgreSQL and sign-in account intac
     deleteFirebaseMirror: async (actualFirebaseUid: string) => {
       firebaseCleanupCalls += 1;
       assert.equal(actualFirebaseUid, firebaseUid);
-      throw new Error('forced legacy Firebase cleanup failure');
+      throw new FirebaseMirrorDeletionError(
+        'firestore-group:attempts.userId',
+        new Error('forced legacy Firebase cleanup failure'),
+      );
     },
     deletePostgresAccount: async () => {
       postgresDeletionCalls += 1;
@@ -96,6 +115,7 @@ test('legacy Firebase cleanup failure keeps PostgreSQL and sign-in account intac
     message:
       'We could not safely remove all account data. Your sign-in account is still active; please try again shortly.',
     requestId: body.requestId,
+    cleanupStage: 'firestore-group:attempts.userId',
   });
   assert.equal(typeof body.requestId, 'string');
   assert.equal(firebaseCleanupCalls, 1);

@@ -2,7 +2,7 @@ Response to App Review — Guideline 2.1
 
 1. Physical-device video
 [ADD PUBLIC VIDEO URL]
-Recorded on [IPHONE MODEL], iOS [IOS VERSION], build 31. It starts at launch and shows registration, deletion, sign-in, all five tabs, a prediction/challenge, Report/Block/Unblock, both subscription plans with prices/legal links, sandbox purchase or restore, member access/badge, notifications, and subscription management.
+Recorded on [IPHONE MODEL], iOS [IOS VERSION], build 32. It starts at launch and shows registration, deletion, sign-in, all five tabs, a prediction/challenge, Report/Block/Unblock, both subscription plans with prices/legal links, sandbox purchase or restore, member access/badge, notifications, and subscription management.
 
 2. Purpose and audience
 ABU 3MEER is an Arabic/English football fan app for users aged 13+. It combines football information, videos, free predictions/questions, recognition-only XP rankings, notifications, and optional Members content. There is no paid entry, betting, wager, prize, or redeemable reward; XP has no monetary value.
@@ -11,7 +11,7 @@ ABU 3MEER is an Arabic/English football fan app for users aged 13+. It combines 
 No file, VPN, invitation, or special setup is required; the production backend is live. Apple, Google, and email sign-in are supported. Demo credentials are in App Review Information > Sign-in Information. [ADD REVIEW ACCOUNT ROLE(S) AND OWNED REPORT/BLOCK TEST USERNAME.] Photo is optional. Tabs are Home, Predict, Challenges, Members, and Profile. Leaderboard and Settings open from the avatar. Delete Account is under Settings > Account.
 
 4. External services
-Apple/Google/Firebase Authentication provide sign-in. Firebase Cloud Messaging/APNs provide optional push. StoreKit/App Store and RevenueCat provide iOS billing, entitlements, restore, and management. api.abu3meer.com, PostgreSQL, Redis, and Cloudflare provide accounts, content, scoring, moderation, and media. API-Football (TheSportsDB fallback) provides football data. YouTube public feeds/profile data support public videos and optional verification of an existing channel membership against a staff-uploaded list. OpenStreetMap Nominatim/ipapi.co may suggest a country; manual selection remains available. No advertising or AI service provides a core function.
+Apple/Google/Firebase Authentication provide sign-in. Firebase Cloud Messaging/APNs provide optional push. StoreKit/App Store and RevenueCat provide iOS billing, entitlements, restore, and management. Google Mobile Ads and its UMP consent SDK provide one non-personalized Home-feed banner for non-members; advertising is not a core function. api.abu3meer.com, PostgreSQL, Redis, and Cloudflare provide accounts, content, scoring, moderation, and media. API-Football (TheSportsDB fallback) provides football data. YouTube public feeds/profile data support public videos and optional verification of an existing channel membership against a staff-uploaded list. OpenStreetMap Nominatim/ipapi.co may suggest a country; manual selection remains available. No AI service provides a core function.
 
 5. Regional differences
 Features, rules, benefits, and purchase methods are consistent across regions. Arabic/English is a language choice. Apple supplies localized prices and taxes. Football/video availability follows source publication.

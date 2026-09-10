@@ -139,7 +139,6 @@ class SubscriptionService extends ChangeNotifier {
   SubscriptionService.forTesting();
   static final instance = SubscriptionService._();
   static const entitlementId = 'abu_3meer_pro';
-  static const _testKey = 'test_ueqlcobyKLrPtFjmuGonGtuosoe';
   // RevenueCat public SDK keys are store-specific; iOS uses appl_, Android uses goog_.
   // This is a client identifier, not a secret REST API credential.
   static const _iosKey = String.fromEnvironment(
@@ -148,9 +147,7 @@ class SubscriptionService extends ChangeNotifier {
   );
   static const _androidKey = String.fromEnvironment(
     'REVENUECAT_ANDROID_API_KEY',
-  );
-  static const _useTestStore = bool.fromEnvironment(
-    'REVENUECAT_USE_TEST_STORE',
+    defaultValue: 'goog_GzZFSUOUejSWXQoegvVhVIDZIhu',
   );
 
   Future<void> _tail = Future<void>.value();
@@ -178,7 +175,6 @@ class SubscriptionService extends ChangeNotifier {
   bool get hasStoreEntitlement =>
       _customerInfo?.entitlements.active[entitlementId] != null;
   String? get userId => _userId;
-  bool get usesTestStore => apiKey.startsWith('test_');
 
   String get apiKey {
     if (kIsWeb) return '';
@@ -186,30 +182,19 @@ class SubscriptionService extends ChangeNotifier {
         defaultTargetPlatform != TargetPlatform.android) {
       return '';
     }
-    if (_useTestStore && !kReleaseMode) return _testKey;
-    final key = defaultTargetPlatform == TargetPlatform.iOS
-        ? _iosKey
-        : _androidKey;
-    // Never silently replace a missing store configuration with fake products.
-    // Test Store is opt-in for non-release builds only.
-    return key;
+    return defaultTargetPlatform == TargetPlatform.iOS ? _iosKey : _androidKey;
   }
 
   bool get available => validPublicKey(
     apiKey,
     isIOS: defaultTargetPlatform == TargetPlatform.iOS,
-    allowTestStore: !kReleaseMode && _useTestStore,
   );
 
   @visibleForTesting
-  static bool validPublicKey(
-    String key, {
-    required bool isIOS,
-    required bool allowTestStore,
-  }) =>
+  static bool validPublicKey(String key, {required bool isIOS}) =>
       !key.startsWith('sk_') &&
-      ((allowTestStore && key.startsWith('test_') && key.length > 5) ||
-          (key.startsWith(isIOS ? 'appl_' : 'goog_') && key.length > 5));
+      key.startsWith(isIOS ? 'appl_' : 'goog_') &&
+      key.length > 5;
 
   /// AbuApiClient preserves the API's {data: ...} envelope. Never mistake
   /// client SDK state or an unrelated entitlement for a server grant.

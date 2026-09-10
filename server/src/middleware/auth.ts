@@ -151,6 +151,45 @@ export async function authenticateUser(request: FastifyRequest, reply: FastifyRe
       }
     }
 
+    // A verified Firebase email change does not create a new UID. Keep the
+    // authoritative PostgreSQL identity aligned as soon as the refreshed ID
+    // token reaches the API, without requiring the user to sign out and back
+    // in. Never accept an unverified claim, and never take an address already
+    // owned by a different database account.
+    if (res.rows.length > 0 && email && decoded.email_verified === true) {
+      const normalizedEmail = email.trim().toLowerCase();
+      const storedEmail = String(res.rows[0].email ?? '').trim().toLowerCase();
+      if (normalizedEmail && normalizedEmail !== storedEmail) {
+        const syncedEmail = await query(
+          `UPDATE users
+           SET email = $2,
+               last_active_at = CURRENT_TIMESTAMP,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = $1
+             AND NOT EXISTS (
+               SELECT 1
+               FROM users conflicting_user
+               WHERE LOWER(conflicting_user.email) = $2
+                 AND conflicting_user.id <> $1
+             )
+           RETURNING id`,
+          [res.rows[0].id, normalizedEmail],
+        );
+        if (syncedEmail.rows.length > 0) {
+          request.log.info(
+            { userId: res.rows[0].id },
+            'Synchronized verified Firebase email change',
+          );
+          res = await query(userLookupSql, [firebaseUid]);
+        } else {
+          request.log.warn(
+            { userId: res.rows[0].id },
+            'Verified Firebase email belongs to another database account',
+          );
+        }
+      }
+    }
+
     if (res.rows.length === 0) {
       // Provision identity, profile, one-time signup award, and roles
       // atomically. This also repairs accounts left half-created by an

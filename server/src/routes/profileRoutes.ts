@@ -6,7 +6,10 @@ import {
 } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { deleteAccountData } from '../services/accountDeletionService.js';
-import { deleteFirebaseMirrorData } from '../services/firebaseMirrorDeletionService.js';
+import {
+  FirebaseMirrorDeletionError,
+  deleteFirebaseMirrorData,
+} from '../services/firebaseMirrorDeletionService.js';
 import {
   eligibleLeaderboardSourceTypes,
   listLeaderboardSeasons,
@@ -491,8 +494,16 @@ export async function profileRoutes(
           request.user!.firebaseUid,
         );
       } catch (error) {
+        const cleanupStage = error instanceof FirebaseMirrorDeletionError
+          ? error.stage
+          : 'firebase:initialization';
         request.log.error(
-          { err: error, userId: request.user!.id, requestId: request.id },
+          {
+            err: error,
+            cleanupStage,
+            userId: request.user!.id,
+            requestId: request.id,
+          },
           'Account deletion stopped during legacy Firebase cleanup',
         );
         return reply.status(503).send({
@@ -500,6 +511,7 @@ export async function profileRoutes(
           message:
             'We could not safely remove all account data. Your sign-in account is still active; please try again shortly.',
           requestId: request.id,
+          cleanupStage,
         });
       }
       const deleted = await (dependencies.deletePostgresAccount ?? deleteAccountData)(

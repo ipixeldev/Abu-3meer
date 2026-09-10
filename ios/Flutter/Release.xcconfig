@@ -1,2 +1,5 @@
 #include "Generated.xcconfig"
 #include? "ApiEndpoint.local.xcconfig"
+// AdMob App IDs are public platform identifiers; local builds may override it.
+ADMOB_APP_ID=ca-app-pub-1153776263866015~5995022078
+#include? "AdMob.local.xcconfig"

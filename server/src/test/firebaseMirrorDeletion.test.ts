@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  FirebaseMirrorDeletionError,
   FirebaseMirrorDeletionStore,
   deleteFirebaseMirrorData,
+  isDefinitelyAbsentStorageTarget,
+  isMissingCollectionGroupIndexError,
 } from '../services/firebaseMirrorDeletionService.js';
 
 test('self-hosted deletion purges the Firebase mirror without removing shared content', async () => {
@@ -126,4 +129,69 @@ test('unsafe Firebase UIDs fail before any storage or database mutation', async 
   };
   await assert.rejects(deleteFirebaseMirrorData('../admin', store), /unsafe/);
   assert.deepEqual(operations, []);
+});
+
+test('cleanup failures identify the exact safe stage without exposing the UID', async () => {
+  const store: FirebaseMirrorDeletionStore = {
+    async deleteDocument() {},
+    async deleteWhere(scope) {
+      if (scope.name === 'attempts') {
+        throw Object.assign(new Error('missing collection-group index'), {
+          code: 9,
+        });
+      }
+    },
+    async anonymizeWhere() {},
+    async listDocumentIds() { return []; },
+    async deleteStoragePrefix() {},
+  };
+
+  const uid = 'private_firebase_uid';
+  await assert.rejects(
+    deleteFirebaseMirrorData(uid, store),
+    (error: unknown) => {
+      assert.equal(error instanceof FirebaseMirrorDeletionError, true);
+      const staged = error as FirebaseMirrorDeletionError;
+      assert.equal(staged.stage, 'firestore-group:attempts.userId');
+      assert.equal(staged.message.includes(uid), false);
+      return true;
+    },
+  );
+});
+
+test('a definitively absent legacy Storage target is already clean', async () => {
+  const operations: string[] = [];
+  const store: FirebaseMirrorDeletionStore = {
+    async deleteDocument(path) { operations.push(`document:${path}`); },
+    async deleteWhere(scope) { operations.push(`delete:${scope.name}`); },
+    async anonymizeWhere(scope) { operations.push(`anonymize:${scope.name}`); },
+    async listDocumentIds() { return []; },
+    async deleteStoragePrefix() {
+      throw Object.assign(new Error('The specified bucket does not exist.'), {
+        code: 404,
+      });
+    },
+  };
+
+  await deleteFirebaseMirrorData('firebase_user-2', store);
+  assert.equal(operations.includes('delete:predictions'), true);
+  assert.equal(operations.at(-1), 'document:users/firebase_user-2');
+});
+
+test('only definitive missing resources and missing-index errors use fallbacks', () => {
+  assert.equal(isDefinitelyAbsentStorageTarget({ code: 404 }), true);
+  assert.equal(isDefinitelyAbsentStorageTarget({ statusCode: '404' }), true);
+  assert.equal(isDefinitelyAbsentStorageTarget({ code: 403 }), false);
+  assert.equal(
+    isMissingCollectionGroupIndexError(
+      Object.assign(new Error('The query requires an index.'), { code: 9 }),
+    ),
+    true,
+  );
+  assert.equal(
+    isMissingCollectionGroupIndexError(
+      Object.assign(new Error('Permission denied.'), { code: 7 }),
+    ),
+    false,
+  );
 });

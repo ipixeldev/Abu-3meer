@@ -10,7 +10,6 @@ The user has created the Apple products and RevenueCat App Store app. The Flutte
 | --- | --- |
 | RevenueCat public `appl_…` SDK key | Flutter iOS build configuration |
 | RevenueCat public `goog_…` SDK key | Flutter Android build configuration, after Play setup |
-| RevenueCat public `test_…` key | RevenueCat Test Store testing only |
 | RevenueCat secret `sk_…` REST API key | Server `.env` only; never Flutter, Git, or chat |
 | Apple In-App Purchase `.p8`, Key ID, Issuer ID | RevenueCat's App Store app configuration |
 
@@ -42,7 +41,7 @@ Both products currently provide the **same member benefits**, with different bil
 
 ## 3. Connect Apple's store to RevenueCat
 
-1. Open RevenueCat project `proja7bd8e75` → **Apps & providers** → add/select an **App Store** app. Set its bundle ID to `omar.abu3meer.app`. A Test Store app alone is insufficient for Apple purchases.
+1. Open RevenueCat project `proja7bd8e75` → **Apps & providers** → select the **App Store** app. Its bundle ID must be `omar.abu3meer.app`.
 2. In App Store Connect, open **Users and Access → Integrations → In-App Purchase**. Generate/download an In-App Purchase key using the client's account.
 3. In RevenueCat's App Store app → **In-app purchase key configuration**, upload that `.p8` and enter its matching Key ID and Issuer ID. This is required by the StoreKit 2 SDK used here; an APNs key or Sign in with Apple key is not a substitute. [RevenueCat IAP key setup](https://www.revenuecat.com/docs/service-credentials/itunesconnect-app-specific-shared-secret/in-app-purchase-key-configuration).
 4. Configure RevenueCat's separate App Store Connect API integration if you want automatic product import. Use the required App Store Connect API credentials in that section, not an APNs key.
@@ -132,21 +131,21 @@ For a custom paywall, fetch `SubscriptionService.instance.offering(userId)`, dis
 
 ## 6. Build configuration
 
-The real public iOS key is already configured:
+The real public iOS and Android SDK keys are committed as platform-specific
+defaults. They are public client identifiers, not RevenueCat secret REST keys.
+Build normally:
 
 ```sh
 flutter build ipa --release --target lib/main.dart --export-options-plist=ios/ExportOptions.plist
+flutter build appbundle --release
 ```
 
-For Test Store development:
+The client contains no RevenueCat Test Store key or switch. TestFlight uses the
+real `appl_` key with Apple's sandbox; Play Internal Testing uses the real
+`goog_` key with Google Play's licensed test purchase flow.
 
-```sh
-flutter run --dart-define=REVENUECAT_USE_TEST_STORE=true
-```
-
-The supplied `test_` key is available as a debug fallback. Release builds do **not** silently fall back to it. TestFlight testing of Apple purchases uses the real `appl_` SDK key and Apple's sandbox—not the RevenueCat Test Store key. Do not distribute an App Store build with `REVENUECAT_USE_TEST_STORE=true`.
-
-Android has `FlutterFragmentActivity` and the Billing permission; add an Android app and its `goog_` key before testing Play purchases. iOS In-App Purchase capability is enabled. [Flutter installation requirements](https://www.revenuecat.com/docs/getting-started/installation/flutter#installation).
+Android has `FlutterFragmentActivity`, the Billing permission, and its real
+RevenueCat Play key. iOS In-App Purchase capability is enabled. [Flutter installation requirements](https://www.revenuecat.com/docs/getting-started/installation/flutter#installation).
 
 The Xcode PhaseScriptExecution failure came from running **Release on a simulator**. Run now uses Debug; Archive stays Release. Open `ios/Runner.xcworkspace`. For Archive select a physical device or **Any iOS Device (arm64)**, not an iPhone simulator. Firebase, Google URL scheme, signing team, and export settings have been updated for the new bundle/team.
 

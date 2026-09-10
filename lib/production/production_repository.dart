@@ -1246,6 +1246,22 @@ class ProductionRepository {
 
   Future<void> refreshUser() => auth.currentUser!.reload();
 
+  /// Reloads Firebase identity changes completed outside the app (for example,
+  /// an email-verification link opened in Safari), refreshes the signed token,
+  /// and reconciles the already-open profile stream with the API. The Firebase
+  /// UID is stable, so none of this requires ending the current session.
+  Future<void> refreshAuthenticatedIdentity() async {
+    final expectedUid = auth.currentUser?.uid;
+    if (expectedUid == null) return;
+
+    await auth.currentUser!.reload();
+    final refreshedUser = auth.currentUser;
+    if (refreshedUser == null || refreshedUser.uid != expectedUid) return;
+
+    await refreshedUser.getIdToken(true);
+    await refreshProfile(expectedUid, force: true);
+  }
+
   Future<void> signInWithGoogle() async {
     if (kIsWeb) {
       await auth.signInWithPopup(GoogleAuthProvider());
@@ -1470,17 +1486,10 @@ class ProductionRepository {
       onboardingCompleted: markOnboardingComplete ? true : null,
     );
 
-    // Firebase Auth only supplies identity tokens now. Keep its optional
-    // display metadata aligned, but never let it decide whether the database
-    // save succeeded.
-    try {
-      await user.updateDisplayName(normalizedDisplayName);
-      if (avatarUrl != null && avatarUrl.isNotEmpty) {
-        await user.updatePhotoURL(avatarUrl.trim());
-      }
-    } catch (_) {}
-
-    // Update local state only after the API write has committed.
+    // Public profile fields live in PostgreSQL. Updating Firebase Auth's
+    // optional displayName/photoURL here emits an unrelated auth-state event
+    // and can rebuild the signed-in shell as if the account had changed.
+    // Keep the Firebase session untouched and update the profile replay below.
     final current = _localProfiles[user.uid];
     final updated =
         (current ??

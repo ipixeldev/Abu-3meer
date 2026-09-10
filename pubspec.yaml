@@ -2,7 +2,7 @@ name: abu_3meer
 description: "Abu 3meer — predict exact scores, answer video questions, guess featured players, and climb the leaderboard."
 publish_to: 'none'
 
-version: 1.1.0+31
+version: 1.1.0+32
 
 environment:
   sdk: ^3.13.0
@@ -44,6 +44,7 @@ dependencies:
   file_selector: ^1.1.0
   purchases_flutter: ^10.11.0
   purchases_ui_flutter: ^10.11.0
+  google_mobile_ads: ^9.1.0
 
 dev_dependencies:
   flutter_test:

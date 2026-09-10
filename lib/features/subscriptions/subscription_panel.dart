@@ -832,17 +832,6 @@ class _SubscriptionPanelState extends State<SubscriptionPanel> {
                 ),
               ),
             ],
-            if (_store.usesTestStore) ...[
-              const SizedBox(height: 8),
-              Text(
-                abuText(
-                  context,
-                  'TEST STORE · simulated purchases only',
-                  'متجر تجريبي · مشتريات محاكاة فقط',
-                ),
-                style: const TextStyle(color: AbuBrand.gold, fontSize: 12),
-              ),
-            ],
             const SizedBox(height: 14),
             if (youtubeActive || youtubeRecheckRequired)
               FilledButton.tonalIcon(
