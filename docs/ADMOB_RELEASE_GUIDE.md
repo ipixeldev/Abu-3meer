@@ -164,12 +164,9 @@ these answers must be reviewed and saved in their store web consoles.
 5. Use only Google sample ads or registered test devices during QA.
 6. Confirm a visible **Test Ad** label before tapping any ad during testing.
 
-The current Google Play developer website is
-`https://ipixeldev.github.io/Abu-3meer`. AdMob uses only that URL's hostname,
-so it will look for `https://ipixeldev.github.io/app-ads.txt`, not inside the
-`/Abu-3meer/` project path. Either publish the file from the root GitHub Pages
-site, or change both store listings to a domain you control (for example the
-Abu 3meer website) and serve `/app-ads.txt` at that domain's root.
+The Google Play developer website is `https://abu3meer.com/`. AdMob uses that
+URL's hostname, so publish and keep the file available at
+`https://abu3meer.com/app-ads.txt`.
 
 Official references:
 

@@ -14,5 +14,5 @@ The app is free to download, with optional auto-renewable subscriptions. Localiz
 
 There is no paid entry, betting, wagering, or cash prize for predictions and quizzes. XP is not sold as a standalone currency. It is for fan rankings only, has no monetary value, cannot be transferred or redeemed, and unlocks nothing.
 
-Privacy Policy: https://ipixeldev.github.io/Abu-3meer/privacy/
-Terms of Use: https://ipixeldev.github.io/Abu-3meer/terms/
+Privacy Policy: https://abu3meer.com/privacy/
+Terms of Use: https://abu3meer.com/terms/

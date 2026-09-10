@@ -4,13 +4,13 @@ Updated: 9 September 2026
 
 ## Required URLs
 
-- Marketing URL: https://ipixeldev.github.io/Abu-3meer/
-- Privacy Policy URL: https://ipixeldev.github.io/Abu-3meer/privacy/
-- Privacy Choices URL: https://ipixeldev.github.io/Abu-3meer/delete-account/
-- Support URL: https://ipixeldev.github.io/Abu-3meer/support/
-- XP & Leaderboard Rules URL: https://ipixeldev.github.io/Abu-3meer/competition-rules/
-- Account Deletion URL: https://ipixeldev.github.io/Abu-3meer/delete-account/
-- Age Suitability URL: https://ipixeldev.github.io/Abu-3meer/age-suitability/
+- Marketing URL: https://abu3meer.com/
+- Privacy Policy URL: https://abu3meer.com/privacy/
+- Privacy Choices URL: https://abu3meer.com/delete-account/
+- Support URL: https://abu3meer.com/support/
+- XP & Leaderboard Rules URL: https://abu3meer.com/competition-rules/
+- Account Deletion URL: https://abu3meer.com/delete-account/
+- Age Suitability URL: https://abu3meer.com/age-suitability/
 
 ## App Review Rules Implemented
 

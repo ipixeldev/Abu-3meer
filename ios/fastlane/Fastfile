@@ -72,14 +72,14 @@ platform :ios do
     app_info.get_app_info_localizations.each do |localization|
       localization.update(
         attributes: {
-          privacy_choices_url: "https://ipixeldev.github.io/Abu-3meer/delete-account/"
+          privacy_choices_url: "https://abu3meer.com/delete-account/"
         }
       )
     end
     app_info.fetch_age_rating_declaration
       .update(
         attributes: {
-          developer_age_rating_info_url: "https://ipixeldev.github.io/Abu-3meer/age-suitability/"
+          developer_age_rating_info_url: "https://abu3meer.com/age-suitability/"
         }
       )
   end
