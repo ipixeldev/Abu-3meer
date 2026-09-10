@@ -15305,43 +15305,69 @@ class _ProductionSkeleton extends StatelessWidget {
       curve: Curves.easeInOut,
       builder: (context, opacity, _) => Opacity(
         opacity: opacity,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 124,
-              height: 12,
-              decoration: BoxDecoration(
-                color: _line,
-                borderRadius: BorderRadius.circular(99),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final indicator = SizedBox.square(
+              dimension: 32,
+              child: CircularProgressIndicator(
+                color: _productionPrimary(context).withValues(alpha: .85),
+                strokeWidth: 3,
               ),
-            ),
-            const SizedBox(height: 18),
-            Container(
-              width: 260,
-              height: 26,
-              decoration: BoxDecoration(
-                color: _line,
-                borderRadius: BorderRadius.circular(99),
-              ),
-            ),
-            const Spacer(),
-            Align(
-              alignment: AlignmentDirectional.bottomEnd,
-              child: SizedBox.square(
-                dimension: 32,
-                child: CircularProgressIndicator(
-                  color: _productionPrimary(context).withValues(alpha: .85),
-                  strokeWidth: 3,
+            );
+            if (constraints.maxHeight < 88) {
+              return Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: _line,
+                        borderRadius: BorderRadius.circular(99),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 18),
+                  indicator,
+                ],
+              );
+            }
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 124,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: _line,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
                 ),
-              ),
-            ),
-          ],
+                const SizedBox(height: 18),
+                Container(
+                  width: 260,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: _line,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+                const Spacer(),
+                Align(
+                  alignment: AlignmentDirectional.bottomEnd,
+                  child: indicator,
+                ),
+              ],
+            );
+          },
         ),
       ),
     ),
   );
 }
+
+@visibleForTesting
+Widget productionSkeletonForTesting(double height) =>
+    _ProductionSkeleton(height: height);
 
 class _ProductionEmpty extends StatelessWidget {
   const _ProductionEmpty({
