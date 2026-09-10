@@ -29,7 +29,7 @@
         "APP_FUNCTIONALITY",
         "PRODUCT_PERSONALIZATION",
         "THIRD_PARTY_ADVERTISING",
-        "DEVELOPER_ADVERTISING",
+        "DEVELOPERS_ADVERTISING",
         "ANALYTICS"
       ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
@@ -41,12 +41,7 @@
     },
     {
       "category": "GAMEPLAY_CONTENT",
-      "purposes": ["APP_FUNCTIONALITY"],
-      "dataProtections": ["DATA_LINKED_TO_YOU"]
-    },
-    {
-      "category": "CUSTOMER_SUPPORT",
-      "purposes": ["APP_FUNCTIONALITY"],
+      "purposes": ["APP_FUNCTIONALITY", "ANALYTICS"],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
     {
@@ -70,7 +65,7 @@
         "APP_FUNCTIONALITY",
         "ANALYTICS",
         "THIRD_PARTY_ADVERTISING",
-        "DEVELOPER_ADVERTISING"
+        "DEVELOPERS_ADVERTISING"
       ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
@@ -78,7 +73,6 @@
       "category": "PURCHASE_HISTORY",
       "purposes": [
         "APP_FUNCTIONALITY",
-        "PRODUCT_PERSONALIZATION",
         "ANALYTICS"
       ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
@@ -87,10 +81,9 @@
       "category": "PRODUCT_INTERACTION",
       "purposes": [
         "APP_FUNCTIONALITY",
-        "PRODUCT_PERSONALIZATION",
         "ANALYTICS",
         "THIRD_PARTY_ADVERTISING",
-        "DEVELOPER_ADVERTISING"
+        "DEVELOPERS_ADVERTISING"
       ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
@@ -99,7 +92,7 @@
       "purposes": [
         "ANALYTICS",
         "THIRD_PARTY_ADVERTISING",
-        "DEVELOPER_ADVERTISING"
+        "DEVELOPERS_ADVERTISING"
       ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
@@ -114,7 +107,7 @@
         "APP_FUNCTIONALITY",
         "ANALYTICS",
         "THIRD_PARTY_ADVERTISING",
-        "DEVELOPER_ADVERTISING"
+        "DEVELOPERS_ADVERTISING"
       ],
       "dataProtections": ["DATA_NOT_LINKED_TO_YOU"]
     },
@@ -129,7 +122,7 @@
         "APP_FUNCTIONALITY",
         "ANALYTICS",
         "THIRD_PARTY_ADVERTISING",
-        "DEVELOPER_ADVERTISING"
+        "DEVELOPERS_ADVERTISING"
       ],
       "dataProtections": ["DATA_LINKED_TO_YOU"]
     },
