@@ -134,8 +134,8 @@ publication/brand/media rights, complete physical-device QA, and wait for or
 resolve the Digital Services Act status shown as **In Review** if Apple requires
 it for EU distribution.
 
-Fresh iPhone and iPad screenshots are uploaded in both locales. Build 34 must
-finish processing and be selected. The dedicated review login is already
+Fresh iPhone and iPad screenshots are uploaded in both locales. Build 34 is
+processed and selected. The dedicated review login is already
 stored and must remain private. Resolve and resubmit the existing app-version
 item with the same first-subscription items; do not create a separate review
 submission that leaves those products behind.

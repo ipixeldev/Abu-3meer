@@ -137,8 +137,8 @@ and [RC23_STORE_ACTIONS.md](RC23_STORE_ACTIONS.md).
 ## App Store Connect actions that still require the account owner
 
 The review draft currently contains the subscription group and both
-subscription versions. Build 34 must be selected for the app version after it
-finishes processing. App Privacy
+subscription versions. Build 34 is processed and selected for the app version.
+App Privacy
 must be republished with the current first-party, RevenueCat, Firebase, and
 AdMob data disclosures; the review contact and private demo login are filled,
 copyright is `2026 Omar Jabur`, and the app declares that it uses third-party content.
