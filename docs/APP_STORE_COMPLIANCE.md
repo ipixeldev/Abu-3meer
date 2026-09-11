@@ -25,14 +25,14 @@ Updated: 9 September 2026
 - Current-month, previous-month, and season leaderboards provide recognition only. Monthly XP resets while the completed month remains visible, and completed seasons remain available as archived rankings.
 - The public XP & Leaderboard Rules state that Apple does not sponsor, administer, or participate in XP scoring or rankings.
 - When configured with production AdMob IDs, non-members may see one non-personalized banner in the Home feed. Ads are not shown on sign-in, account deletion, predictions, challenges, Members, purchase, restore, or subscription-management screens, and active members do not see the banner.
-- The iOS target contains `Runner/PrivacyInfo.xcprivacy`; it declares no first-party tracking and is packaged at the app-bundle root. The AdMob publisher first-party identifier is disabled before SDK initialization, no ATT prompt or personalized-ad request is used, and store disclosures must still include the data collected for ad delivery and measurement.
+- The iOS target contains `Runner/PrivacyInfo.xcprivacy`; it declares no first-party tracking and is packaged at the app-bundle root. Google's embedded SDK manifest separately declares its Device ID tracking behavior. Build 35 presents Apple's ATT prompt after any required UMP form and before Mobile Ads initialization. The AdMob publisher first-party identifier remains disabled and ad requests remain non-personalized and restricted.
 
 ## App Privacy Declaration
 
 App Store Connect's privacy declaration must cover both first-party collection and embedded SDKs. The conservative declaration for the current build is:
 
 - Data collected: yes.
-- Tracking: no. Build 34 disables AdMob's publisher first-party identifier and does not request ATT/IDFA access or personalized ads.
+- Tracking: yes for build 35 and later. Device ID is the only current data type marked **Data Used to Track You**, matching Google's embedded Mobile Ads privacy manifest. ATT completes before Mobile Ads initialization or ad requests.
 - Third-party advertising use: yes for a build configured to request AdMob banners. Developer advertising/marketing use: yes for the AdMob-collected data types that Google's privacy manifest assigns to that purpose.
 - Contact information, a submitted public YouTube profile link and matched channel ID/membership status, subscription and entitlement metadata, profile reports and blocks, location used for country suggestion, selected media, gameplay/user/search content, user/device identifiers, product interaction, usage data, diagnostics, advertising data, and other profile/security data are disclosed for app functionality and the applicable analytics, personalization, developer-advertising, or third-party-advertising purposes. The membership check does not request YouTube account authorization.
 

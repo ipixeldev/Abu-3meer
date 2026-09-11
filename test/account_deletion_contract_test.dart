@@ -58,6 +58,9 @@ void main() {
     );
     expect(ui, contains("'MANAGE APPLE SUBSCRIPTION'"));
     expect(ui, contains("'MANAGE GOOGLE PLAY SUBSCRIPTION'"));
+    expect(ui, contains("'ACCOUNT SETTINGS & DELETE ACCOUNT'"));
+    expect(ui, contains('onOpenSettings'));
+    expect(ui, contains('to enable Delete Account'));
   });
 
   test('legacy nested account data has collection-group deletion indexes', () {

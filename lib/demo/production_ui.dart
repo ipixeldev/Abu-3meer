@@ -2342,7 +2342,11 @@ class _ProductionShellState extends State<_ProductionShell>
       _ProductionChallenges(repository: widget.repository, profile: profile),
       ExclusiveVideosView(repository: widget.repository, profile: profile),
       _ProductionLeaderboard(repository: widget.repository, profile: profile),
-      _ProductionProfile(repository: widget.repository, profile: profile),
+      _ProductionProfile(
+        repository: widget.repository,
+        profile: profile,
+        onOpenSettings: () => _selectShellPage(_settingsShellPageIndex),
+      ),
       _ProductionSettings(repository: widget.repository, profile: profile),
       if (profile.canManageContent)
         _ProductionAdmin(repository: widget.repository, profile: profile),
@@ -2423,8 +2427,8 @@ class _ProductionShellState extends State<_ProductionShell>
                       key: const ValueKey<String>('header-avatar-menu'),
                       tooltip: abuText(
                         context,
-                        'More account features',
-                        'المزيد من ميزات الحساب',
+                        'Account menu — Settings and account deletion',
+                        'قائمة الحساب — الإعدادات وحذف الحساب',
                       ),
                       position: PopupMenuPosition.under,
                       onSelected: _selectShellPage,
@@ -10247,9 +10251,14 @@ IconData _pointSourceIcon(String source) => switch (source) {
 };
 
 class _ProductionProfile extends StatefulWidget {
-  const _ProductionProfile({required this.repository, required this.profile});
+  const _ProductionProfile({
+    required this.repository,
+    required this.profile,
+    required this.onOpenSettings,
+  });
   final ProductionRepository repository;
   final AbuUserProfile profile;
+  final VoidCallback onOpenSettings;
 
   @override
   State<_ProductionProfile> createState() => _ProductionProfileState();
@@ -10901,6 +10910,35 @@ class _ProductionProfileState extends State<_ProductionProfile> {
                     ),
                   ),
           ),
+          if (!profile.isGuest) ...[
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: _productionPrimary(context),
+                foregroundColor: _ink,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 14,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              onPressed: widget.onOpenSettings,
+              icon: const Icon(Icons.manage_accounts_rounded),
+              label: Text(
+                abuText(
+                  context,
+                  'ACCOUNT SETTINGS & DELETE ACCOUNT',
+                  'إعدادات الحساب وحذف الحساب',
+                ),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: .4,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 24),
           _ProductionProfileSummary(
             profile: profile,
@@ -12604,8 +12642,8 @@ class _AccountDeletionDialogState extends State<_AccountDeletionDialog> {
                 Text(
                   abuText(
                     context,
-                    'You may be asked to verify your sign-in again. Type DELETE to continue.',
-                    'قد يُطلب منك تأكيد تسجيل الدخول مرة أخرى. اكتب DELETE للمتابعة.',
+                    'Type DELETE${widget.repository.accountDeletionNeedsPassword ? ' and enter your current password' : ''} to enable Delete Account. You may then be asked to verify your sign-in again.',
+                    'اكتب DELETE${widget.repository.accountDeletionNeedsPassword ? ' وأدخل كلمة المرور الحالية' : ''} لتفعيل زر حذف الحساب. قد يُطلب منك بعدها تأكيد تسجيل الدخول مرة أخرى.',
                   ),
                   style: const TextStyle(fontWeight: FontWeight.w800),
                 ),
@@ -12744,8 +12782,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
   title: abuText(context, 'Privacy Policy', 'سياسة الخصوصية'),
   updated: abuText(
     context,
-    'Updated 9 September 2026',
-    'آخر تحديث 9 سبتمبر 2026',
+    'Updated 11 September 2026',
+    'آخر تحديث 11 سبتمبر 2026',
   ),
   webUrl: AbuBrand.privacyUrl,
   sections: [
@@ -12769,8 +12807,8 @@ _LegalDocument _privacyLegalDocument(BuildContext context) => _LegalDocument(
       abuText(context, 'Sharing', 'المشاركة'),
       abuText(
         context,
-        'We use Firebase, Google and Apple sign-in, RevenueCat, app stores, public YouTube feeds, push delivery, hosting, football data providers, and Google Mobile Ads when advertising is enabled. Membership checking compares the channel profile link you supply with the latest complete unexpired CSV/TSV; it does not request Google access. RevenueCat processes purchase records and an opaque account identifier to manage subscriptions. Ad requests are configured as non-personalized with restricted data processing and conservative teen/content-rating controls. We do not sell personal data.',
-        'نستخدم Firebase وتسجيل الدخول عبر Google وApple وRevenueCat ومتاجر التطبيقات وخلاصات يوتيوب والإشعارات والاستضافة وبيانات كرة القدم وإعلانات Google عند تفعيلها. يقارن فحص العضوية رابط القناة الذي تقدمه بأحدث ملف CSV/TSV كامل وغير منتهي دون طلب صلاحية Google. يعالج RevenueCat سجلات الشراء ومعرّف حساب غير مباشر لإدارة الاشتراكات. تُضبط طلبات الإعلانات لتكون غير مخصصة مع معالجة بيانات مقيدة وضوابط محافظة للمراهقين وتصنيف المحتوى. لا نبيع البيانات الشخصية.',
+        'We use Firebase, Google and Apple sign-in, RevenueCat, app stores, public YouTube feeds, push delivery, hosting, football data providers, and Google Mobile Ads when advertising is enabled. Membership checking compares the public channel link you supply with a current staff file; it does not request Google account access. If you allow Apple\'s tracking permission, Google may use the device advertising identifier to link ad-delivery or measurement data with data from other companies\' apps or websites. If you decline, the identifier is unavailable, every app feature still works, and restricted non-personalized ads may still appear. Change tracking permission in iOS Settings and regional ad consent under Settings > Legal & Privacy > Ad privacy choices. RevenueCat processes purchase records and an opaque account identifier. We do not sell personal data.',
+        'نستخدم Firebase وتسجيل الدخول عبر Google وApple وRevenueCat ومتاجر التطبيقات وخلاصات يوتيوب والإشعارات والاستضافة وبيانات كرة القدم وإعلانات Google عند تفعيلها. يقارن فحص العضوية رابط القناة العام الذي تقدمه بملف حديث من الموظفين ولا يطلب الوصول إلى حساب Google. إذا سمحت بإذن التتبع من Apple، فقد تستخدم Google معرّف إعلانات الجهاز لربط بيانات عرض الإعلانات أو قياسها ببيانات من تطبيقات أو مواقع شركات أخرى. إذا رفضت، لا يتاح المعرّف وتبقى كل الميزات عاملة وقد تظهر إعلانات غير مخصصة ومقيدة. يمكنك تغيير إذن التتبع من إعدادات iOS والموافقة الإقليمية من الإعدادات > القانونية والخصوصية > خيارات خصوصية الإعلانات. يعالج RevenueCat سجلات الشراء ومعرّف حساب غير مباشر. لا نبيع البيانات الشخصية.',
       ),
     ),
     (

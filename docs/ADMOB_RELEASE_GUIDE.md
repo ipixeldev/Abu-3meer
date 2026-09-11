@@ -9,8 +9,10 @@ banner.
 The SDK requests only non-personalized ads with restricted data processing,
 teen treatment, and a maximum `PG` ad-content rating. On iOS it also disables
 Google's default publisher first-party identifier before SDK initialization.
-Google UMP is queried on every launch before any ad request, and Settings shows
-**Ad privacy choices** whenever UMP requires that entry point for the user's region.
+Google UMP is queried on every launch before any ad request. After any required
+regional form is dismissed, iOS presents Apple's App Tracking Transparency
+choice before Mobile Ads initialization. Settings shows **Ad privacy choices**
+whenever UMP requires that entry point for the user's region.
 
 ## Release configuration now
 
@@ -84,8 +86,8 @@ In AdMob open **Privacy & messaging**:
 2. Enable consent choices and a privacy-options entry point.
 3. Create the applicable US states message.
 4. Keep both AdMob apps selected when publishing the messages.
-5. Do not enable an IDFA/ATT message for this implementation. It deliberately
-   requests non-personalized ads and does not ask for cross-app tracking.
+5. Keep the app's native ATT implementation enabled. Do not add a second ATT
+   prompt in AdMob; after UMP completes, the app presents Apple's system prompt.
 
 UMP supplies the regional form. Do not create a second homemade GDPR popup.
 
@@ -146,11 +148,13 @@ Open **App Store Connect → My Apps → ABU 3MEER → App Privacy → Edit**. T
 - Other diagnostic data
 - Add **Third-Party Advertising** and **Analytics** purposes as recorded
 
-This implementation does not request App Tracking Transparency permission,
-does not request personalized ads, and disables AdMob's iOS publisher
-first-party identifier. Answer **Tracking: No** only for build 34 or later with
-that hardening present. Recheck the answer if personalized ads, mediation,
-another ad network, or any cross-company identifier linking is enabled later.
+Build 35 requests App Tracking Transparency permission after UMP and before
+Mobile Ads initialization. Answer **Tracking: Yes** and mark **Device ID** as
+used for tracking; Google's embedded privacy manifest marks that data type as
+linked and tracked for third-party advertising, developer advertising, and
+analytics. Do not mark other data types as tracking unless a future SDK privacy
+report declares them. The app still requests non-personalized, restricted ads
+and disables AdMob's iOS publisher first-party identifier.
 
 The App Store privacy answers require an Apple web session and Google Play Data
 Safety/Ads declarations are not supported by the configured publishing CLI, so

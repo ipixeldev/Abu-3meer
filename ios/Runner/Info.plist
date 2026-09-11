@@ -39,6 +39,8 @@
 	<string>701810344443-uc6eqqbhej377f2gpjcuimn2co4rk0ai.apps.googleusercontent.com</string>
 	<key>GADApplicationIdentifier</key>
 	<string>$(ADMOB_APP_ID)</string>
+	<key>NSUserTrackingUsageDescription</key>
+	<string>Allowing tracking lets Google use your device identifier to deliver and measure ads. You can continue using every ABU 3MEER feature if you decline.</string>
 	<key>SKAdNetworkItems</key>
 	<array>
 		<dict>

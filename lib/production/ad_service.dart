@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:app_tracking_transparency/app_tracking_transparency.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -288,6 +289,11 @@ class AdMobService extends ChangeNotifier {
       debugPrint('[AdMob] Consent form unavailable: $error');
     }
 
+    // App Review requires Apple's system ATT choice in addition to Google's
+    // regional consent form. Do not initialize the ads SDK or request an ad
+    // until the system prompt has completed. Android has no ATT equivalent.
+    await _requestTrackingAuthorizationIfNeeded();
+
     try {
       _privacyOptionsRequired =
           await consentInformation.getPrivacyOptionsRequirementStatus() ==
@@ -304,6 +310,24 @@ class AdMobService extends ChangeNotifier {
       debugPrint('[AdMob] SDK initialization failed: $error');
     }
     notifyListeners();
+  }
+
+  Future<void> _requestTrackingAuthorizationIfNeeded() async {
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    try {
+      final status = await AppTrackingTransparency.trackingAuthorizationStatus;
+      if (status != TrackingStatus.notDetermined) return;
+
+      // Give the UMP form time to dismiss. iOS will not present two native
+      // permission dialogs simultaneously, and ATT only appears while the app
+      // is active.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await AppTrackingTransparency.requestTrackingAuthorization();
+    } catch (error) {
+      // A restricted/managed device may not permit an ATT prompt. Ads remain
+      // privacy-preserving and do not depend on authorization to function.
+      debugPrint('[AdMob] ATT authorization unavailable: $error');
+    }
   }
 
   Future<void> showPrivacyOptions() async {
@@ -336,9 +360,9 @@ class AdMobService extends ChangeNotifier {
     if (!_canShowAds || _sdkInitialized) return;
 
     // The iOS SDK enables a publisher-scoped first-party identifier by
-    // default. Abu 3meer does not use cross-app tracking or personalized ads,
-    // so disable that identifier before the SDK is initialized. This call is
-    // intentionally a no-op on Android.
+    // default. Disable that extra identifier as a data-minimization measure;
+    // Apple's ATT choice above separately governs IDFA access. This call is a
+    // no-op on Android.
     await MobileAds.instance.setSameAppKeyEnabled(false);
 
     // Abu 3meer is rated 13+. Apply conservative teen treatment to every
